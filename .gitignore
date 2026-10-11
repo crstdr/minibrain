@@ -1,0 +1,7 @@
+.DS_Store
+/MEMORY.md
+/MINIBRAIN.md
+.env
+.env.*
+__pycache__/
+*.pyc
