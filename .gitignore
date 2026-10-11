@@ -1,6 +1,7 @@
 .DS_Store
 /MEMORY.md
 /MINIBRAIN.md
+# Retain the legacy v0.1 private-memory exclusion; it is not a required v0.2 filename.
 .env
 .env.*
 __pycache__/

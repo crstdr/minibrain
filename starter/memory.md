@@ -1,24 +1,22 @@
-# Working memory
+# Working-memory sketch
 
-This is a blank starter. Replace prompts with known state; leave unknowns explicit rather than invent answers. Keep only sections that help this brain operate.
+An example of required content, not a required filename, layout or two-file installation. Adapt it to the existing system. Never invent unknowns. Record actual sources and procedures in the installed operating instructions.
 
 ## Purpose and responsibilities
 
 - Purpose and intended outcome: not yet established.
-- User priorities and boundaries: not yet established.
+- User priorities, scope and authority boundaries: not yet established.
 
-## Current focus
+## Focus
 
-- Current objective, its source and when established: not yet established.
+- Current objective, source and evidence date: not yet established. Label inference; do not derive priorities from the template or folder name.
 
-## Open work and decisions
+## Open threads
 
-No work recorded yet. For each live item, retain: state, owner/decision-maker, next action, dependencies or conditions, and source/evidence date. A deferred decision stays here until resolved or deliberately withdrawn.
+No work recorded yet. Keep a bounded index: each item has state, decision-maker/owner, next action, dependencies/reopening conditions, evidence date and a canonical source. Closing a thread must not erase the only durable outcome.
 
-## Knowledge and practical lessons
+## Knowledge and discovery
 
-No knowledge recorded yet. Keep current facts, preferences and procedures with their basis and uncertainty. A procedure includes when it applies, what to do, and known limits.
+No knowledge recorded yet. Name where subjects live and how to find them without their current open thread. A small installation may keep clearly separated current knowledge here; extract detail when needed without competing copies.
 
-## Material changes
-
-No changes recorded yet. Keep consequential decisions, corrections and supersession concise; this is not a transcript or activity log. If a topic later owns a claim, link to it rather than duplicate it.
+Lessons retain trigger, remedy, basis and limits. Keep current facts separate from superseded history. Record where durable outcomes/history live; do not let accumulating history crowd startup.
