@@ -7,7 +7,7 @@ Requires available Git and Python 3, in a normal dedicated Git working copy. It 
 ## Example local layout
 
 ```text
-AGENTS.md                 adopted contract plus local bindings
+AGENTS.md                 gate first, then adopted contract and local bindings
 MEMORY.md                 bounded working index, not history
 Map.md                    one entry per canonical subject
 CHANGELOG.md              one outcome per coherent checkpoint
@@ -15,7 +15,7 @@ topics/Project.md         current knowledge and dated history
 tools/kb.py                copy of the supplied helper
 .agents/skills/resume/SKILL.md       optional host pointer
 .agents/skills/checkpoint/SKILL.md   optional host pointer
-CLAUDE.md                 optional, only for a verified host entrypoint
+CLAUDE.md                 optional verified entrypoint; identical gate first
 ```
 
 Root-level topics also work for older installations. Supporting material can use work/, sources/ or archive/ when needed; never create empty structure just to match this example. Keep non-memory work Markdown there rather than at the root, whose Markdown is all managed. Inventory legacy files such as MINIBRAIN.md and integrate or retire/register them rather than silently dropping their knowledge. Every non-reserved Markdown basename must be unique across canonical and tracked supporting Markdown outside dot-folders. Managed Markdown is root *.md plus topics/**/*.md; it must not be ignored. Topic links resolve by basename. The checker verifies targets, not section anchors; verify anchors separately.
@@ -26,9 +26,11 @@ This reference requires ordinary UTF-8 Markdown files contained in the repositor
 
 For a new installation, put the [core contract](../../starter/instructions.md) in the chosen local instruction source (AGENTS.md here), adding the [shared-writer module](../../starter/shared-writers.md) only if overlap is possible, then record the following local bindings there. A single writer retains the core's overlap trigger without paying for the whole module at startup. For an existing brain, integrate without duplicating or overriding its compatible authoritative instructions. All applicable runtime rules and procedures must be local.
 
+The core starts with `<before_you_act>`: when adopting it as AGENTS.md, keep that entire block first, before the title and local bindings. Recommend the same first-position block in CLAUDE.md if that entrypoint is used. Preserve existing rules and obtain approval before changing shared instructions. [Setup](../../docs/setup.md#4-install-a-self-contained-local-contract) owns the loading and mirror rules; neither these filenames nor an unverified import is compulsory for another host.
+
 Example bindings to adapt:
 
-- **Instruction source:** AGENTS.md. Host pointers refer here, not to an online distribution.
+- **Instruction source:** AGENTS.md, including the authoritative gate at its start. Record CLAUDE.md as a gate mirror if used; compare both when either changes. Host pointers refer here, not to an online distribution.
 - **Working index:** MEMORY.md; at most 150 lines and 12 one-line open threads. Thread length above 400 characters warns. These are tunable reference values; change the helper constants and local rule together if appropriate.
 - **Knowledge and lookup:** topics/*.md, or existing root topics; Map.md lists each canonical topic once as a leading bare wikilink. Current status at top, newest-first dated history below. Related links only when they add navigation.
 - **Outcomes:** CHANGELOG.md, newest first, one dated outcome per checkpoint. Completed entries are additive. Never put an expanding recent-decisions log in MEMORY.md.
@@ -120,9 +122,15 @@ description: Load this folder's memory before new work.
 Execute resume exactly as defined in the local AGENTS.md.
 ```
 
-Use the equivalent one-sentence checkpoint pointer. A verified Claude Code setup may use `@AGENTS.md` in CLAUDE.md. These are examples; do not assume universal discovery or replace existing host instructions. A manual prompt naming the local instruction file is a valid explicit entrypoint.
+Use the equivalent one-sentence checkpoint pointer. Do not prepend the gate to these skill pointers or displace required frontmatter.
 
-Unlike the original helper, this reference refuses symlinked Markdown, including CLAUDE.md → AGENTS.md. Where the host supports imports, propose a regular one-line pointer instead; preserve the target instructions and confirm any existing-installation change. Resolve distribution-relative links in adopted instructions to real local targets, and omit a missing module's link while keeping its trigger.
+For a host that reads CLAUDE.md, supports `@AGENTS.md` imports and does **not** already load AGENTS.md, [CLAUDE.md.example](CLAUDE.md.example) is a complete small entrypoint: the identical gate block first, then `@AGENTS.md`. Its `.example` suffix distinguishes this distribution example from an installed brain. Rename/copy only into the user's chosen installation when appropriate, and preserve any existing host rules after the gate. If the host already loads AGENTS.md, omit the redundant import; create CLAUDE.md only if needed. If it cannot import, verify an explicit startup read instead.
+
+A manual prompt naming the local instruction file is a valid explicit entrypoint; verify the agent actually reads that file.
+
+The authoritative gate is in the adopted AGENTS.md in this example; the CLAUDE.md block is its maintained mirror. Compare those blocks when changing them. The full operating contract remains in AGENTS.md. Distribution tests check the starter/example blocks, not arbitrary installed brains or host execution. An installation that has not adopted the gate is not rejected by kb.py.
+
+Unlike the original helper, this reference refuses symlinked Markdown, including CLAUDE.md → AGENTS.md. Propose a regular entrypoint with the gate and verified pointer rather than silently replacing a working symlink; preserve target instructions and confirm any existing-installation change. Resolve distribution-relative links in adopted instructions to real local targets, and omit a missing module's link while keeping its trigger.
 
 ## Install and verify the helper
 

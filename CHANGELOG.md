@@ -1,5 +1,12 @@
 # Changes
 
+## Unreleased
+
+- Put the reviewed PURPOSE / GROUND / IMPROVE / CAPACITY block first in the core starter and recommend the same placement in applicable AGENTS.md and CLAUDE.md entrypoints.
+- Preserve one authoritative full contract, identical small gate mirrors, existing rules and approval for shared-file changes; verify loading before adding host imports.
+- Illustrate delegated maintenance of recurring cap pressure without weakening bounded startup or granting new authority.
+- Add a worked CLAUDE entrypoint, static wording/placement checks and explicit host/behavioural verification limits. Preserve the original operating detail and leave existing installations, helper acceptance and the v0.2.0 release unchanged.
+
 ## 0.2.0
 
 - Restore the original operating contract; remove mandatory two-file installation.

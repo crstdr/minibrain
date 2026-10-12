@@ -16,6 +16,8 @@ Start from the original operating contract, not a tiny layout that postpones saf
 
 A reference's 150-line / 12-thread budget is a starting choice, not universal. The obligation to bound startup and expose overflow remains.
 
+Recurring cap pressure is a reason to step back: is the index carrying history, is navigation failing, or is the budget wrong for the work? Do not merely trim forever or raise the cap to silence a check. Record any user-delegated maintenance authority, its limits and required verification in the local instructions. If budget adjustments are already authorised, change the local rule and corresponding checker together and verify that startup still exposes current responsibilities within a useful budget. Otherwise propose the change. Delegation is not permission to discard history, weaken safeguards or bypass the restructuring rule below.
+
 Before consequential restructuring, propose source ownership, where material moves and how entrypoints change. Preserve the user's opportunity to respond. Do not migrate a working system to match an example tree.
 
 Handoffs cite canonical records through authorised communication; they do not require per-writer memory or durable handoff inboxes. Retain unfinished work and procedures outside host continuation notes.

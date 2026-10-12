@@ -16,6 +16,8 @@ The original already preserves properties rather than filenames. v0.1 wrongly ma
 
 Additional guidance addresses decisions left only in narrative, know-how stranded in continuation notes, lessons retrieved after rather than before mistakes, and obsolete rules used despite newer scoped instructions. These are design responses to experience, not proof that the new text eliminates those failures.
 
+The unreleased `<before_you_act>` addition makes PURPOSE, GROUND, IMPROVE and CAPACITY a prominent operating check before substantive responses or consequential actions. It leaves the original working rules and detailed resume/checkpoint procedures intact. Small identical entrypoint mirrors serve visibility; they do not create competing full contracts, new authority or evidence of behavioural effectiveness.
+
 Review-driven helper changes prevent concrete failures: validating unstaged/untracked content that will not be committed; treating external symlink targets as portable memory; repeating short acquisition receipts; and silently passing failed inspection or obscuring an incomplete lock. They add no automated recovery, retry loop or enforcement claim. The core retains the original resume/checkpoint triggers and evidence-led anti-bottleneck rule; transient writer contention is not itself a reason to interrupt the user.
 
 Bounded startup must not become endless history; archival upkeep should earn its cost. Privacy and permission remain explicit even when existing tools are powerful.

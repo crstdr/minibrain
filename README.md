@@ -4,11 +4,28 @@ A drop-in, folder-based memory system for AI assistants—minimalist, environmen
 
 **An operating contract, not a prescribed folder tree or an autonomous runtime.** Minibrain tells an existing agent what its memory must preserve, how to resume and save work responsibly, and how to adapt those obligations to its environment. Concrete implementations are references, not compulsory templates. Minimalism means avoiding unnecessary burden—not removing safeguards or mandating a file count.
 
+## Before you act
+
+At the centre is a short operating check: **PURPOSE → GROUND → IMPROVE → CAPACITY**. Before acting, reconnect the next step to the user's purpose, ground it in evidence and authority, learn from recurring friction, and check whether the current context is still fit for the work.
+
+```text
+<before_you_act>
+Before each substantive response or consequential action:
+1. PURPOSE — What outcome is the user pursuing, and does this step advance it?
+2. GROUND — What evidence, assumptions, commitments and authority boundaries matter?
+3. IMPROVE — Does recurring friction reveal a problem in the approach? Preserve the safeguard's purpose; improve within your authority or propose a change.
+4. CAPACITY — Is context still fit for this work? At a safe boundary, preserve continuity and compact when needed.
+Apply proportionately. Do not recite the checklist or invent extra work.
+</before_you_act>
+```
+
+**Recommended placement: the very beginning of your agent's AGENTS.md and CLAUDE.md**, before titles, imports or other guidance, wherever those entrypoints are used. The [starter](starter/instructions.md) begins with the canonical block; [setup](docs/setup.md#4-install-a-self-contained-local-contract) explains identical small mirrors, one authoritative full contract, consent for shared files and verified host loading. This is first in a file, not a way to outrank host instructions. The gate is guidance, not an enforcement mechanism; its behavioural effect remains unvalidated.
+
 ## Start with your existing agent
 
 Point your agent at this repository and say:
 
-> Read README.md, starter/instructions.md and docs/setup.md. Set up or adapt memory in [my chosen folder] to help me with [purpose]. Inspect what is already there. Preserve the operating principles and existing knowledge; choose structures and permitted tools that fit this environment. Explain consequential changes before making them. Do not install tools or publish my memory without permission.
+> Read README.md, starter/instructions.md and docs/setup.md. Set up or adapt memory in [my chosen folder] to help me with [purpose]. Inspect what is already there. Preserve the operating principles and existing knowledge; choose structures and permitted tools that fit this environment. Recommend the before_you_act block at the very beginning of the AGENTS.md and CLAUDE.md entrypoints I use. Explain consequential changes before making them. Do not install tools or publish my memory without permission.
 
 The agent should inspect the existing setup, select or adapt an implementation, record the actual local operating instructions, and verify the resulting memory. It should not automatically replace a working system, copy every example, or impose two files. See [setup and adaptation](docs/setup.md).
 
@@ -18,6 +35,7 @@ There is no required package, account, database or coordinator. Particular imple
 
 | Required property | Adaptable implementation |
 |---|---|
+| A proportionate before-action check of purpose, grounding, improvement and capacity | A prominent local instruction block in the host's verified entrypoints |
 | One authoritative home per claim; current state distinct from history | Files, topic boundaries, existing notes or a suitable external store |
 | Bounded, action-ready startup from durable state alone | A working index, selected records and an explicit local reading budget |
 | Purpose, decisions, permission conditions and lessons survive sessions | Schema and navigation that make them findable before action |
@@ -36,9 +54,11 @@ The full requirements and canonical resume/checkpoint procedures are in the [ope
 
 ## Status and boundaries
 
-**v0.2 (experimental)** restores the original system's operating detail and supplies its concrete implementation while allowing equivalent arrangements. It supersedes v0.1's mandatory two-file starting layout. Existing installations are not automatically migrated; the [verification record](docs/acceptance.md#v02-reference-verification) separates tested helper behaviour from unrun agent checks.
+**v0.2 (experimental)** restores the original system's operating detail and supplies its concrete implementation while allowing equivalent arrangements. It supersedes v0.1's mandatory two-file starting layout. **The unreleased revision adds the prominent operating gate; VERSION and the v0.2.0 tag still identify the last release.** Existing installations are not automatically migrated; the [verification record](docs/acceptance.md#v02-reference-verification) separates tested helper behaviour from unrun agent checks.
 
-Instructions cannot guarantee model compliance. Automated tests concern the supplied helper, not universal cross-host compatibility, safe behaviour by arbitrary concurrent agents, improved judgment or reduced human effort. The reference lock is cooperative and local to one normal Git working copy; it is neither distributed synchronisation nor access control. Minibrain supplies no scheduler, notification service or orchestration runtime.
+The [operating-gate verification record](docs/acceptance.md#unreleased-operating-gate-verification) distinguishes the new static checks from host loading and behavioural effects still to be evaluated.
+
+Instructions cannot guarantee model compliance. Automated tests concern the supplied helper and static guidance, not universal cross-host compatibility, safe behaviour by arbitrary concurrent agents, improved judgment or reduced human effort. The reference lock is cooperative and local to one normal Git working copy; it is neither distributed synchronisation nor access control. Minibrain supplies no scheduler, notification service or orchestration runtime.
 
 Memory cannot create permission. Never store credentials. Host permissions, remote services, backups and Git history affect privacy and deletion; local files are not encrypted by minibrain. Real personal memory belongs outside this public distribution.
 

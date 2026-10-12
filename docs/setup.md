@@ -22,7 +22,7 @@ Retain compatible instructions, structure and knowledge. Propose integration rat
 
 Include legacy files such as v0.1's MINIBRAIN.md in that inventory. Integrate or explicitly retire/register them; never silently discard their contents to fit a new layout.
 
-The Git reference's regular-file boundary is stricter than the original helper: an existing CLAUDE.md symlink to AGENTS.md will be refused. Inspect it and propose a regular thin pointer (for example `@AGENTS.md` only where the host supports it), preserving the canonical rules and the user's migration choice. Do not silently follow external targets or replace a working entrypoint.
+The Git reference's regular-file boundary is stricter than the original helper: an existing CLAUDE.md symlink to AGENTS.md will be refused. Inspect it and propose a compatible regular entrypoint if needed, preserving the canonical rules and the user's migration choice. Its gate and any verified import follow the placement rules below. Do not silently follow external targets or replace a working entrypoint.
 
 Prefer an independent checker where available and authorised. If none checked, disclose the limit; do not launch agents without permission. Keep other writers read-only during setup/protocol changes. A replacement does not inherit a predecessor's lock.
 
@@ -30,15 +30,36 @@ Prefer an independent checker where available and authorised. If none checked, d
 
 Create/update one authoritative local instruction source with the core contract and concrete bindings. Install the shared-writer module there only when overlap is possible; otherwise retain the core's trigger without loading the whole module at every startup. Preserve unrelated host/project rules. Do not leave necessary rules only in an online link or the installation conversation.
 
+### Put the operating gate first
+
+Recommend the exact opening `<before_you_act>` block from [starter/instructions.md](../starter/instructions.md) at the **very beginning of both AGENTS.md and CLAUDE.md where those files are used**—before titles, comments, imports and the longer rules. Keep its four checks and proportionality sentence together, not scattered among other guidance. Create a missing entrypoint only when the actual setup needs it; other hosts use an equivalent verified entrypoint, not irrelevant filenames. Skill files whose required frontmatter must come first remain thin pointers, not gate copies.
+
+If a host entrypoint requires leading metadata, preserve its format and record that literal first-position placement is unavailable there. If the user declines the gate or its placement, record that decision as an adaptation/limitation rather than repeatedly asking or claiming unchanged adoption.
+
+For an existing brain, propose the insertion while preserving its rules. Shared instruction files affect other readers: obtain explicit approval from the user with authority over those files before changing them. Do not install into somebody else's project instructions or confuse the brain's entrypoint with unrelated shared repository guidance. Keep other writers read-only during an approved protocol change.
+
+Target the chosen entrypoints that load this brain's contract, not every nested instruction file. Do not change user-wide global instructions without an explicit request; those can affect other projects. Inspect the combined loading path across parent, project and nested instructions rather than propagating copies blindly.
+
+Declare one local authoritative gate copy (usually at the top of the full contract). Copies at other active entrypoints are small identical mirrors; update them in the same change and check equality whenever the gate changes. Do not maintain competing copies of the full contract or require an online checkout at runtime. Record the adopted source revision; a deliberate wording change is a local adaptation, not the unchanged reviewed gate.
+
+Verify the host's actual loading path before choosing a pointer:
+- If it already loads the full local contract, **do not add an import that loads the whole contract again**. An existing second entrypoint can keep its gate mirror and unrelated host rules without that redundant import.
+- If it reads CLAUDE.md, supports the relevant import syntax and does **not** already load the full contract, put the gate first and the import of the authoritative local contract after it. The [worked example](../examples/git-markdown/CLAUDE.md.example) shows this case only. A CLAUDE-only installation may instead keep the full contract there, with the gate first and no import.
+- If imports or automatic loading are unavailable, use a verified explicit read/startup instruction naming the real local source. Do not claim installation acceptance until that path works; record the limitation if it cannot be verified.
+
+An import may expose the small gate a second time. Identical wording is not a second reporting task; do not promise host de-duplication or harmlessness without testing. Observe loading, avoid redundant full-contract exposure, and report what remains unverified. “First” means first in the file, not first in the entire model context or higher priority than host instructions.
+
+### Bind the local procedures
+
 Record:
-- purpose, scope and actual instruction entrypoint;
+- purpose, scope and actual instruction entrypoints, including the authoritative gate copy and any mirrors;
 - working index and explicit reading/capacity budget;
 - subject sources, discovery and outcome/history locations;
 - exact resume/checkpoint check and persistence procedures;
 - privacy/versioning policy and dependencies;
-- assignments and coordination when overlap is possible.
+- delegated maintenance authority and its limits; assignments and coordination when overlap is possible.
 
-Bindings describe implementation, not a second copy of the principles. Host pointers should cite authoritative local instructions. A configured host might use AGENTS.md or a CLAUDE.md import, but verify actual host behaviour; otherwise provide a startup prompt naming the real file. A pointer without its target is not portable.
+Bindings describe implementation, not a second copy of the principles. Host pointers cite authoritative local instructions; the gate mirror is the small, explicit exception to copying. A pointer without its target is not portable. Keep both the gate and the procedures it orients: the short check does not replace resume, checkpoint, authority or writer safeguards.
 
 Adapt distribution-relative links to actual local targets. When a conditional module is not installed, retain its self-contained trigger without a dangling file link; obtain and adopt the module before enabling overlap. Verify links after installation, not just in this distribution.
 
