@@ -17,6 +17,6 @@ No work recorded yet. Keep a bounded index: each item has state, decision-maker/
 
 ## Knowledge and discovery
 
-No knowledge recorded yet. Name where subjects live and how to find them without their current open thread. A small installation may keep clearly separated current knowledge here; extract detail when needed without competing copies.
+No knowledge recorded yet. Name where memory spaces live and how to find them without their current open thread; new file-based installs may use spaces/, while compatible existing names stay valid. A small installation may keep clearly separated current knowledge here; extract detail when needed without competing copies.
 
 Lessons retain trigger, remedy, basis and limits. Keep current facts separate from superseded history. Record where durable outcomes/history live; do not let accumulating history crowd startup.

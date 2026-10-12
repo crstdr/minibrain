@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Reduce adoption to one short source-link request; retain setup/privacy/migration safeguards in the repository rather than requiring a long pasted prompt.
+- Add the approved optional RPCE environment binding and make durable source/adaptation records and adaptation-preserving upgrades explicit.
+- Define memory spaces: notes can grow into indexed folders with child spaces and supporting assets. Default new file-based installs to spaces/ without migrating existing topics/ brains or cloning root authority/coordination.
+- Extend the reference checker with qualified space links, note/folder resolution, direct-parent registration and root-only control boundaries; retain legacy topics and prospective-index checks.
+- Add synthetic/static checks and separate mechanical verification from untested agent adoption, growth and upgrade behaviour.
+
 - Put the reviewed PURPOSE / GROUND / IMPROVE / CAPACITY block first in the core starter and recommend the same placement in applicable AGENTS.md and CLAUDE.md entrypoints.
 - Preserve one authoritative full contract, identical small gate mirrors, existing rules and approval for shared-file changes; verify loading before adding host imports.
 - Illustrate delegated maintenance of recurring cap pressure without weakening bounded startup or granting new authority.

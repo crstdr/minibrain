@@ -4,13 +4,15 @@ Installer guidance, not an instruction to restructure the distribution repositor
 
 ## 1. Inspect before choosing
 
-Establish purpose from the user's stated intent. Ask only consequential missing questions; do not repeat onboarding or ask a separate Focus question when already known. Inspect instructions, handling policies, knowledge, host entrypoints, versioning/backups, privacy and other writers. Do not invent permission or capabilities.
+Read the distribution from its URL or a temporary checkout outside the target memory folder; do not clone it into the brain being adopted. Establish purpose from the user's stated intent. Ask only consequential missing questions; do not repeat onboarding or ask a separate Focus question when already known. Inspect instructions, handling policies, knowledge, host entrypoints, versioning/backups, privacy and other writers. Do not invent permission or capabilities.
 
 Distinguish a new personal memory folder, memory alongside work and an existing brain. Never initialise personal memory inside this public distribution. If persistence is unavailable, report it rather than promise continuity.
 
 ## 2. Choose means that satisfy the properties
 
 Preserve the functions: operating instructions; bounded working index; authoritative current knowledge/history; discovery independent of tasks; durable outcomes; checks and coherent saves. Functions may share a file or use existing tools if they remain unambiguous and bounded. Do not start from a fixed file count.
+
+For subject knowledge, use [memory spaces](spaces.md): a note can become a folder with an index, supporting assets and child spaces. `spaces/` is the new file-based default, not a mandatory rename of existing `topics/` or other arrangements. Repeat useful navigation, not root-only instruction/coordination machinery.
 
 Record each function's concrete location/procedure and why an alternative provides the protection. Prefer permitted tools. Git, Python, filenames and caps are reference choices. Missing essentials are explicit limitations needing a suitable alternative, not silently optional guarantees.
 
@@ -49,10 +51,26 @@ Verify the host's actual loading path before choosing a pointer:
 
 An import may expose the small gate a second time. Identical wording is not a second reporting task; do not promise host de-duplication or harmlessness without testing. Observe loading, avoid redundant full-contract exposure, and report what remains unverified. “First” means first in the file, not first in the entire model context or higher priority than host instructions.
 
+### Add only useful environment bindings
+
+Where the agent uses RPCE, consider the small [RPCE binding](../starter/environments/rpce.md). Install only useful, non-duplicated guidance in the authoritative local instruction source, with other environment bindings—not ahead of or beside the prominent operating gate. Other environments may use equivalent small bindings; no RPCE dependency is introduced. Inspect actual tools and injected instructions rather than infer availability from a product name.
+
+### Record adoption and preserve adaptations
+
+Keep one short adoption record in the installed instructions or an existing canonical source they point to. No new manifest or separate file is required. Record:
+
+- the minibrain source URL and adopted release/ref **plus the exact distribution commit when available**, with adoption date;
+- intentional differences and why/where they live: local structures, budgets, entrypoints, procedures, helper changes and optional environment bindings as applicable.
+
+Use the source revision you actually inspected, not a guessed release from VERSION: main can contain unreleased changes after that release. If the immutable source cannot be established, record the uncertainty rather than fabricate a pin. An adoption record is provenance, not proof that all requirements passed.
+
+On an authorised upgrade, read this record first. Compare the adopted source, the proposed upstream revision and the current local contract. Review changes against the reasons for local adaptations; merge compatible improvements rather than replacing local rules or personal knowledge wholesale. Resolve consequential conflicts with the user and preserve the existing restructuring/backup rules. Before replacing a helper, inspect any paths it will newly manage—for example, this reference treats an existing `spaces/` directory as memory, so unrelated content there needs an explicit layout decision. Verify the changed bindings and record the new adopted base, retained/changed adaptations and outcome together. If the old source is unavailable, disclose the comparison limit. Do not turn upstream guidance into new authority or automatically install tools, migrate structure or publish memory.
+
 ### Bind the local procedures
 
 Record:
 - purpose, scope and actual instruction entrypoints, including the authoritative gate copy and any mirrors;
+- the canonical adoption record described above;
 - working index and explicit reading/capacity budget;
 - subject sources, discovery and outcome/history locations;
 - exact resume/checkpoint check and persistence procedures;

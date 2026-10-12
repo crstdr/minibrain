@@ -406,6 +406,275 @@ class GitReferenceTests(unittest.TestCase):
         self.git("add", "--", "Map.md")
         self.assertNotIn("PROBLEM", self.tool("check", "--staged"))
 
+    def add_spaces(self):
+        self.write("Map.md", "# Map\n- [[Project]]\n- [[spaces/Garden/index]]\n- [[spaces/Travel/index.md|Travel]]\n")
+        for name in ("Garden", "Travel"):
+            self.write(f"spaces/{name}/index.md", f"# {name}\n\n## Current status\nSynthetic.\n\n## Spaces\n- [[spaces/{name}/spaces/Budget]]\n")
+            self.write(f"spaces/{name}/spaces/Budget.md", "# Budget\nSynthetic.\n")
+
+    def test_spaces_repeat_index_and_leaf_names_with_qualified_links(self):
+        self.add_spaces()
+        self.assertNotIn("PROBLEM", self.tool("check"))
+        self.stage_outcome()
+        self.git("add", "--", "Map.md", "spaces/Garden/index.md", "spaces/Garden/spaces/Budget.md",
+                 "spaces/Travel/index.md", "spaces/Travel/spaces/Budget.md")
+        self.assertNotIn("PROBLEM", self.tool("check", "--staged"))
+
+    def test_spaces_reject_ambiguous_bare_links(self):
+        self.add_spaces()
+        self.write("MEMORY.md", "# Memory\n## Focus\n[[Budget]] [[index]]\n## Open threads\n")
+        self.assertIn("ambiguous wikilink", self.tool("check", expected=1))
+
+    def test_spaces_require_the_correct_parent_registry(self):
+        self.add_spaces()
+        self.write("spaces/Garden/index.md", "# Garden\n## Spaces\n")
+        with (self.root / "Map.md").open("a") as out:
+            out.write("- [[spaces/Garden/spaces/Budget]]\n")
+        out = self.tool("check", expected=1)
+        self.assertIn("outside its parent index", out)
+        self.assertIn("not registered in spaces/Garden/index.md", out)
+
+    def test_spaces_require_missing_parent_index(self):
+        self.add_spaces()
+        (self.root / "spaces/Garden/index.md").unlink()
+        self.assertIn("space missing parent index", self.tool("check", expected=1))
+
+    def test_spaces_count_resolved_alias_registrations(self):
+        self.add_spaces()
+        with (self.root / "spaces/Garden/index.md").open("a") as out:
+            out.write("- [[spaces/Garden/spaces/Budget.md|Budget details]]\n")
+        self.assertIn("registered 2 times", self.tool("check", expected=1))
+
+    def test_spaces_support_direct_children_and_recursive_namespaces(self):
+        self.add_spaces()
+        self.write("spaces/Garden/Notes.md", "# Notes\n")
+        with (self.root / "spaces/Garden/index.md").open("a") as out:
+            out.write("- [[spaces/Garden/Notes]]\n- [[spaces/Garden/spaces/Seeds/index]]\n")
+        self.write("spaces/Garden/spaces/Seeds/index.md", "# Seeds\n## Spaces\n- [[spaces/Garden/spaces/Seeds/spaces/Suppliers]]\n")
+        self.write("spaces/Garden/spaces/Seeds/spaces/Suppliers.md", "# Suppliers\n")
+        self.assertNotIn("PROBLEM", self.tool("check"))
+
+    def test_spaces_asset_markdown_is_data_not_canonical_registration(self):
+        self.add_spaces()
+        self.write("spaces/Garden/assets/Excerpt.md", "# Quoted source\n[[Not a memory instruction]]\n")
+        self.assertNotIn("PROBLEM", self.tool("check"))
+
+    def test_spaces_asset_examples_do_not_become_structural_names(self):
+        self.add_spaces()
+        self.write("spaces/Garden/assets/source/spaces/index.md", "# Quoted example\n[[Not canonical]]\n")
+        self.write("spaces/Garden/assets/source/spaces/assets.md", "# Quoted example\n")
+        self.stage_outcome()
+        self.git("add", "--", "Map.md", "spaces")
+        for args in [("check",), ("check", "--staged")]:
+            self.assertNotIn("PROBLEM", self.tool(*args))
+
+    def test_spaces_binary_only_change_requires_outcome(self):
+        self.write("spaces/Photo/index.md", "# Photo\n")
+        self.write("Map.md", "- [[Project]]\n- [[spaces/Photo/index]]\n")
+        self.write("spaces/Photo/assets/image.bin", "synthetic non-secret asset")
+        self.git("add", "--", "spaces/Photo/assets/image.bin")
+        self.assertIn("requires staged CHANGELOG", self.tool("check", expected=1))
+
+    def test_spaces_do_not_clone_root_controls(self):
+        self.add_spaces()
+        for filename in ("AGENTS.md", "CLAUDE.md", "MEMORY.md", "Map.md", "CHANGELOG.md"):
+            with self.subTest(filename=filename):
+                rel = f"spaces/Garden/assets/{filename}"
+                self.write(rel, "# Must not be auto-loaded\n")
+                self.assertIn("root-only control file", self.tool("check", expected=1))
+                (self.root / rel).unlink()
+
+    def test_spaces_qualified_links_do_not_normalise_outside_paths(self):
+        self.add_spaces()
+        for target in ("../outside", "/spaces/Garden/index", "spaces//Garden/index", "spaces/./Garden/index"):
+            with self.subTest(target=target):
+                self.write("MEMORY.md", f"# Memory\n## Focus\n[[{target}]]\n## Open threads\n")
+                self.assertIn("invalid root-relative", self.tool("check", expected=1))
+
+    def test_spaces_prospective_view_cannot_use_unstaged_indexes(self):
+        self.add_spaces()
+        self.stage_outcome()
+        self.git("add", "--", "Map.md")
+        self.assertNotIn("PROBLEM", self.tool("check"))
+        self.assertIn("broken wikilink", self.tool("check", "--staged", expected=1))
+
+    def test_spaces_ignored_markdown_is_not_durable(self):
+        self.add_spaces()
+        self.write(".gitignore", "/spaces/Garden/spaces/Budget.md\n")
+        self.assertIn("managed Markdown is ignored", self.tool("check", expected=1))
+
+    def test_spaces_asset_symlink_is_rejected_without_following(self):
+        self.add_spaces()
+        target = self.root / "synthetic.bin"
+        target.write_bytes(b"synthetic")
+        link = self.root / "spaces/Garden/assets/image.bin"
+        link.parent.mkdir(parents=True)
+        self.symlink(link, target)
+        self.assertIn("space material is not a regular file", self.tool("check", expected=1))
+        self.git("add", "--", "spaces/Garden/assets/image.bin")
+        self.stage_outcome()
+        self.assertIn("not an ordinary directory or regular file", self.tool("check", "--staged", expected=1))
+
+    def test_spaces_promote_note_to_folder_with_updated_references(self):
+        self.write("spaces/Garden.md", "# Garden\n## Current status\nSynthetic.\n")
+        self.write("Map.md", "- [[Project]]\n- [[spaces/Garden]]\n")
+        self.write("MEMORY.md", "# Memory\n## Focus\n[[spaces/Garden#Current status]]\n## Open threads\n")
+        self.assertNotIn("PROBLEM", self.tool("check"))
+        folder = self.root / "spaces/Garden"
+        folder.mkdir()
+        (self.root / "spaces/Garden.md").rename(folder / "index.md")
+        # A logical space link survives note-to-folder growth unchanged.
+        self.assertNotIn("PROBLEM", self.tool("check"))
+        self.write("Map.md", "- [[Project]]\n- [[spaces/Garden/index]]\n")
+        self.write("MEMORY.md", "# Memory\n## Focus\n[[spaces/Garden/index#Current status]]\n## Open threads\n")
+        self.assertNotIn("PROBLEM", self.tool("check"))
+
+    def test_spaces_reject_note_and_folder_collision(self):
+        self.add_spaces()
+        self.write("spaces/Garden.md", "# Conflicting home\n")
+        self.write("Map.md", "- [[Project]]\n- [[spaces/Garden]]\n- [[spaces/Travel]]\n")
+        out = self.tool("check", expected=1)
+        self.assertIn("both note and folder entrypoints", out)
+        self.assertIn("ambiguous wikilink", out)
+
+    def test_spaces_require_qualified_links_even_before_ambiguity(self):
+        self.write("spaces/Garden.md", "# Garden\n")
+        self.write("Map.md", "- [[Project]]\n- [[Garden]]\n")
+        self.assertIn("needs a qualified path", self.tool("check", expected=1))
+
+    def test_spaces_do_not_collide_with_legacy_or_supporting_names(self):
+        self.add_spaces()
+        self.write("archive/Retired/index.md", "# Archived supporting index\n")
+        self.write("spaces/Garden/assets/Project.md", "# Quoted source\n")
+        self.write("spaces/Project.md", "# New qualified space\n")
+        with (self.root / "Map.md").open("a") as out:
+            out.write("- [[spaces/Project]]\n")
+        self.stage_outcome()
+        self.git("add", "--", "Map.md", "spaces", "archive/Retired/index.md")
+        for args in [("check",), ("check", "--staged")]:
+            self.assertNotIn("PROBLEM", self.tool(*args))
+
+    def test_legacy_section_navigation_is_not_a_second_registration(self):
+        self.write("Map.md", "- [[Project]]\n## Related sections\n- [[Project#Current status]]\n- [[Project|Other label]]\n")
+        self.stage_outcome()
+        self.git("add", "--", "Map.md")
+        for args in [("check",), ("check", "--staged")]:
+            self.assertNotIn("PROBLEM", self.tool(*args))
+        with (self.root / "Map.md").open("a") as out:
+            out.write("- [[Project]]\n")
+        self.git("add", "--", "Map.md")
+        for args in [("check",), ("check", "--staged")]:
+            self.assertIn("registered 2 times", self.tool(*args, expected=1))
+
+    def test_explicit_root_markdown_link_does_not_fall_back_to_basename(self):
+        self.write("MEMORY.md", "## Focus\n[[Project.md]]\n## Open threads\n")
+        self.stage_outcome()
+        self.git("add", "--", "MEMORY.md")
+        for args in [("check",), ("check", "--staged")]:
+            self.assertIn("broken wikilink", self.tool(*args, expected=1))
+
+    def test_explicit_root_links_and_reserved_bare_controls(self):
+        self.write("README.md", "# Root\n")
+        self.write("sources/README.md", "# Supporting readme\n")
+        self.write("work/app/AGENTS.md", "# Supporting app instructions\n")
+        self.write("MEMORY.md", "## Focus\n[[README.md]] [[AGENTS]]\n## Open threads\n")
+        self.stage_outcome()
+        self.git("add", "--", "README.md", "sources/README.md", "work/app/AGENTS.md", "MEMORY.md")
+        for args in [("check",), ("check", "--staged")]:
+            self.assertNotIn("PROBLEM", self.tool(*args))
+
+    def test_spaces_control_filename_guard_precedes_extension_filtering(self):
+        self.add_spaces()
+        self.stage_outcome()
+        self.git("add", "--", "Map.md", "spaces")
+        for folder in ("spaces/Garden", "spaces/Garden/assets"):
+            for name in ("agents.md", "AGENTS.MD", "Claude.md", "CLAUDE.MD", "memory.MD", "map.md", "changelog.MD"):
+                with self.subTest(folder=folder, name=name):
+                    rel = f"{folder}/{name}"
+                    self.write(rel, "# Nested control\n")
+                    self.assertIn("root-only control file", self.tool("check", expected=1))
+                    self.git("add", "--", rel)
+                    self.assertIn("root-only control file", self.tool("check", "--staged", expected=1))
+                    self.git("rm", "--cached", "-q", "--", rel)
+                    (self.root / rel).unlink()
+        self.write("spaces/Garden/assets/AGENTS.md.example", "# Data, not a host entrypoint\n")
+        self.git("add", "--", "spaces/Garden/assets/AGENTS.md.example")
+        for args in [("check",), ("check", "--staged")]:
+            self.assertNotIn("PROBLEM", self.tool(*args))
+
+    def test_spaces_duplicate_navigation_sections_are_refused(self):
+        self.add_spaces()
+        with (self.root / "spaces/Garden/index.md").open("a") as out:
+            out.write("\n## Spaces\n- [[spaces/Garden/spaces/Budget]]\n")
+        self.stage_outcome()
+        self.git("add", "--", "Map.md", "spaces")
+        for args in [("check",), ("check", "--staged")]:
+            self.assertIn("multiple active ## Spaces sections", self.tool(*args, expected=1))
+
+    def test_spaces_fenced_navigation_does_not_register_children(self):
+        self.add_spaces()
+        for fence in ("```", "~~~~"):
+            with self.subTest(fence=fence):
+                self.write("spaces/Garden/index.md", f"# Garden\n## History\n{fence}markdown\n## Spaces\n- [[spaces/Garden/spaces/Budget]]\n{fence}\n")
+                self.stage_outcome()
+                self.git("add", "--", "Map.md", "spaces")
+                for args in [("check",), ("check", "--staged")]:
+                    self.assertIn("not registered", self.tool(*args, expected=1))
+
+    def test_spaces_real_navigation_ignores_examples_and_related_links(self):
+        self.add_spaces()
+        self.write("spaces/Garden/index.md", "# Garden\n```markdown\n## Spaces\n- [[spaces/Garden/spaces/Budget]]\n```\n## Spaces\n- [[spaces/Garden/spaces/Budget]]\n## Related\n- [[spaces/Garden/spaces/Budget]]\n")
+        self.stage_outcome()
+        self.git("add", "--", "Map.md", "spaces")
+        for args in [("check",), ("check", "--staged")]:
+            self.assertNotIn("PROBLEM", self.tool(*args))
+
+    def test_spaces_registry_entries_must_be_child_spaces(self):
+        self.add_spaces()
+        self.write("spaces/Garden/assets/Excerpt.md", "# Quotation\n")
+        with (self.root / "spaces/Garden/index.md").open("a") as out:
+            out.write("- [[Project]]\n- [[spaces/Garden/assets/Excerpt.md]]\n")
+        self.stage_outcome()
+        self.git("add", "--", "Map.md", "spaces")
+        for args in [("check",), ("check", "--staged")]:
+            self.assertIn("not a direct child space", self.tool(*args, expected=1))
+
+    def test_spaces_reserve_structural_names_before_promotion(self):
+        self.add_spaces()
+        self.stage_outcome()
+        self.git("add", "--", "Map.md", "spaces")
+        for rel in ("spaces/assets.md", "spaces/spaces.md", "spaces/index.md", "spaces/assets/index.md", "spaces/Garden/spaces/assets/index.md", "spaces/Garden/spaces/index.md", "spaces/Garden/assets.md"):
+            with self.subTest(rel=rel):
+                self.write(rel, "# Reserved canonical name\n")
+                self.assertIn("reserved space name", self.tool("check", expected=1))
+                self.git("add", "--", rel)
+                self.assertIn("reserved space name", self.tool("check", "--staged", expected=1))
+                self.git("rm", "--cached", "-q", "--", rel)
+                (self.root / rel).unlink()
+
+    def test_spaces_staged_promotion_needs_both_halves(self):
+        text = "# Garden\n## Current status\nPreserved synthetic knowledge.\n"
+        self.write("spaces/Garden.md", text)
+        self.write("Map.md", "- [[Project]]\n- [[spaces/Garden]]\n")
+        self.stage_outcome()
+        self.git("add", "--", "Map.md", "spaces/Garden.md")
+        self.git("commit", "-qm", "Synthetic space")
+        (self.root / "spaces/Garden").mkdir()
+        (self.root / "spaces/Garden.md").rename(self.root / "spaces/Garden/index.md")
+        self.write("CHANGELOG.md", "# Changelog\n2026-01-03 - Promoted synthetic Garden.\n")
+        self.git("add", "--", "CHANGELOG.md", "spaces/Garden/index.md")
+        self.assertIn("both note and folder entrypoints", self.tool("check", "--staged", expected=1))
+        self.git("rm", "--cached", "-q", "--", "spaces/Garden.md")
+        self.assertNotIn("PROBLEM", self.tool("check", "--staged"))
+        self.assertEqual((self.root / "spaces/Garden/index.md").read_text(), text)
+        self.assertIn("[[spaces/Garden]]", (self.root / "Map.md").read_text())
+
+    def test_spaces_staged_child_requires_staged_parent(self):
+        self.add_spaces()
+        self.stage_outcome()
+        self.git("add", "--", "spaces/Garden/spaces/Budget.md")
+        self.assertIn("space missing parent index", self.tool("check", "--staged", expected=1))
+
     def test_local_remote_policy_rejects_network_remote(self):
         helper = self.load_helper()
         self.git("remote", "add", "example", "https://example.invalid/repo.git")

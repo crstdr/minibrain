@@ -12,6 +12,6 @@ This is a distribution, not a live personal memory. Do not initialise a personal
 - Inspect actual staged content and history before a public push.
 - Agree non-overlapping work before multiple writers edit. This repo inherits no other folder's writer lock.
 
-Run `python3 -m unittest discover -s tests -v` for the reference helper and static operating-gate checks. Installation acceptance is in docs/acceptance.md; these tests do not replace host-loading, fresh-session or multi-agent checks.
+Run `python3 -m unittest discover -s tests -v` for the reference helper and static gate/adoption guidance checks. Installation acceptance is in docs/acceptance.md; these tests do not replace host-loading, fresh-session or multi-agent checks.
 
 Behavioural effectiveness remains unvalidated. Cross-host transfer, larger workloads and safe agent collaboration need evidence before stronger claims.

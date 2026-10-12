@@ -18,6 +18,8 @@ Additional guidance addresses decisions left only in narrative, know-how strande
 
 The unreleased `<before_you_act>` addition makes PURPOSE, GROUND, IMPROVE and CAPACITY a prominent operating check before substantive responses or consequential actions. It leaves the original working rules and detailed resume/checkpoint procedures intact. Small identical entrypoint mirrors serve visibility; they do not create competing full contracts, new authority or evidence of behavioural effectiveness.
 
+The further unreleased revision names the existing subject-home concept **memory spaces**, adding a recursive indexed-folder reference and qualified links without migrating older topics. It also supplies an optional RPCE binding and a clearer adoption/upgrade record. These extend navigation and provenance; they do not replace the original operating procedures or copy root authority into children.
+
 Review-driven helper changes prevent concrete failures: validating unstaged/untracked content that will not be committed; treating external symlink targets as portable memory; repeating short acquisition receipts; and silently passing failed inspection or obscuring an incomplete lock. They add no automated recovery, retry loop or enforcement claim. The core retains the original resume/checkpoint triggers and evidence-led anti-bottleneck rule; transient writer contention is not itself a reason to interrupt the user.
 
 Bounded startup must not become endless history; archival upkeep should earn its cost. Privacy and permission remain explicit even when existing tools are powerful.

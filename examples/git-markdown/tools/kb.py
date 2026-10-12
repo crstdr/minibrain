@@ -9,7 +9,7 @@ Adapt the constants for this reference; preserve the verified properties.
 Only a normal dedicated Git working copy is supported, not worktrees or distributed sync.
 """
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import datetime
 import json
 import os
@@ -22,8 +22,9 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 MAP_FILE = "Map.md"
 REQUIRED_FILES = ("AGENTS.md", "MEMORY.md", "CHANGELOG.md", MAP_FILE)
-MANAGED_DIRS = {"topics"}   # canonical topics; root *.md is always managed too
+MANAGED_DIRS = {"topics", "spaces"}  # legacy topics stay supported; root *.md is managed too
 RESERVED = {"AGENTS", "CLAUDE", "MEMORY", "CHANGELOG", Path(MAP_FILE).stem, "README"}
+ROOT_ONLY = {"AGENTS.md", "CLAUDE.md", "MEMORY.md", "CHANGELOG.md", MAP_FILE}
 MEMORY_MAX_LINES = 150
 THREADS_MAX = 12
 THREAD_SOFT_CHARS = 400     # warning only: a longer bullet hides reading cost from the line cap
@@ -58,7 +59,7 @@ def repository_error():
     return None
 
 
-def markdown_index(problems):
+def markdown_index(problems, staged=False):
     """Index entries define the prospective commit and tracked supporting targets."""
     result = git("ls-files", "--stage", "-z")
     if result.returncode:
@@ -77,6 +78,8 @@ def markdown_index(problems):
             continue
         if rel in MANAGED_DIRS or (Path(rel).parts[0] in MANAGED_DIRS and mode not in ("100644", "100755")):
             problems.append(f"managed path is not an ordinary directory or regular file in index: {rel}")
+        if staged:
+            check_space_path(rel, problems)
         if rel.endswith(".md") and (is_managed_path(rel) or
                 not any(part.startswith(".") for part in Path(rel).parts)):
             entries[rel] = (mode, oid)
@@ -102,7 +105,17 @@ def working_markdown(problems):
                     dirs.remove(name)
                 elif name.endswith(".md"):
                     files.add(relative(path))  # named as Markdown but not a regular file
-            files.update(relative(Path(current) / name) for name in names if name.endswith(".md"))
+            for name in names:
+                path = Path(current) / name
+                if dirname == "spaces":
+                    check_space_path(relative(path), problems)
+                    try:
+                        if not stat.S_ISREG(path.lstat().st_mode):
+                            problems.append(f"space material is not a regular file: {relative(path)}")
+                    except OSError as error:
+                        problems.append(f"cannot inspect space material {relative(path)}: {error}")
+                if name.endswith(".md"):
+                    files.add(relative(path))
     return files
 
 
@@ -122,7 +135,7 @@ def regular_working_file(rel):
 
 
 def load_markdown(staged, problems):
-    entries = markdown_index(problems)
+    entries = markdown_index(problems, staged)
     paths = set(entries) if staged else working_markdown(problems)
     if not staged:
         # Supporting targets are tracked, present Markdown outside hidden folders.
@@ -211,6 +224,106 @@ def is_managed_path(path):
     if candidate.suffix != ".md":
         return False
     return len(candidate.parts) == 1 or candidate.parts[0] in MANAGED_DIRS
+
+
+def is_space_path(rel):
+    return PurePosixPath(rel).parts[0] == "spaces"
+
+
+def is_space_asset(rel):
+    return is_space_path(rel) and "assets" in PurePosixPath(rel).parts[1:-1]
+
+
+def check_space_path(rel, problems):
+    """Path-only guards run before filtering Markdown, including attachments."""
+    if not is_space_path(rel):
+        return
+    path = PurePosixPath(rel)
+    if path.name.casefold() in {name.casefold() for name in ROOT_ONLY}:
+        problems.append(f"root-only control file inside a space: {rel}; use a non-entrypoint name")
+    parts = path.parts
+    # Keep root-control protection above, but do not interpret quoted asset trees
+    # as live space structure. Include the first assets segment to refuse a space
+    # named assets directly inside a spaces namespace.
+    if is_space_asset(rel):
+        parts = parts[:parts.index("assets", 1) + 1]
+    reserved = any(parts[i - 1] == "spaces" and part.casefold() in
+                   {"assets", "spaces", "assets.md", "spaces.md", "index.md"}
+                   for i, part in enumerate(parts[1:], 1))
+    if not is_space_asset(rel):
+        name = path.parent.name if path.name == "index.md" else path.stem
+        reserved |= name.casefold() in {"assets", "spaces"}
+    if reserved:
+        problems.append(f"reserved space name in {rel}; assets/spaces are structure, "
+                        "index.md belongs only to a folder space; choose a descriptive name")
+
+
+def space_registry(rel):
+    """The containing space owns discovery; namespaces themselves are not spaces."""
+    path = PurePosixPath(rel)
+    parent = path.parent.parent if path.name == "index.md" else path.parent
+    if parent.name == "spaces":
+        parent = parent.parent
+    return MAP_FILE if parent == PurePosixPath(".") else str(parent / "index.md")
+
+
+def resolve_link(target, documents, by_basename):
+    """Exact .md paths, qualified logical spaces, or legacy extensionless names."""
+    target = target.strip()
+    # Do not normalise ambiguous/outside-root spellings into an accepted target.
+    if any(part in ("", ".", "..") for part in target.split("/")):
+        return None, "invalid root-relative"
+    if target.endswith(".md"):
+        return (target, None) if target in documents else (None, "broken")
+    if "/" in target:
+        candidates = [target + ".md"]
+        index = target + "/index.md"
+        if is_space_path(index) and not is_space_asset(index):
+            candidates.append(index)
+        present = [rel for rel in candidates if rel in documents]
+        if len(present) == 1:
+            return present[0], None
+        return None, "ambiguous" if present else "broken"
+    found = by_basename.get(target, [])
+    legacy = [rel for rel in found if not is_space_path(rel)]
+    if target in RESERVED and target + ".md" in legacy:
+        return target + ".md", None
+    if len(legacy) == 1:
+        return legacy[0], None
+    if legacy:
+        return None, "ambiguous"
+    if found:
+        return None, "ambiguous" if len(found) > 1 else "unqualified space (needs a qualified path)"
+    return None, "broken"
+
+
+def unfenced_lines(content):
+    """Only navigation outside backtick/tilde fences can register knowledge."""
+    fence = None
+    for line in content.splitlines():
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+        if fence:
+            if (marker and marker.group(1)[0] == fence[0] and
+                    len(marker.group(1)) >= len(fence) and not marker.group(2).strip()):
+                fence = None
+            continue
+        if marker:
+            fence = marker.group(1)
+            continue
+        yield line
+
+
+def registration_targets(content, nested=False):
+    """Nested registries have one unfenced ## Spaces section, not related links."""
+    targets, sections = [], 0
+    active = not nested
+    for line in unfenced_lines(content):
+        if nested and re.match(r"^#{1,2} ", line):
+            active = bool(re.fullmatch(r"## Spaces[ \t]*", line))
+            sections += int(active)
+        if active and line.startswith("- ") and (match := WIKILINK.match(line[2:])):
+            targets.append(match.group(1).strip())
+    return targets, sections
 
 
 def lock_meta():
@@ -310,32 +423,71 @@ def check(staged_view=False):
                     )
 
     managed = {rel: content for rel, content in documents.items() if is_managed_path(rel)}
+    canonical = {rel: content for rel, content in managed.items() if not is_space_asset(rel)}
     by_basename = {}
     for rel in documents:
         by_basename.setdefault(Path(rel).stem, []).append(rel)
     for basename, paths in sorted(by_basename.items()):
-        if len(paths) > 1 and basename not in RESERVED:
-            problems.append(f"duplicate Markdown basename {basename}.md: {', '.join(paths)}")
-    known = set(by_basename)
-    for rel, content in managed.items():
+        # Qualified spaces/assets cannot collide with the legacy bare-name namespace.
+        legacy = [rel for rel in paths if not is_space_path(rel)]
+        if len(legacy) > 1 and basename not in RESERVED:
+            problems.append(f"duplicate Markdown basename {basename}.md: {', '.join(legacy)}")
+    for rel, content in canonical.items():
         if Path(rel).name == "CHANGELOG.md":
             continue
         for match in WIKILINK.finditer(content):
             target = match.group(1).strip()
-            if target not in known:
-                problems.append(f"broken wikilink in {rel}: [[{target}]]")
+            _, error = resolve_link(target, documents, by_basename)
+            if error:
+                problems.append(f"{error} wikilink in {rel}: [[{target}]]")
 
-    if MAP_FILE in documents:
-        map_text = documents[MAP_FILE]
-        for rel in managed:
-            basename = Path(rel).stem
-            if basename in RESERVED:
+    for rel in canonical:
+        if is_space_path(rel) and PurePosixPath(rel).name == "index.md":
+            sibling_note = str(PurePosixPath(rel).parent) + ".md"
+            if sibling_note in canonical:
+                problems.append(f"space has both note and folder entrypoints: {sibling_note}, {rel}")
+
+    registries = {MAP_FILE} | {rel for rel in canonical
+                               if is_space_path(rel) and Path(rel).name == "index.md"}
+    registrations = {}
+    for registry in sorted(registries):
+        if registry not in documents:
+            continue
+        resolved = []
+        targets, sections = registration_targets(documents[registry], registry != MAP_FILE)
+        if registry != MAP_FILE and sections > 1:
+            problems.append(f"multiple active ## Spaces sections in {registry}")
+        for target in targets:
+            rel, error = resolve_link(target, documents, by_basename)
+            if error:
+                continue  # link diagnostics above retain the actual invalid spelling
+            if is_space_path(rel) and not is_space_asset(rel):
+                if space_registry(rel) != registry:
+                    problems.append(f"space registered outside its parent index {registry}: {rel}")
+                resolved.append(rel)
+            elif registry != MAP_FILE:
+                problems.append(f"registry entry is not a direct child space in {registry}: {rel}")
+        registrations[registry] = resolved
+    for rel in canonical:
+        if is_space_path(rel):
+            registry = space_registry(rel)
+            if registry not in documents:
+                problems.append(f"space missing parent index {registry}: {rel}")
                 continue
-            count = len(re.findall(rf"^- \[\[{re.escape(basename)}\]\]", map_text, re.MULTILINE))
-            if count == 0:
-                problems.append(f"topic not registered in {MAP_FILE}: {rel}")
-            elif count > 1:
-                problems.append(f"topic registered {count} times in {MAP_FILE}: {rel}")
+            count = registrations.get(registry, []).count(rel)
+        else:
+            if Path(rel).stem in RESERVED or MAP_FILE not in documents:
+                continue
+            registry = MAP_FILE
+            # Retain the original exact spelling: section/display links are navigation,
+            # not additional legacy registrations.
+            basename = re.escape(Path(rel).stem)
+            count = len(re.findall(rf"^- \[\[{basename}\]\]", documents[MAP_FILE], re.MULTILINE))
+        kind = "space" if is_space_path(rel) else "topic"
+        if count == 0:
+            problems.append(f"{kind} not registered in {registry}: {rel}")
+        elif count > 1:
+            problems.append(f"{kind} registered {count} times in {registry}: {rel}")
 
     changed, status_error = status_paths()
     if status_error:
@@ -348,9 +500,10 @@ def check(staged_view=False):
     if staged_error:
         problems.append(f"cannot inspect staged changes: {staged_error}")
     else:
-        staged_managed = {p for p in staged if is_managed_path(p) and p != "CHANGELOG.md"}
+        staged_managed = {p for p in staged
+                          if (is_managed_path(p) or is_space_path(p)) and p != "CHANGELOG.md"}
         if staged_managed and "CHANGELOG.md" not in staged:
-            problems.append("staged canonical Markdown requires staged CHANGELOG.md: "
+            problems.append("staged memory requires staged CHANGELOG.md: "
                             + ", ".join(sorted(staged_managed)))
         if staged and LOCK.is_dir():
             shown = ", ".join(sorted(staged)[:8]) + (" …" if len(staged) > 8 else "")

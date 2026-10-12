@@ -25,9 +25,9 @@ Apply proportionately. Do not recite the checklist or invent extra work.
 
 Point your agent at this repository and say:
 
-> Read README.md, starter/instructions.md and docs/setup.md. Set up or adapt memory in [my chosen folder] to help me with [purpose]. Inspect what is already there. Preserve the operating principles and existing knowledge; choose structures and permitted tools that fit this environment. Recommend the before_you_act block at the very beginning of the AGENTS.md and CLAUDE.md entrypoints I use. Explain consequential changes before making them. Do not install tools or publish my memory without permission.
+> Adopt a memory system like https://github.com/crstdr/minibrain, adapted to this folder.
 
-The agent should inspect the existing setup, select or adapt an implementation, record the actual local operating instructions, and verify the resulting memory. It should not automatically replace a working system, copy every example, or impose two files. See [setup and adaptation](docs/setup.md).
+The repository carries the detailed instructions; you need not paste them into your request. The adopting agent should read the [operating contract](starter/instructions.md) and [setup guide](docs/setup.md), establish any missing purpose/scope, preserve existing knowledge and adapt to permitted tools. It records the adopted source revision and local adaptations, then verifies the result. Adoption does not authorise tool installation, publication or automatic replacement of a working brain.
 
 There is no required package, account, database or coordinator. Particular implementations do have prerequisites: the supplied Git/Markdown example uses Git and Python. If a capability is missing, reuse an adequate permitted alternative or report the limitation—not silently weaken a safeguard. No filename is assumed to auto-load in every host.
 
@@ -46,17 +46,20 @@ The full requirements and canonical resume/checkpoint procedures are in the [ope
 
 ## Concrete references
 
-- [Git/Markdown memory](examples/git-markdown/README.md): the original-style working index, topics, map, outcome changelog, scoped Git checkpoints and standard-library validator/lock helper. Useful procedural detail is included; this is not a required maturity tier.
+- [Memory spaces](docs/spaces.md): start with a note, grow into a folder with an index, assets and child spaces when useful. New file-based installs default to `spaces/`; existing brains need not rename `topics/`.
+- [Git/Markdown memory](examples/git-markdown/README.md): the original-style working index, space navigation, outcome changelog, scoped Git checkpoints and standard-library validator/lock helper. Useful procedural detail is included; this is not a required maturity tier.
 - [Working-memory sketch](starter/memory.md): an example of content, not an installation requirement or proof the contract is fulfilled.
+- [Optional RPCE guidance](starter/environments/rpce.md): a small environment binding, not a core dependency or a copy of the tool manual.
+- [Adoption and upgrades](docs/setup.md#record-adoption-and-preserve-adaptations): retain the source revision and local choices so an upgrade does not erase them.
 - [Shared-writer guidance](docs/shared-writers.md): when coordination is necessary, what it protects and the limits of the supplied lock.
 - [Context stewardship](docs/growth.md): preserve working capabilities and improve a named failure rather than continually reorganise.
 - [Installation acceptance](docs/acceptance.md): checks inherited from the original system, including fresh-session and unfinished-work checks.
 
 ## Status and boundaries
 
-**v0.2 (experimental)** restores the original system's operating detail and supplies its concrete implementation while allowing equivalent arrangements. It supersedes v0.1's mandatory two-file starting layout. **The unreleased revision adds the prominent operating gate; VERSION and the v0.2.0 tag still identify the last release.** Existing installations are not automatically migrated; the [verification record](docs/acceptance.md#v02-reference-verification) separates tested helper behaviour from unrun agent checks.
+**v0.2 (experimental)** restores the original system's operating detail and supplies its concrete implementation while allowing equivalent arrangements. It supersedes v0.1's mandatory two-file starting layout. **The unreleased revision adds the operating gate, optional RPCE binding, adoption/upgrade guidance and recursive memory spaces; VERSION and the v0.2.0 tag still identify the last release.** Existing installations are not automatically migrated; the [verification record](docs/acceptance.md#v02-reference-verification) separates tested helper behaviour from unrun agent checks.
 
-The [operating-gate verification record](docs/acceptance.md#unreleased-operating-gate-verification) distinguishes the new static checks from host loading and behavioural effects still to be evaluated.
+The [verification record](docs/acceptance.md#unreleased-adoption-and-space-verification) separates static/helper checks from host loading, upgrades and behavioural effects still to be evaluated.
 
 Instructions cannot guarantee model compliance. Automated tests concern the supplied helper and static guidance, not universal cross-host compatibility, safe behaviour by arbitrary concurrent agents, improved judgment or reduced human effort. The reference lock is cooperative and local to one normal Git working copy; it is neither distributed synchronisation nor access control. Minibrain supplies no scheduler, notification service or orchestration runtime.
 

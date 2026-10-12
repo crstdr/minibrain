@@ -18,6 +18,8 @@ For non-Git implementations, declare the A5/A7 mechanism and test. File readback
 
 ## Additional use-driven checks
 
+- A fresh reader can find the adopted source/revision and local adaptations without the installation chat. For an upgrade, demonstrate that a local adaptation and its reason survive source comparison, or explicitly record the approved change. Unknown provenance stays unknown; a version label is not proof of tested adoption.
+- If an environment binding is installed, confirm the actual tools/loading path, omit local bindings that duplicate host-injected guidance and retain one authoritative copy of the useful local binding. Unsupported tools or host behaviour are reported, not treated as a successful integration.
 - For an adopted operating gate, verify its complete block is first in every applicable AGENTS.md / CLAUDE.md, before titles/imports, and mirrors match the declared local authoritative copy: compare each complete opening-to-closing tag span, not just the four labels. Preserve other instructions and record any deliberate placement/wording adaptation. Verify the actual host loading path, including explicit startup reads when needed; do not load the full contract twice. Report any duplicate gate exposure and unverified host behaviour. File inspection alone is not a loading/compliance test.
 - Observe the gate through task outcomes, not recital: connection to the user's goal, grounded action, proportionate handling of recurring friction, and safe preservation of continuity before compaction. Check for added ceremony or unnecessary work too. Do not ask for private reasoning or infer effectiveness from a checklist in a reply. Comparative benefit requires a controlled with/without evaluation; this installation check does not establish it.
 - A narrative deferred decision becomes actionable with decision-maker and reopening condition.
@@ -40,3 +42,13 @@ Distribution checks in `tests/test_operating_gate.py` cover the canonical block'
 On 2026-10-12, the development macOS run completed 49 tests: 48 passed and the same non-UTF-8 filename test was skipped. A disposable checkout with CRLF conversion enabled preserved all three gate-bearing assets byte-for-byte under the explicit LF attributes. These are static/helper checks, not a Windows host or agent-behaviour test.
 
 Host loading and duplicate-exposure behaviour, persistent use across long sessions, compaction decisions, better judgment and lower human burden remain **not established**. No fixed context percentage is validated or required by this gate.
+
+## Unreleased adoption and space verification
+
+On 2026-10-12, the post-review development run completed 83 tests: 82 passed, with the existing non-UTF-8-filename platform skip. Compilation and relative Markdown file-link checks passed. Added regressions cover legacy section navigation, mixed legacy/space names, exact root-file links, case-variant controls, fenced/duplicate registries, reserved space names and half-staged growth. These are static/helper results, not fresh-agent installation acceptance.
+
+New synthetic helper cases exercise qualified/repeated names, file-to-folder growth, parent registration, missing/ambiguous paths, prospective-index isolation, legacy compatibility, root-control boundaries and supporting assets. Static checks keep the short adoption prompt, optional RPCE block and single core space primitive discoverable; they are not proof of agent behaviour.
+
+Where spaces are adopted, exercise this extension on a disposable synthetic copy: create a small space, find it without an open thread, promote it without losing content or logical links, add a child and attachment, then resume without recursively loading all children or hiding a human decision. Verify required attachments on the actual persistence/host path, not merely a green Markdown check. Compare source revisions during an upgrade while preserving a deliberate local adaptation and the untouched private knowledge. Confirm any RPCE binding is actually loaded only where applicable. Record pass/fail/not-run rather than infer outcomes from the rules.
+
+These fresh-agent, host-loading, attachment-portability and adaptation-preservation exercises have not been run in the development task. No arbitrary-depth effectiveness, safe attachment contents or automatic migration is claimed.

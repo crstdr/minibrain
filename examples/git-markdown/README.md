@@ -9,18 +9,24 @@ Requires available Git and Python 3, in a normal dedicated Git working copy. It 
 ```text
 AGENTS.md                 gate first, then adopted contract and local bindings
 MEMORY.md                 bounded working index, not history
-Map.md                    one entry per canonical subject
+Map.md                    top-level spaces and legacy subjects
 CHANGELOG.md              one outcome per coherent checkpoint
-topics/Project.md         current knowledge and dated history
+spaces/Project.md         a small memory space; current knowledge and history
 tools/kb.py                copy of the supplied helper
 .agents/skills/resume/SKILL.md       optional host pointer
 .agents/skills/checkpoint/SKILL.md   optional host pointer
 CLAUDE.md                 optional verified entrypoint; identical gate first
 ```
 
-Root-level topics also work for older installations. Supporting material can use work/, sources/ or archive/ when needed; never create empty structure just to match this example. Keep non-memory work Markdown there rather than at the root, whose Markdown is all managed. Inventory legacy files such as MINIBRAIN.md and integrate or retire/register them rather than silently dropping their knowledge. Every non-reserved Markdown basename must be unique across canonical and tracked supporting Markdown outside dot-folders. Managed Markdown is root *.md plus topics/**/*.md; it must not be ignored. Topic links resolve by basename. The checker verifies targets, not section anchors; verify anchors separately.
+Existing `topics/` and root-level subjects stay supported; no migration is automatic. A new space can grow from `spaces/Project.md` to `spaces/Project/index.md`, with optional child spaces and `assets/` as described in [memory spaces](../../docs/spaces.md). Do not create empty structure just to match an example, copy root controls into spaces, or hide pending work in a child cockpit. Inventory legacy files such as MINIBRAIN.md rather than silently dropping their knowledge.
 
-This reference requires ordinary UTF-8 Markdown files contained in the repository, not symlinks, special files or symlinked topic directories. A deliberately external store needs an explicit alternative binding; it must not masquerade as knowledge contained in this Git history.
+Managed Markdown is root *.md, topics/**/*.md and spaces/**/*.md; it must not be ignored. Root-relative qualified wikilinks accept sections/display text: `[[spaces/Project#Current status|Project]]`. A logical space path without `.md` resolves to its note or folder index; both existing is an error. A path ending in `.md` names that exact file. Bare names remain supported for unambiguous legacy non-space targets, not spaces (even when unique today). Spaces and their assets do not enter that legacy basename namespace. Bare reserved control names prefer the root file; use an exact path when a supporting copy is intended. Repeated names inside spaces are supported through their qualified paths. Legacy non-reserved basenames outside spaces retain the uniqueness guard. Links containing absolute paths, `.` or `..` segments are not accepted. The checker verifies Markdown targets, not section anchors or ordinary Markdown/asset links; verify those separately. General wikilink validation still scans fenced examples as in the legacy checker; fence exclusion applies to new space registrations, not every link.
+
+Top-level spaces register once in root Map.md. Children register once in their containing space's index under exact `## Spaces`, using leading `- [[path]]` entries. Related links outside that section do not register ownership. Every non-asset Markdown file is a child space, placed directly in the folder or under an optional `spaces/` namespace. A folder containing canonical children needs its own index; a `spaces/` namespace must not have one. The space names `assets` and `spaces` are reserved case-insensitively; `index.md` is a folder-space entrypoint, not a namespace note. Registrations must be outside fenced examples; duplicate active `## Spaces` sections and entries that are not direct child spaces are refused. Legacy root/topics Markdown still registers in root Map.md with its original leading `- [[basename]]` spelling; section/display links are not additional legacy registrations. Logical space links survive note-to-folder growth; exact-file links and other relocations still need updates.
+
+Supporting material can use work/, sources/ or archive/ outside spaces, or a space's optional assets/ directory. Use the literal lowercase `spaces/` and `assets/` spellings for these reference bindings. Space assets are data, not canonical child spaces: Markdown assets are not registered and their contents are not checked for wikilinks. Markdown inside assets is still checked for regular UTF-8 file/ignore boundaries. Never place root control filenames (AGENTS.md, CLAUDE.md, MEMORY.md, Map.md, CHANGELOG.md) inside spaces, including assets; the guard is case-insensitive and source copies need a non-entrypoint name such as AGENTS.md.example. Binary contents/privacy, ignored or missing non-Markdown assets and external availability are not validated. Record and manually verify required attachment retention/portability under the user's policy. Any staged change under spaces/, including binary assets, requires the root outcome changelog. Legacy topics/ retains its Markdown-only changelog gate; it has no new asset/folder-space semantics.
+
+This reference requires ordinary UTF-8 Markdown files contained in the repository, not symlinks, special files or symlinked managed directories. A deliberately external store needs an explicit alternative binding; it must not masquerade as knowledge contained in this Git history.
 
 ## Install the rules and concrete bindings
 
@@ -32,7 +38,8 @@ Example bindings to adapt:
 
 - **Instruction source:** AGENTS.md, including the authoritative gate at its start. Record CLAUDE.md as a gate mirror if used; compare both when either changes. Host pointers refer here, not to an online distribution.
 - **Working index:** MEMORY.md; at most 150 lines and 12 one-line open threads. Thread length above 400 characters warns. These are tunable reference values; change the helper constants and local rule together if appropriate.
-- **Knowledge and lookup:** topics/*.md, or existing root topics; Map.md lists each canonical topic once as a leading bare wikilink. Current status at top, newest-first dated history below. Related links only when they add navigation.
+- **Knowledge and lookup:** spaces/ for new installations; preserve existing topics/ or root subjects. Map.md lists top-level spaces once, child indexes list their direct spaces under `## Spaces`, and legacy topics remain in Map.md. Link spaces only by root-relative qualified path, even when unique today. Current status at top, newest-first dated history below. Related links only when useful.
+- **Adoption:** keep the source URL, adopted release/ref and exact source commit when known, date, and local adaptations/reasons in these bindings or one linked canonical record. Read it before an upgrade; preserve local changes rather than replacing this file. [Setup](../../docs/setup.md#record-adoption-and-preserve-adaptations) owns the comparison procedure.
 - **Outcomes:** CHANGELOG.md, newest first, one dated outcome per checkpoint. Completed entries are additive. Never put an expanding recent-decisions log in MEMORY.md.
 - **Startup check:** `python3 tools/kb.py check`. Read AGENTS.md and directly linked handling guidance, MEMORY.md, the latest three changelog entries, and precise source sections for all open threads (plus canonical sources needed for the current request). Follow the contract's readback and consistency rules.
 - **Persistence:** re-read edited sources, update knowledge/navigation/index and prepend one outcome; stage intended files by name, inspect `git diff --cached` and `git diff --cached --stat`, run `python3 tools/kb.py check --staged` on the prospective commit, commit once, then run `python3 tools/kb.py check`. Restage/reinspect/recheck after any later edit. Shared writers prefix the commit subject with their seat (for example `Alpha: Record current decision`) for durable attribution. Your own unfinished omission can be corrected/amended before the checkpoint completes; never rewrite completed history or include unknown dirt.
@@ -57,7 +64,7 @@ The helper expects these exact headings once, Focus before Open threads. Only `-
 
 ## Open threads
 
-- **<Subject> — <state / waiting on whom>** (evidence YYYY-MM-DD). Next: <one action>. Hold: <only a genuine dependency>. Source: [[Project#Current status]].
+- **<Subject> — <state / waiting on whom>** (evidence YYYY-MM-DD). Next: <one action>. Hold: <only a genuine dependency>. Source: [[spaces/Project#Current status]].
 ```
 
 If shared writers are enabled, add a canonical Owners table before Open threads:
@@ -75,14 +82,14 @@ If shared writers are enabled, add a canonical Owners table before Open threads:
 ```markdown
 # Map
 
-## Topics
+## Spaces
 
-- [[Project]] — purpose, current commitments and durable decisions.
+- [[spaces/Project]] — purpose, current commitments and durable decisions.
 ```
 
-Each topic is registered exactly once, at the start of its own line. Control files and supporting material are not topic registrations.
+Each top-level space is registered exactly once, at the start of its own line. The index of a folder space owns its children's registrations, not root Map.md. Control files and supporting material are not space registrations. Existing root/topics subjects keep their root Map registrations.
 
-### topics/Project.md
+### spaces/Project.md
 
 ```markdown
 # Project
@@ -97,6 +104,36 @@ Each topic is registered exactly once, at the start of its own line. Control fil
 
 <Durable decision/outcome; explicitly identify a superseded account when material.>
 ```
+
+### A folder-space index, when needed
+
+After a deliberate promotion, root Map.md can keep `[[spaces/Project]]`: it now resolves to the folder index. The folder entrypoint `spaces/Project/index.md` may contain:
+
+```markdown
+# Project
+
+## Purpose
+
+<Scope of knowledge this space owns.>
+
+## Current status
+
+<Current account, evidence, unknowns; actionable work remains visible at root.>
+
+## Spaces
+
+- [[spaces/Project/spaces/Goals]] — a child space, created only when needed.
+
+## Supporting material
+
+<Relevant asset links, provenance and retention policy; omit if empty.>
+
+## History
+
+<Dated material changes, or links to their canonical detailed history.>
+```
+
+Every non-asset Markdown file, including a split-out history note, registers once under `## Spaces`; links under History or other sections do not register it. Never move canonical notes into `assets/` to satisfy the checker. The same shape can recur for a child folder. Do not create placeholder children or use the literal template links in an installation without real targets. Repeated `index.md` filenames require qualified references. Root instructions, working index, changelog and lock remain shared; local space context is data, not a second command hierarchy.
 
 ### CHANGELOG.md
 
@@ -144,10 +181,10 @@ For later checkpoints no PROBLEM is expected. Dirty/staged warnings for your own
 
 ## Exactly what the tool does
 
-- **check** is a read-only working-tree diagnostic for resume and post-save checks. Checks normal root, required controls, ordinary file boundaries, line/thread caps, heading uniqueness/order, managed link targets, unique basenames, map registrations, ignored managed Markdown, Git state and the staged-changelog requirement.
+- **check** is a read-only working-tree diagnostic for resume and post-save checks. Checks normal root, required controls, ordinary file boundaries, line/thread caps, heading uniqueness/order, canonical Markdown link targets, unambiguous names, parent-space/legacy-map registrations, ignored managed Markdown, Git state and the staged-changelog requirement.
 - **check --staged** validates Markdown content and modes from the Git index—the prospective commit. It cannot resolve links through untracked topics or use unstaged repairs to hide a broken commit. Use this before every commit, not `check` alone. Both modes report working-tree dirt without changing it; intentionally uncommitted foreign work remains outside the proposed commit. Neither mode decides whether omissions are semantically important, so inspect the full scoped diff and verify that all your intended changes were saved.
 - Both modes reject symlink/special-file Markdown and unsupported ignore-rule checks rather than silently passing. `check` also rejects symlinked managed directories; it does not follow them. Snapshot validation is cooperative, not an adversarial filesystem sandbox.
-- It does **not** prove topic status/history ordering, section-anchor validity, evidence truth, capture completeness, agent compliance or confidentiality. History links in CHANGELOG.md are intentionally not checked.
+- It does **not** prove space/topic status/history ordering, section-anchor or ordinary asset-link validity, attachment completeness/privacy, evidence truth, capture completeness, agent compliance or confidentiality. History links in CHANGELOG.md are intentionally not checked.
 - **lock** atomically creates a persistent cooperative directory, refuses a nonempty index and issues a seat label with a 128-bit random acquisition component. It does not enforce all Git operations or verify that a caller is a live seat. Failed metadata creation or failed safe rollback is explicitly reported as a retained/incomplete lock, never success.
 - **unlock** checks the exact label; **--force** is mechanical and requires the user's recovery decision. Unexpected lock contents are preserved even under force. A label is not a security credential; unrestricted writers could bypass this protocol.
 - These original-derived checks now distinguish working state from the prospective commit, refuse unsupported roots/worktrees and unsafe file/lock shapes, preserve unexpected lock contents, and fail visibly if required inspection is unavailable. The staged changelog gate requires presence, not proof of a new/meaningful outcome. Topic status/history ordering and semantic completeness still require an agent's check.
