@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Read-only structural check: check [--staged] | lock | unlock.
+"""Structural checks and optional writer coordination: check [--staged] | lock | unlock.
 
 `check` reads the working tree; `check --staged` validates the prospective commit.
-Neither modifies files or Git state. `lock`/`unlock` manage a cooperative writer
-flag at .git/kb-writer.lock; single-writer installs never call them (guide, Appendix A).
+Neither check modifies files or Git state. Staged checks require relevant repository
+ignore files to match the index except CRLF/LF endings; local/global exclusions remain active.
+`lock`/`unlock` manage a cooperative writer flag at .git/kb-writer.lock;
+single-writer installs never call them.
 Derived from the lean memory guide (2026-09-26).
 Adapt the constants for this reference; preserve the verified properties.
 Only a normal dedicated Git working copy is supported, not worktrees or distributed sync.
@@ -35,14 +37,17 @@ NAME = re.compile(r"[A-Za-z][A-Za-z0-9_-]*\Z")  # lock takes a bare writer name;
 WIKILINK = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 
 
-def git(*args, input=None):
+def git(*args, input=None, binary=False):
     env = os.environ.copy()
     env["GIT_OPTIONAL_LOCKS"] = "0"
     try:
         return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True,
-                              encoding="utf-8", errors="surrogateescape", env=env, input=input)
+                              encoding=None if binary else "utf-8",
+                              errors=None if binary else "surrogateescape", env=env, input=input)
     except OSError as error:
-        return subprocess.CompletedProcess(args, 127, "", f"Git unavailable: {error}")
+        message = f"Git unavailable: {error}"
+        return subprocess.CompletedProcess(args, 127, b"" if binary else "",
+                                           message.encode() if binary else message)
 
 
 def repository_error():
@@ -59,8 +64,8 @@ def repository_error():
     return None
 
 
-def markdown_index(problems, staged=False):
-    """Index entries define the prospective commit and tracked supporting targets."""
+def index_entries(problems, staged=False):
+    """Index entries define prospective content, including repository ignore rules."""
     result = git("ls-files", "--stage", "-z")
     if result.returncode:
         problems.append(f"cannot list index: {result.stderr.strip()}")
@@ -80,9 +85,7 @@ def markdown_index(problems, staged=False):
             problems.append(f"managed path is not an ordinary directory or regular file in index: {rel}")
         if staged:
             check_space_path(rel, problems)
-        if rel.endswith(".md") and (is_managed_path(rel) or
-                not any(part.startswith(".") for part in Path(rel).parts)):
-            entries[rel] = (mode, oid)
+        entries[rel] = (mode, oid)
     return entries
 
 
@@ -134,12 +137,48 @@ def regular_working_file(rel):
     return True
 
 
+def staged_ignore_rules_match(paths, entries, problems):
+    """check-ignore reads the working tree: refuse mixed policy, including untracked rules."""
+    ignore_files = {str(parent / ".gitignore")
+                    for rel in paths for parent in PurePosixPath(rel).parents}
+    matches = True
+    for rel in sorted(ignore_files):
+        entry = entries.get(rel)
+        try:
+            try:
+                (ROOT / rel).lstat()
+                present = True
+            except FileNotFoundError:
+                present = False
+            if not present:
+                if entry is None:
+                    continue
+            elif regular_working_file(rel) and entry and entry[0] in ("100644", "100755"):
+                working = (ROOT / rel).read_bytes()
+                result = git("cat-file", "blob", entry[1], binary=True)
+                if result.returncode:
+                    raise OSError(result.stderr.decode("utf-8", "replace").strip())
+                # Git accepts CRLF rules. Do not apply clean filters or normalize
+                # lone CR bytes: either could mask different actual ignore rules.
+                if working.replace(b"\r\n", b"\n") == result.stdout.replace(b"\r\n", b"\n"):
+                    continue
+            detail = ("must match the index as a regular file except CRLF/LF endings (or be absent from both); "
+                      "stage or restore the intended ignore policy")
+        except OSError as error:
+            detail = str(error)
+        problems.append(f"cannot validate staged ignore rules: {rel}: {detail}")
+        matches = False
+    return matches
+
+
 def load_markdown(staged, problems):
-    entries = markdown_index(problems, staged)
-    paths = set(entries) if staged else working_markdown(problems)
+    entries = index_entries(problems, staged)
+    indexed_markdown = {rel for rel in entries if rel.endswith(".md") and
+                        (is_managed_path(rel) or not any(part.startswith(".") for part in Path(rel).parts))}
+    paths = indexed_markdown if staged else working_markdown(problems)
     if not staged:
         # Supporting targets are tracked, present Markdown outside hidden folders.
-        paths.update(rel for rel in entries if os.path.lexists(ROOT / rel))
+        paths.update(rel for rel in indexed_markdown if os.path.lexists(ROOT / rel))
     documents = {}
     for rel in sorted(paths):
         try:
@@ -162,6 +201,8 @@ def load_markdown(staged, problems):
         except (OSError, UnicodeError) as error:
             problems.append(f"cannot read Markdown {rel}: {error}")
     managed = {rel for rel in paths if is_managed_path(rel)}
+    if managed and staged and not staged_ignore_rules_match(managed, entries, problems):
+        return None  # Later Git operations could reopen a rejected special file.
     if managed:
         ignored = git("check-ignore", "--no-index", "-z", "--stdin",
                       input="\0".join(sorted(managed)) + "\0")
@@ -388,6 +429,12 @@ def check(staged_view=False):
                             "report it to the person")
 
     documents = load_markdown(staged_view, problems)
+    if documents is None:
+        for item in problems:
+            print("PROBLEM:", item)
+        for item in warnings:
+            print("warning:", item)
+        return 1
     for name in REQUIRED_FILES:
         if name not in documents:
             problems.append(f"{name} missing")
@@ -523,7 +570,7 @@ def check(staged_view=False):
 
 
 def lock(args):
-    """Cooperative writer flag for concurrent writers (Appendix A); issues a fresh label per acquisition."""
+    """Cooperative writer flag for concurrent writers; issues a fresh label per acquisition."""
     name = args[0].strip() if len(args) == 1 else ""
     if not NAME.fullmatch(name):
         print("usage: python3 tools/kb.py lock <name>   e.g. lock assistant\n"

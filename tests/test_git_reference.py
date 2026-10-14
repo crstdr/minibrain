@@ -6,6 +6,7 @@ import io
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -121,6 +122,173 @@ class GitReferenceTests(unittest.TestCase):
         self.write("topics/Hidden.md", "# Hidden\n")
         self.write("Map.md", "- [[Project]]\n- [[Hidden]]\n")
         self.assertIn("managed Markdown is ignored", self.tool("check", expected=1))
+
+    def test_staged_ignore_policy_cannot_be_hidden_by_later_working_edit(self):
+        self.write(".gitignore", "/topics/Project.md\n")
+        self.git("add", "--", ".gitignore")
+        self.write(".gitignore", "")
+        before = self.git("diff", "--cached").stdout
+        self.assertNotIn("PROBLEM", self.tool("check"))
+        out = self.tool("check", "--staged", expected=1)
+        self.assertIn("cannot validate staged ignore rules: .gitignore", out)
+        self.assertEqual(self.git("diff", "--cached").stdout, before)
+        self.assertEqual((self.root / ".gitignore").read_text(), "")
+
+    def test_working_ignore_policy_is_not_reported_as_staged_policy(self):
+        self.write(".gitignore", "")
+        self.git("add", "--", ".gitignore")
+        self.write(".gitignore", "/topics/Project.md\n")
+        self.assertIn("managed Markdown is ignored", self.tool("check", expected=1))
+        out = self.tool("check", "--staged", expected=1)
+        self.assertIn("cannot validate staged ignore rules: .gitignore", out)
+        self.assertNotIn("managed Markdown is ignored", out)
+
+    def test_untracked_root_and_nested_ignore_files_block_staged_view(self):
+        # Excluding the ignore files themselves keeps them out of git status;
+        # neither staged-change nor dirty-path checks can establish this boundary.
+        self.write(".git/info/exclude", ".gitignore\n")
+        for rel in (".gitignore", "topics/.gitignore"):
+            with self.subTest(rel=rel):
+                self.write(rel, "Project.md\n")
+                self.assertEqual(self.git("status", "--porcelain").stdout, "")
+                out = self.tool("check", "--staged", expected=1)
+                self.assertIn(f"cannot validate staged ignore rules: {rel}", out)
+                self.assertNotIn("managed Markdown is ignored", out)
+                (self.root / rel).unlink()
+
+    def test_unstaged_ignore_deletion_blocks_staged_view(self):
+        for rel in (".gitignore", "topics/.gitignore"):
+            with self.subTest(rel=rel):
+                self.write(rel, "Project.md\n")
+                self.git("add", "--", rel)
+                self.git("commit", "-qm", "Synthetic ignore policy")
+                (self.root / rel).unlink()
+                self.assertEqual(self.git("diff", "--cached", "--name-only").stdout, "")
+                out = self.tool("check", "--staged", expected=1)
+                self.assertIn(f"cannot validate staged ignore rules: {rel}", out)
+                self.git("rm", "--cached", "--", rel)
+                self.git("commit", "-qm", "Remove synthetic ignore policy")
+
+    def test_new_indexed_ignore_file_missing_on_disk_blocks_staged_view(self):
+        self.write(".gitignore", "Project.md\n")
+        self.git("add", "--", ".gitignore")
+        (self.root / ".gitignore").unlink()
+        self.assertIn("cannot validate staged ignore rules: .gitignore",
+                      self.tool("check", "--staged", expected=1))
+
+    def test_staged_ignore_deletion_cannot_use_retained_working_file(self):
+        self.write(".gitignore", "Project.md\n")
+        self.git("add", "--", ".gitignore")
+        self.git("commit", "-qm", "Synthetic ignore policy")
+        self.git("rm", "--cached", "--", ".gitignore")
+        out = self.tool("check", "--staged", expected=1)
+        self.assertIn("cannot validate staged ignore rules: .gitignore", out)
+        self.assertNotIn("managed Markdown is ignored", out)
+        (self.root / ".gitignore").unlink()
+        self.assertNotIn("PROBLEM", self.tool("check", "--staged"))
+
+    def test_matching_new_nested_ignore_policy_is_checked(self):
+        self.write("topics/.gitignore", "Project.md\n")
+        self.git("add", "--", "topics/.gitignore")
+        out = self.tool("check", "--staged", expected=1)
+        self.assertIn("managed Markdown is ignored", out)
+        self.assertNotIn("cannot validate staged ignore rules", out)
+        self.write("topics/.gitignore", "Scratch.txt\n")
+        self.git("add", "--", "topics/.gitignore")
+        self.assertNotIn("PROBLEM", self.tool("check", "--staged"))
+
+    def test_staged_ignore_allows_autocrlf_but_refuses_real_edits(self):
+        self.write(".gitignore", "Scratch.txt\n")
+        self.git("add", "--", ".gitignore")
+        self.git("commit", "-qm", "Synthetic ignore policy")
+        self.git("config", "core.autocrlf", "true")
+        (self.root / ".gitignore").unlink()
+        self.git("checkout", "--", ".gitignore")
+        self.assertEqual((self.root / ".gitignore").read_bytes(), b"Scratch.txt\r\n")
+        self.assertNotIn("PROBLEM", self.tool("check", "--staged"))
+        (self.root / ".gitignore").write_bytes(b"Project.md\r\n")
+        self.assertIn("cannot validate staged ignore rules", self.tool("check", "--staged", expected=1))
+
+    def test_staged_ignore_does_not_normalize_lone_carriage_returns(self):
+        self.write(".gitignore", "Scratch.txt\nProject.md\n")
+        self.git("add", "--", ".gitignore")
+        (self.root / ".gitignore").write_bytes(b"Scratch.txt\rProject.md\n")
+        self.assertIn("cannot validate staged ignore rules", self.tool("check", "--staged", expected=1))
+
+    def test_staged_ignore_refuses_transformed_rules_without_running_clean_filter(self):
+        marker = Path(self.temp.name) / "filter-ran"
+        script = Path(self.temp.name) / "ignore-filter.py"
+        script.write_text("import pathlib, sys\n"
+                          f"pathlib.Path({str(marker)!r}).write_text('ran')\n"
+                          "sys.stdout.buffer.write(sys.stdin.buffer.read().replace(b'Scratch.txt', b'Project.md'))\n")
+        self.git("config", "filter.ignore-policy.clean", shlex.join([sys.executable, str(script)]))
+        self.write(".gitattributes", ".gitignore filter=ignore-policy\n")
+        self.write(".gitignore", "Scratch.txt\n")
+        self.git("add", "--", ".gitignore", ".gitattributes")
+        self.assertEqual(self.git("show", ":.gitignore").stdout, "Project.md\n")
+        marker.unlink()
+        self.assertIn("cannot validate staged ignore rules", self.tool("check", "--staged", expected=1))
+        self.assertFalse(marker.exists(), "staged ignore validation must not execute clean filters")
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO test requires POSIX")
+    def test_staged_fifo_ignore_is_reported_before_git_status_can_reopen_it(self):
+        os.mkfifo(self.root / ".gitignore")
+        self.assertIn("cannot validate staged ignore rules: .gitignore",
+                      self.tool("check", "--staged", expected=1))
+
+    def test_nested_space_ancestor_ignore_file_is_relevant(self):
+        self.add_spaces()
+        self.stage_outcome()
+        self.git("add", "--", "Map.md", "spaces")
+        self.write("spaces/Garden/spaces/.gitignore", "Budget.md\n")
+        out = self.tool("check", "--staged", expected=1)
+        self.assertIn("cannot validate staged ignore rules: spaces/Garden/spaces/.gitignore", out)
+
+    def test_ignore_files_outside_indexed_managed_ancestors_do_not_block(self):
+        self.write("sources/.gitignore", "*\n")
+        self.write("topics/unused/.gitignore", "*\n")
+        self.assertNotIn("PROBLEM", self.tool("check", "--staged"))
+
+    def test_staged_ignore_guard_does_not_follow_symlinks(self):
+        self.write(".gitignore", "Scratch.txt\n")
+        self.git("add", "--", ".gitignore")
+        target = Path(self.temp.name) / "outside-ignore"
+        target.write_text("Scratch.txt\n")
+        (self.root / ".gitignore").unlink()
+        self.symlink(self.root / ".gitignore", target)
+        self.assertIn("cannot validate staged ignore rules", self.tool("check", "--staged", expected=1))
+
+    def test_staged_ignore_guard_reports_unreadable_file(self):
+        self.write(".gitignore", "Scratch.txt\n")
+        self.git("add", "--", ".gitignore")
+        helper = self.load_helper()
+        original = helper.git
+        def failing(*args, **kwargs):
+            if args[0] == "cat-file" and kwargs.get("binary"):
+                return subprocess.CompletedProcess(args, 128, b"", b"synthetic unreadable ignore file")
+            return original(*args, **kwargs)
+        with mock.patch.object(helper, "git", side_effect=failing), contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(helper.check(staged_view=True), 1)
+        self.assertIn("cannot validate staged ignore rules", output.getvalue())
+        self.assertIn("synthetic unreadable ignore file", output.getvalue())
+
+    def test_inaccessible_ignore_path_is_not_treated_as_absent(self):
+        helper = self.load_helper()
+        problems = []
+        with mock.patch.object(Path, "lstat", side_effect=PermissionError("synthetic inaccessible path")):
+            self.assertFalse(helper.staged_ignore_rules_match({"topics/Project.md"}, {}, problems))
+        self.assertTrue(any("cannot validate staged ignore rules" in problem and
+                            "synthetic inaccessible path" in problem for problem in problems))
+
+    def test_local_and_global_exclusions_remain_active_in_both_views(self):
+        for rel in (".git/info/exclude", "global-ignore"):
+            with self.subTest(rel=rel):
+                self.write(rel, "Project.md\n")
+                if rel == "global-ignore":
+                    self.git("config", "core.excludesFile", str(self.root / rel))
+                for args in [("check",), ("check", "--staged")]:
+                    self.assertIn("managed Markdown is ignored", self.tool(*args, expected=1))
+                (self.root / rel).unlink()
 
     def test_section_anchor_limit_is_explicit(self):
         self.write("MEMORY.md", "# Memory\n## Focus\n[[Project#Absent]]\n## Open threads\n")

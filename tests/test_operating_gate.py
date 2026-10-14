@@ -36,11 +36,12 @@ class OperatingGateTests(unittest.TestCase):
         example = (ROOT / "examples/git-markdown/CLAUDE.md.example").read_bytes()
         self.assertEqual(example, REVIEWED_GATE + b"\n@AGENTS.md\n")
 
-    def test_readme_displays_reviewed_gate_in_a_code_fence(self):
+    def test_readme_links_to_the_canonical_contract_without_copying_the_gate(self):
         readme = (ROOT / "README.md").read_bytes()
-        self.assertIn(b"```text\n" + REVIEWED_GATE + b"```", readme)
-        self.assertEqual(readme.count(b"<before_you_act>"), 1)
-        self.assertEqual(readme.count(b"</before_you_act>"), 1)
+        self.assertNotIn(REVIEWED_GATE, readme)
+        self.assertNotIn(b"<before_you_act>", readme)
+        self.assertNotIn(b"</before_you_act>", readme)
+        self.assertRegex(readme, rb"\[[^\]]+\]\(starter/instructions\.md\)")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-# These reviewed gate assets use literal UTF-8/LF equality in the static tests.
+# Stable LF for reviewed instruction assets and onboarding documentation.
 /starter/instructions.md text eol=lf
 /examples/git-markdown/CLAUDE.md.example text eol=lf
 /README.md text eol=lf

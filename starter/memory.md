@@ -4,6 +4,8 @@ An example of required content, not a required filename, layout or two-file inst
 
 ## Purpose and responsibilities
 
+If purpose is stored in the note created from this sketch, name that note in the contract's Purpose binding. Otherwise cite its existing canonical record here instead of duplicating it.
+
 - Purpose and intended outcome: not yet established.
 - User priorities, scope and authority boundaries: not yet established.
 

@@ -1,6 +1,6 @@
 # Preserve capabilities; improve a named failure
 
-Start from the original operating contract, not a tiny layout that postpones safeguards. The [contract](../starter/instructions.md) owns the rules. These are illustrative choices, not mandatory stages.
+This is explanatory guidance, not a file to install as another operating contract. Ongoing maintenance duties live in the locally adopted contract and its bound reflect procedure. Preserve the original safeguards, not a tiny layout that postpones them. The [contract](../starter/instructions.md) owns the rules. These are illustrative choices, not mandatory stages.
 
 | Observed failure | Candidate change | Verify afterward |
 |---|---|---|

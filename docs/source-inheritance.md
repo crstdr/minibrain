@@ -16,7 +16,7 @@ The original already preserves properties rather than filenames. v0.1 wrongly ma
 
 Additional guidance addresses decisions left only in narrative, know-how stranded in continuation notes, lessons retrieved after rather than before mistakes, and obsolete rules used despite newer scoped instructions. These are design responses to experience, not proof that the new text eliminates those failures.
 
-The unreleased `<before_you_act>` addition makes PURPOSE, GROUND, IMPROVE and CAPACITY a prominent operating check before substantive responses or consequential actions. It leaves the original working rules and detailed resume/checkpoint procedures intact. Small identical entrypoint mirrors serve visibility; they do not create competing full contracts, new authority or evidence of behavioural effectiveness.
+The unreleased `<before_you_act>` addition makes PURPOSE, GROUND, IMPROVE and CAPACITY a prominent operating check before substantive responses or consequential actions. It preserves the original working-rule and resume/checkpoint obligations; the current concise contract reorganises their wording without replacing them with the gate. Small identical entrypoint mirrors serve visibility; they do not create competing full contracts, new authority or evidence of behavioural effectiveness.
 
 The further unreleased revision names the existing subject-home concept **memory spaces**, adding a recursive indexed-folder reference and qualified links without migrating older topics. It also supplies an optional RPCE binding and a clearer adoption/upgrade record. These extend navigation and provenance; they do not replace the original operating procedures or copy root authority into children.
 
@@ -25,3 +25,7 @@ Review-driven helper changes prevent concrete failures: validating unstaged/untr
 Bounded startup must not become endless history; archival upkeep should earn its cost. Privacy and permission remain explicit even when existing tools are powerful.
 
 Documents/helper tests establish neither comparative benefit nor universal compatibility, model compliance or reduced human effort.
+
+The current unreleased batch separates **adoption and authorised upgrades** (`docs/setup.md`) from the **enduring local contract** (`starter/instructions.md`). Its Local bindings template locates actual procedures and records, with a concrete Git example rather than a second generic schema. The locally retained upgrade safeguard preserves user knowledge and adaptations.
+
+A root `<principles>` block captures scoped user standing rules, with ongoing maintenance beside it. The bundled `reflect` procedure is installed locally or reconciled with an existing equivalent; it is read when warranted, not at every resume. These are design responses to missed commitments and contradictory action, not demonstrated improvements in agent judgment. They add no reflection diary or automatic migration.

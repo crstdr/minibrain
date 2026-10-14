@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Clarify onboarding with separate human/agent README routes, ordered setup reading and an explicit adaptation-preserving upgrade path; keep installation guidance separate from the concise local operating contract.
+- Add maintained user principles and the locally bound `reflect` procedure; preserve existing user knowledge, permissions and shared-writer safeguards.
+- Keep reference bindings and documentation aligned, verify copied-template adoption, and guard staged ignore-policy checks against mixed states, unsafe files and line-ending differences without invoking content filters.
+
 - Reduce adoption to one short source-link request; retain setup/privacy/migration safeguards in the repository rather than requiring a long pasted prompt.
 - Add the approved optional RPCE environment binding and make durable source/adaptation records and adaptation-preserving upgrades explicit.
 - Define memory spaces: notes can grow into indexed folders with child spaces and supporting assets. Default new file-based installs to spaces/ without migrating existing topics/ brains or cloning root authority/coordination.
