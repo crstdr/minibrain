@@ -28,6 +28,6 @@ After installation, use the **destination's local instructions**. This repositor
 
 ---
 
-**Experimental.** See [verification](docs/acceptance.md) and [limitations](docs/setup.md#implementation-limits), [contributing](CONTRIBUTING.md) and [change history](CHANGELOG.md). No scheduler or autonomous runtime is supplied.
+**Experimental.** See [verification](docs/setup.md#verify-the-installation) and [limitations](docs/setup.md#implementation-limits), [contributing](CONTRIBUTING.md) and [change history](CHANGELOG.md). No scheduler or autonomous runtime is supplied.
 
 **License:** not yet selected. Public visibility does not itself grant an open-source license; check before redistributing or incorporating the material.

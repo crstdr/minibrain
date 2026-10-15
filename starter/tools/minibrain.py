@@ -1,14 +1,25 @@
 #!/usr/bin/env python3
-"""Structural checks and optional writer coordination: check [--staged] | lock | unlock.
+"""Memory checks and cooperative writer locking.
 
-`check` reads the working tree; `check --staged` validates the prospective commit.
-Neither check modifies files or Git state. Staged checks require relevant repository
-ignore files to match the index except CRLF/LF endings; local/global exclusions remain active.
-`lock`/`unlock` manage a cooperative writer flag at .git/kb-writer.lock;
-single-writer installs never call them.
-Derived from the lean memory guide (2026-09-26).
-Adapt the constants for this reference; preserve the verified properties.
-Only a normal dedicated Git working copy is supported, not worktrees or distributed sync.
+check / check --staged: validate working tree / prospective commit; read-only.
+PROBLEMs fail; warnings don't. A pass proves structure, not completeness.
+lock <name> / unlock <label>: acquisition-specific ownership, not enforcement.
+unlock --force requires user approval. No cross-clone coordination.
+
+Normal dedicated Git working copy. Configuration and limits below.
+Managed Markdown: root *.md, topics/**/*.md, spaces/**/*.md;
+ordinary UTF-8 files, no symlinks.
+
+Links: root-relative; [[spaces/X]] resolves to X.md or X/index.md under spaces/,
+never both. Explicit .md = exact file; bare names = legacy non-space targets.
+Register spaces once: top-level in MAP_FILE, children under parent ## Spaces,
+using leading "- [[path]]" bullets. Assets aren't registered spaces.
+
+Staged memory changes—including space assets—require staged CHANGELOG.md.
+Relevant .gitignore files must match the index, except CRLF/LF endings.
+
+Not checked: factual truth, complete capture, status/history order, section
+anchors, ordinary Markdown links, hidden skills or attachment retention/privacy.
 """
 
 from pathlib import Path, PurePosixPath
@@ -31,9 +42,10 @@ MEMORY_REVIEW_LINES = 150  # advisory reflection threshold, not a cap
 THREADS_MAX = 12
 THREAD_SOFT_CHARS = 400     # warning only: line count alone hides long bullets' reading cost
 REQUIRE_LOCAL_REMOTES = False  # True: every Git remote must be an absolute filesystem path
-LOCK = ROOT / ".git" / "kb-writer.lock"
+LOCK = ROOT / ".git" / "kb-writer.lock"  # Keep compatible with older installed helpers.
 NAME = re.compile(r"[A-Za-z][A-Za-z0-9_-]*\Z")  # lock takes a bare writer name; the tool issues the label
 
+# Validate file targets, not section anchors or ordinary Markdown/asset links.
 WIKILINK = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 
 
@@ -66,7 +78,7 @@ def repository_error():
 
 def index_entries(problems, staged=False):
     """Index entries define prospective content, including repository ignore rules."""
-    result = git("ls-files", "--stage", "-z")
+    result = git("ls-files", "--stage", "-v", "-z")
     if result.returncode:
         problems.append(f"cannot list index: {result.stderr.strip()}")
         return {}
@@ -74,18 +86,36 @@ def index_entries(problems, staged=False):
     for record in filter(None, result.stdout.split("\0")):
         try:
             header, rel = record.split("\t", 1)
-            mode, oid, stage = header.split()
+            tag, mode, oid, stage = header.split()
         except ValueError:
             problems.append("cannot parse Git index")
             return {}
+        # Lowercase = assume-unchanged; S = skip-worktree. Both can hide edits.
+        if tag.islower() or tag == "S":
+            problems.append(
+                f"Git flags may hide unsaved changes: {rel}"
+            )
         if stage != "0":
             problems.append(f"unmerged index entry: {rel}")
             continue
+        entries[rel] = (mode, oid)
+    if staged:
+        paths = []
+        for visibility, status in (("visible", "A"), ("invisible", "A"), ("invisible", "D")):
+            result = git("diff", "--cached", "--name-only", "--no-renames", "-z",
+                         f"--ita-{visibility}-in-index", f"--diff-filter={status}")
+            if result.returncode:
+                problems.append(f"cannot inspect prospective paths: {result.stderr.strip()}")
+                return {}
+            paths.append(set(filter(None, result.stdout.split("\0"))))
+        # Intent-to-add entries are not part of the prospective commit.
+        for rel in (paths[0] - paths[1]) | paths[2]:
+            entries.pop(rel, None)
+    for rel, (mode, _) in entries.items():
         if rel in MANAGED_DIRS or (Path(rel).parts[0] in MANAGED_DIRS and mode not in ("100644", "100755")):
             problems.append(f"managed path is not an ordinary directory or regular file in index: {rel}")
         if staged:
             check_space_path(rel, problems)
-        entries[rel] = (mode, oid)
     return entries
 
 
@@ -339,7 +369,7 @@ def resolve_link(target, documents, by_basename):
 
 
 def unfenced_lines(content):
-    """Only navigation outside backtick/tilde fences can register knowledge."""
+    """Exclude fenced examples without joining surrounding text."""
     fence = None
     for line in content.splitlines():
         marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
@@ -347,15 +377,21 @@ def unfenced_lines(content):
             if (marker and marker.group(1)[0] == fence[0] and
                     len(marker.group(1)) >= len(fence) and not marker.group(2).strip()):
                 fence = None
+            yield ""
             continue
         if marker:
             fence = marker.group(1)
+            yield ""
             continue
         yield line
 
 
 def registration_targets(content, nested=False):
-    """Nested registries have one unfenced ## Spaces section, not related links."""
+    """Leading wikilinks register spaces: all MAP sections, only ## Spaces in parents.
+
+    Fragments/labels still register; use ordinary Markdown links for other navigation.
+    Fenced examples are excluded.
+    """
     targets, sections = [], 0
     active = not nested
     for line in unfenced_lines(content):
@@ -448,6 +484,7 @@ def check(staged_view=False):
                 "consider reflect at the next useful boundary — no forced trimming or "
                 "repeated review of unchanged content"
             )
+        memory = "\n".join(unfenced_lines(memory))
         headings = [(m.start(), m.group(1).strip()) for m in re.finditer(r"^## (.+?)\s*$", memory, re.MULTILINE)]
         seen = {}
         for pos, title in headings:
@@ -464,7 +501,7 @@ def check(staged_view=False):
                 problems.append("MEMORY.md headings must be ordered: Focus, then Open threads")
             later = [pos for pos, _ in headings if pos > threads_at]
             block = memory[threads_at:min(later) if later else len(memory)]
-            bullets = re.findall(r"^- .*(?:\n(?!- |## |\s*$).*)*", block, re.MULTILINE)  # an item runs to the next bullet, heading or blank line
+            bullets = re.findall(r"^[-*+] .*(?:\n(?![-*+] |## |\s*$).*)*", block, re.MULTILINE)  # an item runs to the next bullet, heading or blank line
             if len(bullets) > THREADS_MAX:
                 problems.append(f"MEMORY.md has {len(bullets)} open threads; maximum is {THREADS_MAX}")
             for bullet in bullets:
@@ -484,6 +521,7 @@ def check(staged_view=False):
         legacy = [rel for rel in paths if not is_space_path(rel)]
         if len(legacy) > 1 and basename not in RESERVED:
             problems.append(f"duplicate Markdown basename {basename}.md: {', '.join(legacy)}")
+    # Check wikilinks even in fences; space assets and CHANGELOG history are excluded.
     for rel, content in canonical.items():
         if Path(rel).name == "CHANGELOG.md":
             continue
@@ -520,6 +558,7 @@ def check(staged_view=False):
             elif registry != MAP_FILE:
                 problems.append(f"registry entry is not a direct child space in {registry}: {rel}")
         registrations[registry] = resolved
+    map_structure = "\n".join(unfenced_lines(documents.get(MAP_FILE, "")))
     for rel in canonical:
         if is_space_path(rel):
             registry = space_registry(rel)
@@ -534,7 +573,7 @@ def check(staged_view=False):
             # Retain the original exact spelling: section/display links are navigation,
             # not additional legacy registrations.
             basename = re.escape(Path(rel).stem)
-            count = len(re.findall(rf"^- \[\[{basename}\]\]", documents[MAP_FILE], re.MULTILINE))
+            count = len(re.findall(rf"^- \[\[{basename}\]\]", map_structure, re.MULTILINE))
         kind = "space" if is_space_path(rel) else "topic"
         if count == 0:
             problems.append(f"{kind} not registered in {registry}: {rel}")
@@ -552,6 +591,7 @@ def check(staged_view=False):
     if staged_error:
         problems.append(f"cannot inspect staged changes: {staged_error}")
     else:
+        # All space changes; only managed Markdown elsewhere. Presence does not prove a meaningful outcome.
         staged_managed = {p for p in staged
                           if (is_managed_path(p) or is_space_path(p)) and p != "CHANGELOG.md"}
         if staged_managed and "CHANGELOG.md" not in staged:

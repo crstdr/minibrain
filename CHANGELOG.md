@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fix prospective-commit checks for intent-to-add placeholders and hidden-change Git flags; count all Markdown thread markers and exclude fenced examples from structural counts. Add focused helper regressions.
+- Reduce `docs/` to setup: move installation checks there and helper conventions into the script; remove duplicate growth/space guidance and historical test-run prose. Keep runtime safeguards and update links together.
+
 - Consolidate copyable files into `starter/` with installed filenames, adoption fields, local skills and `tools/minibrain.py`; add the approved terse operating blocks and writer bindings, make ≥150 memory lines a reflection advisory, and simplify onboarding by removing duplicate documentation. Existing installations remain unchanged.
 
 - Clarify onboarding with separate human/agent README routes, ordered setup reading and an explicit adaptation-preserving upgrade path; keep installation guidance separate from the concise local operating contract.

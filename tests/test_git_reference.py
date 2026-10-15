@@ -98,6 +98,92 @@ class GitReferenceTests(unittest.TestCase):
         self.assertEqual(self.git("status", "--porcelain").stdout, before)
         self.assertEqual(self.git("rev-parse", "HEAD").stdout, head)
 
+    def test_intent_to_add_is_not_committed_but_a_staged_empty_file_is(self):
+        self.write("topics/New.md", "# New\n")
+        self.write("MAP.md", "- [[Project]]\n- [[New]]\n")
+        self.stage_outcome()
+        self.git("add", "--", "MAP.md")
+        self.git("add", "-N", "--", "topics/New.md")
+        before = self.git("diff", "--cached", "--ita-visible-in-index").stdout
+        self.assertNotIn("PROBLEM", self.tool("check"))
+        self.assertIn("broken wikilink", self.tool("check", "--staged", expected=1))
+        self.assertEqual(before, self.git("diff", "--cached", "--ita-visible-in-index").stdout)
+        self.write("topics/New.md", "")
+        self.git("add", "--", "topics/New.md")
+        self.assertNotIn("PROBLEM", self.tool("check", "--staged"))
+
+    def test_deleted_then_intent_to_add_file_stays_out_of_prospective_commit(self):
+        self.stage_outcome()
+        self.git("rm", "--cached", "--", "topics/Project.md")
+        self.git("add", "-N", "--", "topics/Project.md")
+        self.assertNotIn("PROBLEM", self.tool("check"))
+        self.assertIn("broken wikilink", self.tool("check", "--staged", expected=1))
+
+    def test_intent_to_add_is_filtered_before_prospective_path_validation(self):
+        self.write("spaces/AGENTS.md", "# Not committed\n")
+        self.git("add", "-N", "--", "spaces/AGENTS.md")
+        self.assertNotIn("PROBLEM", self.tool("check", "--staged"))
+        self.assertIn("root-only", self.tool("check", expected=1))
+        self.stage_outcome()
+        self.git("add", "--", "spaces/AGENTS.md")
+        self.assertIn("root-only", self.tool("check", "--staged", expected=1))
+
+    def test_hidden_change_flags_fail_both_views_without_clearing_flags(self):
+        for flag in ("assume-unchanged", "skip-worktree"):
+            with self.subTest(flag=flag):
+                self.git("update-index", "--" + flag, "--", "topics/Project.md")
+                self.write("topics/Project.md", "# Changed but hidden\n")
+                before = self.git("ls-files", "-v").stdout
+                for args in (("check",), ("check", "--staged")):
+                    out = self.tool(*args, expected=1)
+                    self.assertIn("Git flags may hide unsaved changes: topics/Project.md", out)
+                self.assertEqual(before, self.git("ls-files", "-v").stdout)
+                self.git("update-index", "--no-" + flag, "--", "topics/Project.md")
+                self.assertNotIn("PROBLEM", self.tool("check"))
+
+    def test_mixed_thread_markers_count_as_separate_items_in_both_views(self):
+        self.stage_outcome()
+        for count in (12, 13):
+            memory = "## Focus\n## Open threads\n" + "".join(
+                "-*+"[i % 3] + " item\n  continuation\n" for i in range(count))
+            self.write("MEMORY.md", memory)
+            self.git("add", "--", "MEMORY.md")
+            for args in (("check",), ("check", "--staged")):
+                with self.subTest(count=count, args=args):
+                    out = self.tool(*args, expected=int(count > 12))
+                    self.assertEqual("13 open threads" in out, count > 12)
+                    self.assertNotIn("thread over 400 characters", out)
+
+    def test_fenced_memory_examples_do_not_count_but_raw_lines_and_links_do(self):
+        self.stage_outcome()
+        for fence in ("```", "~~~~"):
+            with self.subTest(fence=fence):
+                memory = ("## Focus\n## Open threads\n- real\n" + fence + "markdown\n"
+                          "## Open threads\n" + "- example\n" * 13 + fence + "\n")
+                memory += "\n" * (150 - len(memory.splitlines()))
+                self.write("MEMORY.md", memory)
+                self.git("add", "--", "MEMORY.md")
+                for args in (("check",), ("check", "--staged")):
+                    out = self.tool(*args)
+                    self.assertIn("MEMORY.md has 150 lines", out)
+                    self.assertNotIn("PROBLEM", out)
+                self.write("MEMORY.md", memory + fence + "\n[[Missing]]\n" + fence + "\n")
+                self.git("add", "--", "MEMORY.md")
+                for args in (("check",), ("check", "--staged")):
+                    self.assertIn("broken wikilink", self.tool(*args, expected=1))
+
+    def test_fenced_legacy_map_examples_neither_register_nor_duplicate_topics(self):
+        self.stage_outcome()
+        for fence in ("```", "~~~~"):
+            for real in (True, False):
+                with self.subTest(fence=fence, real=real):
+                    sample = fence + "markdown\n- [[Project]]\n" + fence + "\n"
+                    self.write("MAP.md", ("- [[Project]]\n" if real else "") + sample)
+                    self.git("add", "--", "MAP.md")
+                    for args in (("check",), ("check", "--staged")):
+                        out = self.tool(*args, expected=int(not real))
+                        self.assertEqual("not registered" in out, not real)
+
     def test_a5_topic_requires_staged_changelog_then_one_commit(self):
         self.write("topics/Project.md", "# Project\n\n## Current status\nChanged.\n")
         self.git("add", "--", "topics/Project.md")

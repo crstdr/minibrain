@@ -47,7 +47,7 @@ class AdoptionGuidanceTests(unittest.TestCase):
         self.assertEqual(len(items), 4)
         for item, destination in ((items[0], "../starter/AGENTS.md"),
                                   (items[1], "../starter/.agents/skills/reflect/SKILL.md"),
-                                  (items[3], "acceptance.md")):
+                                  (items[3], "#verify-the-installation")):
             self.assertIn(destination, re.findall(r"\[[^\]]+\]\(([^)]+)\)", item))
         self.assertIn("Applicable references", items[2])
         self.assertTrue(section(setup, "## Upgrading").strip())
@@ -137,8 +137,10 @@ class AdoptionGuidanceTests(unittest.TestCase):
         self.assertIn("unlock <issued-label>", writers)
         self.assertNotIn("## Shared writers", self.core)
         self.assertEqual(self.core.count("<shared_writers>"), 1)
-        acceptance = (ROOT / "docs/acceptance.md").read_text()
-        self.assertIn("On disposable data", section(acceptance, "## Shared writers"))
+        setup = (ROOT / "docs/setup.md").read_text()
+        acceptance = section(setup, "## Verify the installation")
+        self.assertIn("Inject faults only into disposable copies", acceptance)
+        self.assertIn("Shared writers, if used", acceptance)
 
     def test_starter_wikilinks_and_anchors_resolve_locally(self):
         for source in (ROOT / "starter").rglob("*.md"):

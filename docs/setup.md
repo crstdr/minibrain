@@ -6,8 +6,8 @@ Read this guide; adapt the contents of [starter/](../starter/AGENTS.md) into the
 
 1. [AGENTS.md](../starter/AGENTS.md) — operating blocks, local rules and procedures.
 2. [Reflect](../starter/.agents/skills/reflect/SKILL.md) — locally retained maintenance procedure.
-3. Applicable references: [Git helper](git-reference.md), [memory spaces](spaces.md). Read these when choosing or changing those mechanisms, not at every startup.
-4. [Acceptance checks](acceptance.md) — plan and verify the final adapted installation.
+3. Applicable references: [Git helper header](../starter/tools/minibrain.py). Read it when choosing or changing the Git mechanism, not at every startup.
+4. [Acceptance checks](#verify-the-installation) — plan and verify the final adapted installation.
 
 Existing minibrain? Start with [Upgrading](#upgrading).
 
@@ -39,21 +39,61 @@ The starter uses Git and Markdown, not a mandatory storage scheme. Other mechani
 
 ## 3. Save and verify
 
-Before `git init`, check for an enclosing repository; resolve integration rather than nesting accidentally. The helper supports a normal dedicated Git working copy, not linked worktrees or distributed sync. Never adopt a public code remote for private memory.
+Requires Git and Python 3.8+. Install the helper at `<brain>/tools/minibrain.py`; it locates the brain from that path.
 
-For a new Git brain, copy only chosen files (including hidden skills), adapt them, stage by name, inspect the complete staged diff/stat and run `python3 tools/minibrain.py check --staged`. Before the first commit only, `no commits yet` is expected; fix other problems, commit once and run `check` again. See [helper checks and limits](git-reference.md#exactly-what-the-tool-does).
+Before `git init`, check for an enclosing repository with `git rev-parse --show-toplevel`; distinguish “not a repository” from inspection failure. Resolve integration rather than nesting accidentally. The helper supports a normal dedicated Git working copy, not linked worktrees or distributed sync. Never adopt a public code remote for private memory.
 
-For existing brains, preserve knowledge and local adaptations. `MAP.md` is the starter spelling; retain legacy `Map.md` with a matching `MAP_FILE` setting, or agree a file/link migration. Case-only Git renames may need an intermediate name. Inspect newly managed paths before replacing an existing helper.
+For a new Git brain, copy only chosen files (including hidden skills), adapt them, stage by name, inspect the complete staged diff/stat and run `python3 tools/minibrain.py check --staged`. Before the first commit only, `no commits yet` and initial dirty/staged warnings are expected; fix other problems, commit once and run `check` again. See [helper header](../starter/tools/minibrain.py).
 
-Run applicable [acceptance checks](acceptance.md). Verify local links, hidden skill persistence, host loading, gate mirrors and actual read paths—not just file presence. Check that no unresolved adoption placeholders remain; `minibrain.py` does not check them. Report pass/fail/not-run, changed/preserved material, the local entrypoint and remaining decisions. Unfinished checks mean prepared, not fully accepted. No implicit push or new tool/service/data-access permission.
+For existing brains, preserve knowledge and local adaptations; see [Upgrading](#upgrading) for legacy paths and names.
+
+Run applicable [acceptance checks](#verify-the-installation). Check that no unresolved adoption placeholders remain; `minibrain.py` does not check them. Report changed/preserved material, the local entrypoint and remaining decisions. No implicit push or new tool/service/data-access permission.
+
+## Verify the installation
+
+Test the final local installation. Inject faults only into disposable copies.
+Fresh-session checks require a separate session without the setup conversation;
+compaction is not a fresh-session test.
+
+- Loading: verify the actual entrypoint, gate mirrors and local reflection
+  procedure; required skills and assets survive saving without the source checkout.
+  Judge gate use by outcomes, not recital or added ceremony.
+- Resume: from files alone, recover purpose, current work, every human wait
+  and next action within budget. Compare with sources, not just the index.
+  Preserve and report another writer's unfinished work.
+- Memory: find knowledge without an open thread; trace its evidence and
+  supersession. Distinguish current state, history, inference and unknowns.
+  Evidence dates, not save dates; sourced focus.
+- Saving: persist related knowledge, navigation, index and outcome together.
+  Check that incomplete staged saves, broken links, duplicate registrations
+  and thread overflow are detected.
+- Continuity: after restart, apply relevant lessons and revised permissions
+  with their conditions; retain decision owners and reopening conditions.
+- Reflection: retain explicit principles with scope; confirm inferred ones.
+  Make the smallest authorised improvement—or no change.
+- Spaces, if used: create, find, promote and extend one without losing
+  knowledge, links or attachments, or loading every descendant at startup.
+- Shared writers, if used: verify ownership, contention, release and scope
+  boundaries; agents must honour refusals. Otherwise retain one writer.
+  Replacement waits for predecessor; cross-area closure reads all owners' sources;
+  attribute saves.
+- Upgrades: preserve user knowledge, principles and local adaptations;
+  record the source revision and approved differences.
+
+Report host, revision and pass / fail / not run per applicable check;
+describe observed equivalents for adapted mechanisms. Unfinished checks
+mean partial acceptance. Structural checks do not prove agent compliance
+or comparative benefit.
 
 ## Upgrading
 
 1. Read the destination's instructions and adoption record. Obtain upgrade authority; preserve unfinished work and keep other writers read-only during protocol changes.
 2. Compare the adopted source, proposed revision and current local rules, skills and helper configuration. Read this guide and the changed source files. If the old source or uncommitted base is unavailable, disclose that limit.
-3. Preserve user knowledge, principles and adaptations; resolve consequential conflicts with the user. A new upstream version grants no authority to migrate, install or publish.
+3. Preserve user knowledge, principles and adaptations; resolve consequential conflicts with the user. Inspect newly managed paths before replacing the helper. A new upstream version grants no authority to migrate, install or publish.
 4. Verify the final local result and loading paths, then record the new adopted source and changes. All writers reload before overlap resumes.
+
+Legacy root notes and `topics/` remain supported; folder-space features apply only under `spaces/`. Retain `Map.md` with a matching `MAP_FILE` setting, or agree a file/link migration; case-only renames may need an intermediate name. Existing installations may retain `kb.py`; rename only during an authorised upgrade and update command references together.
 
 ## Implementation limits
 
-Instructions and structural tests do not prove agent compliance, semantic completeness, confidentiality or cross-host compatibility. No scheduler, autonomous runtime, encryption or distributed lock is supplied. Use the [verification record](acceptance.md) for observed results.
+Instructions and structural tests do not prove agent compliance, semantic completeness, confidentiality or cross-host compatibility. No scheduler, autonomous runtime, encryption or distributed lock is supplied.
