@@ -2,7 +2,7 @@
 
 A **memory space** is a named scope of knowledge with a clear purpose and one authoritative entrypoint. It can be one Markdown note or a folder whose index leads to the knowledge it owns. Size and shape change without changing the principle: one home per claim, current state distinct from history, and responsibilities still visible when the session resumes.
 
-The short `<primitive_spaces>` block in the [operating contract](../starter/instructions.md#memory-spaces) defines the agent's habit. Keep it with the adopted core instructions, not copied into every space. This page and the [Git/Markdown reference](../examples/git-markdown/README.md) provide concrete inspiration, not a compulsory stack or schema.
+The short `<spaces>` block in the [operating contract](../starter/AGENTS.md) defines the agent's habit. Keep it with the adopted core instructions, not copied into every space. This page and the [Git/Markdown reference](git-reference.md) provide concrete inspiration, not a compulsory stack or schema.
 
 ## “Create a memory space for X”
 
@@ -16,7 +16,7 @@ The short `<primitive_spaces>` block in the [operating contract](../starter/inst
 ```text
 AGENTS.md                         one root operating contract/gate
 MEMORY.md                         root responsibilities and startup budget
-Map.md                            top-level discovery
+MAP.md                            top-level discovery
 CHANGELOG.md                      coherent outcomes for the whole brain
 spaces/
   Garden.md                       one small space
@@ -40,7 +40,7 @@ Promoting `spaces/Garden.md` into `spaces/Garden/index.md` can be routine growth
 
 Register each space once in its parent navigation; related links are not additional knowledge owners. Within an indexed folder, each canonical child—including a separate history note—needs navigation. Never relabel canonical knowledge as an asset just to satisfy a checker.
 
-The [Git reference](../examples/git-markdown/README.md#example-local-layout) owns exact path, reserved-name and registration syntax. Its root Map treats every leading space-link bullet as a registration; child indexes register only under `## Spaces`. Use its documented non-owning links for related navigation. Other storage mechanisms preserve discovery and ownership without copying those spellings.
+The [Git reference](git-reference.md#layout-and-navigation) owns exact path, reserved-name and registration syntax. Its root Map treats every leading space-link bullet as a registration; child indexes register only under `## Spaces`. Use its documented non-owning links for related navigation. Other storage mechanisms preserve discovery and ownership without copying those spellings.
 
 ## Attachments are supporting evidence, not instructions
 

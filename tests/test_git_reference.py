@@ -14,7 +14,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-HELPER = Path(__file__).resolve().parents[1] / "examples/git-markdown/tools/kb.py"
+HELPER = Path(__file__).resolve().parents[1] / "starter/tools/minibrain.py"
 
 
 @unittest.skipUnless(shutil.which("git"), "Git is required for the Git reference")
@@ -33,10 +33,10 @@ class GitReferenceTests(unittest.TestCase):
         content = {
             "AGENTS.md": "# Synthetic instructions\n",
             "MEMORY.md": "# Memory\n\n## Focus\n\nSynthetic fixture.\n\n## Open threads\n\n",
-            "Map.md": "# Map\n\n- [[Project]] — synthetic state.\n",
+            "MAP.md": "# Map\n\n- [[Project]] — synthetic state.\n",
             "CHANGELOG.md": "# Changelog\n\n2026-01-01 - Created synthetic fixture.\n",
             "topics/Project.md": "# Project\n\n## Current status\n\nSynthetic.\n\n## History\n",
-            "tools/kb.py": HELPER.read_text(),
+            "tools/minibrain.py": HELPER.read_text(),
         }
         for name, text in content.items():
             self.write(name, text)
@@ -59,7 +59,7 @@ class GitReferenceTests(unittest.TestCase):
         return r
 
     def tool(self, *args, expected=0):
-        r = subprocess.run([sys.executable, str(self.root / "tools/kb.py"), *args],
+        r = subprocess.run([sys.executable, str(self.root / "tools/minibrain.py"), *args],
                            env=self.env, text=True, capture_output=True, timeout=15)
         self.assertEqual(r.returncode, expected, r.stdout + r.stderr)
         return r.stdout
@@ -68,7 +68,28 @@ class GitReferenceTests(unittest.TestCase):
         out = self.tool("lock", seat)
         match = re.search(r"lock acquired: ([A-Za-z0-9_-]+/[0-9a-f]+)", out)
         self.assertIsNotNone(match, out)
+        self.assertIn(f"tools/minibrain.py unlock {match.group(1)}", out)
         return match.group(1)
+
+    def test_map_case_requires_an_explicit_legacy_binding(self):
+        # Two steps work on case-insensitive filesystems too; the helper uses
+        # exact inventory names rather than relying on Path.exists casing.
+        self.git("mv", "MAP.md", "temporary-map.md")
+        self.git("mv", "temporary-map.md", "Map.md")
+        self.write("CHANGELOG.md", "# Changelog\n\n2026-01-02 - Use the legacy map spelling.\n")
+        self.git("add", "--", "CHANGELOG.md")
+        out = self.tool("check", expected=1)
+        self.assertIn("MAP.md", out)
+        helper = (self.root / "tools/minibrain.py").read_text()
+        self.write("tools/minibrain.py", helper.replace('MAP_FILE = "MAP.md"', 'MAP_FILE = "Map.md"'))
+        self.assertNotIn("PROBLEM:", self.tool("check"))
+
+    def test_cli_usage_names_the_installed_helper(self):
+        for args in (("unknown",), ("check", "--unknown"), ("lock",), ("unlock",)):
+            with self.subTest(args=args):
+                out = self.tool(*args, expected=2)
+                self.assertIn("usage: python3 tools/minibrain.py", out)
+                self.assertNotIn("kb.py", out)
 
     def test_check_is_clean_and_read_only(self):
         before = self.git("status", "--porcelain").stdout
@@ -96,9 +117,66 @@ class GitReferenceTests(unittest.TestCase):
         self.assertIn("broken wikilink", out)
         self.assertIn("13 open threads", out)
 
-    def test_memory_line_cap(self):
-        self.write("MEMORY.md", "# Memory\n## Focus\n## Open threads\n" + "\n" * 150)
-        self.assertIn("exceeds 150", self.tool("check", expected=1))
+    def memory_with_lines(self, count):
+        return "# Memory\n## Focus\n## Open threads\n" + "\n" * (count - 3)
+
+    def test_memory_review_threshold_is_advisory_in_both_views(self):
+        self.stage_outcome()
+        for count in (149, 150, 151, 200):
+            memory = self.memory_with_lines(count)
+            self.assertEqual(len(memory.splitlines()), count)
+            self.write("MEMORY.md", memory)
+            self.git("add", "--", "MEMORY.md")
+            before = self.git("diff", "--cached").stdout
+            for args in (("check",), ("check", "--staged")):
+                with self.subTest(lines=count, args=args):
+                    out = self.tool(*args)
+                    self.assertNotIn("PROBLEM:", out)
+                    if count >= 150:
+                        self.assertIn(f"warning: MEMORY.md has {count} lines", out)
+                        self.assertIn("review threshold: 150", out)
+                        self.assertIn("consider reflect at the next useful boundary", out)
+                    else:
+                        self.assertNotIn("review threshold", out)
+            self.assertEqual((self.root / "MEMORY.md").read_text(), memory)
+            self.assertEqual(self.git("diff", "--cached").stdout, before)
+
+    def test_memory_review_uses_the_requested_view(self):
+        self.stage_outcome()
+        for staged_count, working_count in ((150, 149), (149, 150)):
+            with self.subTest(staged=staged_count, working=working_count):
+                self.write("MEMORY.md", self.memory_with_lines(staged_count))
+                self.git("add", "--", "MEMORY.md")
+                self.write("MEMORY.md", self.memory_with_lines(working_count))
+                self.assertEqual("review threshold" in self.tool("check"), working_count >= 150)
+                self.assertEqual("review threshold" in self.tool("check", "--staged"), staged_count >= 150)
+
+    def test_memory_review_warning_does_not_hide_real_errors(self):
+        memory = "# Memory\n## Focus\n[[Nowhere]]\n## Open threads\n" + "- item\n" * 13
+        memory += "\n" * (150 - len(memory.splitlines()))
+        self.write("MEMORY.md", memory)
+        self.stage_outcome()
+        self.git("add", "--", "MEMORY.md")
+        for args in (("check",), ("check", "--staged")):
+            with self.subTest(args=args):
+                out = self.tool(*args, expected=1)
+                self.assertIn("warning: MEMORY.md has 150 lines", out)
+                self.assertIn("broken wikilink", out)
+                self.assertIn("13 open threads", out)
+
+    def test_thread_limits_stay_independent_of_memory_review(self):
+        self.stage_outcome()
+        for length in (400, 401):
+            long_thread = "- " + "x" * (length - 2)
+            memory = "# Memory\n## Focus\n## Open threads\n" + "- item\n" * 11 + long_thread + "\n"
+            self.write("MEMORY.md", memory)
+            self.git("add", "--", "MEMORY.md")
+            for args in (("check",), ("check", "--staged")):
+                with self.subTest(length=length, args=args):
+                    out = self.tool(*args)
+                    self.assertNotIn("PROBLEM:", out)
+                    self.assertNotIn("review threshold", out)
+                    self.assertEqual("warning: thread over 400 characters" in out, length > 400)
 
     def test_duplicate_and_reordered_headings(self):
         self.write("MEMORY.md", "## Open threads\n## Focus\n## Focus\n")
@@ -107,9 +185,9 @@ class GitReferenceTests(unittest.TestCase):
         self.assertIn("must be ordered", out)
 
     def test_unregistered_and_duplicate_map_entries(self):
-        self.write("Map.md", "# Map\n")
+        self.write("MAP.md", "# Map\n")
         self.assertIn("not registered", self.tool("check", expected=1))
-        self.write("Map.md", "- [[Project]]\n- [[Project]]\n")
+        self.write("MAP.md", "- [[Project]]\n- [[Project]]\n")
         self.assertIn("registered 2 times", self.tool("check", expected=1))
 
     def test_duplicate_supporting_basename(self):
@@ -120,7 +198,7 @@ class GitReferenceTests(unittest.TestCase):
     def test_ignored_managed_topic_is_rejected(self):
         self.write(".gitignore", "/topics/Hidden.md\n")
         self.write("topics/Hidden.md", "# Hidden\n")
-        self.write("Map.md", "- [[Project]]\n- [[Hidden]]\n")
+        self.write("MAP.md", "- [[Project]]\n- [[Hidden]]\n")
         self.assertIn("managed Markdown is ignored", self.tool("check", expected=1))
 
     def test_staged_ignore_policy_cannot_be_hidden_by_later_working_edit(self):
@@ -239,7 +317,7 @@ class GitReferenceTests(unittest.TestCase):
     def test_nested_space_ancestor_ignore_file_is_relevant(self):
         self.add_spaces()
         self.stage_outcome()
-        self.git("add", "--", "Map.md", "spaces")
+        self.git("add", "--", "MAP.md", "spaces")
         self.write("spaces/Garden/spaces/.gitignore", "Budget.md\n")
         out = self.tool("check", "--staged", expected=1)
         self.assertIn("cannot validate staged ignore rules: spaces/Garden/spaces/.gitignore", out)
@@ -393,7 +471,7 @@ class GitReferenceTests(unittest.TestCase):
             self.root = old
 
     def load_helper(self):
-        spec = importlib.util.spec_from_file_location("synthetic_kb", self.root / "tools/kb.py")
+        spec = importlib.util.spec_from_file_location("synthetic_minibrain", self.root / "tools/minibrain.py")
         helper = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(helper)
         return helper
@@ -410,10 +488,10 @@ class GitReferenceTests(unittest.TestCase):
 
     def test_staged_check_cannot_resolve_an_untracked_topic(self):
         self.write("topics/New.md", "# New\n")
-        self.write("Map.md", "- [[Project]]\n- [[New]]\n")
+        self.write("MAP.md", "- [[Project]]\n- [[New]]\n")
         self.write("MEMORY.md", "## Focus\n[[New]]\n## Open threads\n")
         self.stage_outcome()
-        self.git("add", "--", "Map.md", "MEMORY.md")
+        self.git("add", "--", "MAP.md", "MEMORY.md")
         before = self.git("diff", "--cached").stdout
         self.assertNotIn("PROBLEM", self.tool("check"))
         self.assertIn("broken wikilink", self.tool("check", "--staged", expected=1))
@@ -423,7 +501,7 @@ class GitReferenceTests(unittest.TestCase):
 
     def test_unstaged_map_cannot_mask_incomplete_index(self):
         self.write("topics/New.md", "# New\n")
-        self.write("Map.md", "- [[Project]]\n- [[New]]\n")
+        self.write("MAP.md", "- [[Project]]\n- [[New]]\n")
         self.stage_outcome()
         self.git("add", "--", "topics/New.md")
         self.assertNotIn("PROBLEM", self.tool("check"))
@@ -569,13 +647,13 @@ class GitReferenceTests(unittest.TestCase):
 
     def test_staged_rename_and_spaces_are_checked(self):
         self.git("mv", "topics/Project.md", "topics/Renamed topic.md")
-        self.write("Map.md", "- [[Renamed topic]]\n")
+        self.write("MAP.md", "- [[Renamed topic]]\n")
         self.stage_outcome()
-        self.git("add", "--", "Map.md")
+        self.git("add", "--", "MAP.md")
         self.assertNotIn("PROBLEM", self.tool("check", "--staged"))
 
     def add_spaces(self):
-        self.write("Map.md", "# Map\n- [[Project]]\n- [[spaces/Garden/index]]\n- [[spaces/Travel/index.md|Travel]]\n")
+        self.write("MAP.md", "# Map\n- [[Project]]\n- [[spaces/Garden/index]]\n- [[spaces/Travel/index.md|Travel]]\n")
         for name in ("Garden", "Travel"):
             self.write(f"spaces/{name}/index.md", f"# {name}\n\n## Current status\nSynthetic.\n\n## Spaces\n- [[spaces/{name}/spaces/Budget]]\n")
             self.write(f"spaces/{name}/spaces/Budget.md", "# Budget\nSynthetic.\n")
@@ -584,7 +662,7 @@ class GitReferenceTests(unittest.TestCase):
         self.add_spaces()
         self.assertNotIn("PROBLEM", self.tool("check"))
         self.stage_outcome()
-        self.git("add", "--", "Map.md", "spaces/Garden/index.md", "spaces/Garden/spaces/Budget.md",
+        self.git("add", "--", "MAP.md", "spaces/Garden/index.md", "spaces/Garden/spaces/Budget.md",
                  "spaces/Travel/index.md", "spaces/Travel/spaces/Budget.md")
         self.assertNotIn("PROBLEM", self.tool("check", "--staged"))
 
@@ -596,7 +674,7 @@ class GitReferenceTests(unittest.TestCase):
     def test_spaces_require_the_correct_parent_registry(self):
         self.add_spaces()
         self.write("spaces/Garden/index.md", "# Garden\n## Spaces\n")
-        with (self.root / "Map.md").open("a") as out:
+        with (self.root / "MAP.md").open("a") as out:
             out.write("- [[spaces/Garden/spaces/Budget]]\n")
         out = self.tool("check", expected=1)
         self.assertIn("outside its parent index", out)
@@ -632,20 +710,20 @@ class GitReferenceTests(unittest.TestCase):
         self.write("spaces/Garden/assets/source/spaces/index.md", "# Quoted example\n[[Not canonical]]\n")
         self.write("spaces/Garden/assets/source/spaces/assets.md", "# Quoted example\n")
         self.stage_outcome()
-        self.git("add", "--", "Map.md", "spaces")
+        self.git("add", "--", "MAP.md", "spaces")
         for args in [("check",), ("check", "--staged")]:
             self.assertNotIn("PROBLEM", self.tool(*args))
 
     def test_spaces_binary_only_change_requires_outcome(self):
         self.write("spaces/Photo/index.md", "# Photo\n")
-        self.write("Map.md", "- [[Project]]\n- [[spaces/Photo/index]]\n")
+        self.write("MAP.md", "- [[Project]]\n- [[spaces/Photo/index]]\n")
         self.write("spaces/Photo/assets/image.bin", "synthetic non-secret asset")
         self.git("add", "--", "spaces/Photo/assets/image.bin")
         self.assertIn("requires staged CHANGELOG", self.tool("check", expected=1))
 
     def test_spaces_do_not_clone_root_controls(self):
         self.add_spaces()
-        for filename in ("AGENTS.md", "CLAUDE.md", "MEMORY.md", "Map.md", "CHANGELOG.md"):
+        for filename in ("AGENTS.md", "CLAUDE.md", "MEMORY.md", "MAP.md", "CHANGELOG.md"):
             with self.subTest(filename=filename):
                 rel = f"spaces/Garden/assets/{filename}"
                 self.write(rel, "# Must not be auto-loaded\n")
@@ -662,7 +740,7 @@ class GitReferenceTests(unittest.TestCase):
     def test_spaces_prospective_view_cannot_use_unstaged_indexes(self):
         self.add_spaces()
         self.stage_outcome()
-        self.git("add", "--", "Map.md")
+        self.git("add", "--", "MAP.md")
         self.assertNotIn("PROBLEM", self.tool("check"))
         self.assertIn("broken wikilink", self.tool("check", "--staged", expected=1))
 
@@ -685,7 +763,7 @@ class GitReferenceTests(unittest.TestCase):
 
     def test_spaces_promote_note_to_folder_with_updated_references(self):
         self.write("spaces/Garden.md", "# Garden\n## Current status\nSynthetic.\n")
-        self.write("Map.md", "- [[Project]]\n- [[spaces/Garden]]\n")
+        self.write("MAP.md", "- [[Project]]\n- [[spaces/Garden]]\n")
         self.write("MEMORY.md", "# Memory\n## Focus\n[[spaces/Garden#Current status]]\n## Open threads\n")
         self.assertNotIn("PROBLEM", self.tool("check"))
         folder = self.root / "spaces/Garden"
@@ -693,21 +771,21 @@ class GitReferenceTests(unittest.TestCase):
         (self.root / "spaces/Garden.md").rename(folder / "index.md")
         # A logical space link survives note-to-folder growth unchanged.
         self.assertNotIn("PROBLEM", self.tool("check"))
-        self.write("Map.md", "- [[Project]]\n- [[spaces/Garden/index]]\n")
+        self.write("MAP.md", "- [[Project]]\n- [[spaces/Garden/index]]\n")
         self.write("MEMORY.md", "# Memory\n## Focus\n[[spaces/Garden/index#Current status]]\n## Open threads\n")
         self.assertNotIn("PROBLEM", self.tool("check"))
 
     def test_spaces_reject_note_and_folder_collision(self):
         self.add_spaces()
         self.write("spaces/Garden.md", "# Conflicting home\n")
-        self.write("Map.md", "- [[Project]]\n- [[spaces/Garden]]\n- [[spaces/Travel]]\n")
+        self.write("MAP.md", "- [[Project]]\n- [[spaces/Garden]]\n- [[spaces/Travel]]\n")
         out = self.tool("check", expected=1)
         self.assertIn("both note and folder entrypoints", out)
         self.assertIn("ambiguous wikilink", out)
 
     def test_spaces_require_qualified_links_even_before_ambiguity(self):
         self.write("spaces/Garden.md", "# Garden\n")
-        self.write("Map.md", "- [[Project]]\n- [[Garden]]\n")
+        self.write("MAP.md", "- [[Project]]\n- [[Garden]]\n")
         self.assertIn("needs a qualified path", self.tool("check", expected=1))
 
     def test_spaces_do_not_collide_with_legacy_or_supporting_names(self):
@@ -715,22 +793,22 @@ class GitReferenceTests(unittest.TestCase):
         self.write("archive/Retired/index.md", "# Archived supporting index\n")
         self.write("spaces/Garden/assets/Project.md", "# Quoted source\n")
         self.write("spaces/Project.md", "# New qualified space\n")
-        with (self.root / "Map.md").open("a") as out:
+        with (self.root / "MAP.md").open("a") as out:
             out.write("- [[spaces/Project]]\n")
         self.stage_outcome()
-        self.git("add", "--", "Map.md", "spaces", "archive/Retired/index.md")
+        self.git("add", "--", "MAP.md", "spaces", "archive/Retired/index.md")
         for args in [("check",), ("check", "--staged")]:
             self.assertNotIn("PROBLEM", self.tool(*args))
 
     def test_legacy_section_navigation_is_not_a_second_registration(self):
-        self.write("Map.md", "- [[Project]]\n## Related sections\n- [[Project#Current status]]\n- [[Project|Other label]]\n")
+        self.write("MAP.md", "- [[Project]]\n## Related sections\n- [[Project#Current status]]\n- [[Project|Other label]]\n")
         self.stage_outcome()
-        self.git("add", "--", "Map.md")
+        self.git("add", "--", "MAP.md")
         for args in [("check",), ("check", "--staged")]:
             self.assertNotIn("PROBLEM", self.tool(*args))
-        with (self.root / "Map.md").open("a") as out:
+        with (self.root / "MAP.md").open("a") as out:
             out.write("- [[Project]]\n")
-        self.git("add", "--", "Map.md")
+        self.git("add", "--", "MAP.md")
         for args in [("check",), ("check", "--staged")]:
             self.assertIn("registered 2 times", self.tool(*args, expected=1))
 
@@ -754,7 +832,7 @@ class GitReferenceTests(unittest.TestCase):
     def test_spaces_control_filename_guard_precedes_extension_filtering(self):
         self.add_spaces()
         self.stage_outcome()
-        self.git("add", "--", "Map.md", "spaces")
+        self.git("add", "--", "MAP.md", "spaces")
         for folder in ("spaces/Garden", "spaces/Garden/assets"):
             for name in ("agents.md", "AGENTS.MD", "Claude.md", "CLAUDE.MD", "memory.MD", "map.md", "changelog.MD"):
                 with self.subTest(folder=folder, name=name):
@@ -775,7 +853,7 @@ class GitReferenceTests(unittest.TestCase):
         with (self.root / "spaces/Garden/index.md").open("a") as out:
             out.write("\n## Spaces\n- [[spaces/Garden/spaces/Budget]]\n")
         self.stage_outcome()
-        self.git("add", "--", "Map.md", "spaces")
+        self.git("add", "--", "MAP.md", "spaces")
         for args in [("check",), ("check", "--staged")]:
             self.assertIn("multiple active ## Spaces sections", self.tool(*args, expected=1))
 
@@ -785,7 +863,7 @@ class GitReferenceTests(unittest.TestCase):
             with self.subTest(fence=fence):
                 self.write("spaces/Garden/index.md", f"# Garden\n## History\n{fence}markdown\n## Spaces\n- [[spaces/Garden/spaces/Budget]]\n{fence}\n")
                 self.stage_outcome()
-                self.git("add", "--", "Map.md", "spaces")
+                self.git("add", "--", "MAP.md", "spaces")
                 for args in [("check",), ("check", "--staged")]:
                     self.assertIn("not registered", self.tool(*args, expected=1))
 
@@ -793,7 +871,7 @@ class GitReferenceTests(unittest.TestCase):
         self.add_spaces()
         self.write("spaces/Garden/index.md", "# Garden\n```markdown\n## Spaces\n- [[spaces/Garden/spaces/Budget]]\n```\n## Spaces\n- [[spaces/Garden/spaces/Budget]]\n## Related\n- [[spaces/Garden/spaces/Budget]]\n")
         self.stage_outcome()
-        self.git("add", "--", "Map.md", "spaces")
+        self.git("add", "--", "MAP.md", "spaces")
         for args in [("check",), ("check", "--staged")]:
             self.assertNotIn("PROBLEM", self.tool(*args))
 
@@ -803,14 +881,14 @@ class GitReferenceTests(unittest.TestCase):
         with (self.root / "spaces/Garden/index.md").open("a") as out:
             out.write("- [[Project]]\n- [[spaces/Garden/assets/Excerpt.md]]\n")
         self.stage_outcome()
-        self.git("add", "--", "Map.md", "spaces")
+        self.git("add", "--", "MAP.md", "spaces")
         for args in [("check",), ("check", "--staged")]:
             self.assertIn("not a direct child space", self.tool(*args, expected=1))
 
     def test_spaces_reserve_structural_names_before_promotion(self):
         self.add_spaces()
         self.stage_outcome()
-        self.git("add", "--", "Map.md", "spaces")
+        self.git("add", "--", "MAP.md", "spaces")
         for rel in ("spaces/assets.md", "spaces/spaces.md", "spaces/index.md", "spaces/assets/index.md", "spaces/Garden/spaces/assets/index.md", "spaces/Garden/spaces/index.md", "spaces/Garden/assets.md"):
             with self.subTest(rel=rel):
                 self.write(rel, "# Reserved canonical name\n")
@@ -823,9 +901,9 @@ class GitReferenceTests(unittest.TestCase):
     def test_spaces_staged_promotion_needs_both_halves(self):
         text = "# Garden\n## Current status\nPreserved synthetic knowledge.\n"
         self.write("spaces/Garden.md", text)
-        self.write("Map.md", "- [[Project]]\n- [[spaces/Garden]]\n")
+        self.write("MAP.md", "- [[Project]]\n- [[spaces/Garden]]\n")
         self.stage_outcome()
-        self.git("add", "--", "Map.md", "spaces/Garden.md")
+        self.git("add", "--", "MAP.md", "spaces/Garden.md")
         self.git("commit", "-qm", "Synthetic space")
         (self.root / "spaces/Garden").mkdir()
         (self.root / "spaces/Garden.md").rename(self.root / "spaces/Garden/index.md")
@@ -835,7 +913,7 @@ class GitReferenceTests(unittest.TestCase):
         self.git("rm", "--cached", "-q", "--", "spaces/Garden.md")
         self.assertNotIn("PROBLEM", self.tool("check", "--staged"))
         self.assertEqual((self.root / "spaces/Garden/index.md").read_text(), text)
-        self.assertIn("[[spaces/Garden]]", (self.root / "Map.md").read_text())
+        self.assertIn("[[spaces/Garden]]", (self.root / "MAP.md").read_text())
 
     def test_spaces_staged_child_requires_staged_parent(self):
         self.add_spaces()

@@ -22,14 +22,14 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-MAP_FILE = "Map.md"
+MAP_FILE = "MAP.md"
 REQUIRED_FILES = ("AGENTS.md", "MEMORY.md", "CHANGELOG.md", MAP_FILE)
 MANAGED_DIRS = {"topics", "spaces"}  # legacy topics stay supported; root *.md is managed too
 RESERVED = {"AGENTS", "CLAUDE", "MEMORY", "CHANGELOG", Path(MAP_FILE).stem, "README"}
 ROOT_ONLY = {"AGENTS.md", "CLAUDE.md", "MEMORY.md", "CHANGELOG.md", MAP_FILE}
-MEMORY_MAX_LINES = 150
+MEMORY_REVIEW_LINES = 150  # advisory reflection threshold, not a cap
 THREADS_MAX = 12
-THREAD_SOFT_CHARS = 400     # warning only: a longer bullet hides reading cost from the line cap
+THREAD_SOFT_CHARS = 400     # warning only: line count alone hides long bullets' reading cost
 REQUIRE_LOCAL_REMOTES = False  # True: every Git remote must be an absolute filesystem path
 LOCK = ROOT / ".git" / "kb-writer.lock"
 NAME = re.compile(r"[A-Za-z][A-Za-z0-9_-]*\Z")  # lock takes a bare writer name; the tool issues the label
@@ -441,8 +441,13 @@ def check(staged_view=False):
 
     if "MEMORY.md" in documents:
         memory = documents["MEMORY.md"]
-        if len(memory.splitlines()) > MEMORY_MAX_LINES:
-            problems.append(f"MEMORY.md exceeds {MEMORY_MAX_LINES} lines")
+        line_count = len(memory.splitlines())
+        if line_count >= MEMORY_REVIEW_LINES:
+            warnings.append(
+                f"MEMORY.md has {line_count} lines (review threshold: {MEMORY_REVIEW_LINES}); "
+                "consider reflect at the next useful boundary — no forced trimming or "
+                "repeated review of unchanged content"
+            )
         headings = [(m.start(), m.group(1).strip()) for m in re.finditer(r"^## (.+?)\s*$", memory, re.MULTILINE)]
         seen = {}
         for pos, title in headings:
@@ -573,7 +578,7 @@ def lock(args):
     """Cooperative writer flag for concurrent writers; issues a fresh label per acquisition."""
     name = args[0].strip() if len(args) == 1 else ""
     if not NAME.fullmatch(name):
-        print("usage: python3 tools/kb.py lock <name>   e.g. lock assistant\n"
+        print("usage: python3 tools/minibrain.py lock <name>   e.g. lock assistant\n"
               "name: what the person calls this writer (no two writers share one). The tool issues\n"
               "a fresh label for this acquisition (assistant/<32 hex characters>); keep it for unlock.")
         return 2
@@ -616,13 +621,13 @@ def lock(args):
         print(f"REFUSED: cannot record acquisition ({error}); lock remains held. "
               "Preserve state and report to the person; do not treat this as successful acquisition.")
         return 1
-    print(f"lock acquired: {owner} — keep this label; release with: python3 tools/kb.py unlock {owner}")
+    print(f"lock acquired: {owner} — keep this label; release with: python3 tools/minibrain.py unlock {owner}")
     return 0
 
 
 def unlock(args):
     if len(args) != 1 or not args[0].strip() or (args[0].startswith("--") and args[0] != "--force"):
-        print("usage: python3 tools/kb.py unlock <issued-label> | unlock --force")
+        print("usage: python3 tools/minibrain.py unlock <issued-label> | unlock --force")
         return 2
     error = repository_error()
     if error:
@@ -636,13 +641,13 @@ def unlock(args):
     owner = "" if force else args[0].strip()
     if not force and not meta:
         print("REFUSED: the lock's owner is unreadable, so no label can prove whose it is.\n"
-              "Only the person overrides it, with: python3 tools/kb.py unlock --force")
+              "Only the person overrides it, with: python3 tools/minibrain.py unlock --force")
         return 1
     held = meta.get("owner", "(owner unreadable)")
     if not force and held != owner:
         print(f"REFUSED: the lock belongs to {held} (since {meta.get('at', '?')}), not {owner or '(no label)'}.\n"
               "Never remove another writer's lock: it may be a live session mid-checkpoint.\n"
-              "Only the person overrides it, with: python3 tools/kb.py unlock --force")
+              "Only the person overrides it, with: python3 tools/minibrain.py unlock --force")
         return 1
     if not release_lock():
         return 1
@@ -657,11 +662,11 @@ if __name__ == "__main__":
     cmd = argv[0] if argv else "check"
     if cmd == "check":
         if argv[1:] not in ([], ["--staged"]):
-            print("usage: python3 tools/kb.py check [--staged]")
+            print("usage: python3 tools/minibrain.py check [--staged]")
             sys.exit(2)
         sys.exit(check(staged_view=argv[1:] == ["--staged"]))
     handler = {"lock": lock, "unlock": unlock}.get(cmd)
     if handler is None:
-        print("usage: python3 tools/kb.py [check [--staged] | lock <name> | unlock <label> | unlock --force]")
+        print("usage: python3 tools/minibrain.py [check [--staged] | lock <name> | unlock <label> | unlock --force]")
         sys.exit(2)
     sys.exit(handler(argv[1:]))

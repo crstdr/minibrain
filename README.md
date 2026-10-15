@@ -22,12 +22,7 @@ Read this repository online or use a temporary checkout outside the destination;
 
 **Upgrading an existing minibrain:** first read its local instructions and adoption record, then follow [Upgrading](docs/setup.md#upgrading). Preserve user knowledge and local adaptations.
 
-The setup guide directs the reading order:
-
-1. [Operating contract](starter/instructions.md)—the enduring instructions to integrate locally.
-2. [Reflect](starter/skills/reflect/SKILL.md)—the maintenance procedure to install and bind locally.
-3. Applicable modules and implementation examples—only those needed for this installation, as directed by setup.
-4. [Acceptance checks](docs/acceptance.md)—verify the final local setup and report limitations.
+Copyable files live in [starter/](starter/AGENTS.md). Follow [Setup](docs/setup.md) for the reading order, adaptation and verification.
 
 After installation, use the **destination's local instructions**. This repository is the installation and upgrade source, not an everyday runtime dependency.
 

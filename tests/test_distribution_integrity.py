@@ -49,7 +49,7 @@ class DistributionLinkTests(unittest.TestCase):
         # Historical source accounts are prose; template snippets inside fences
         # and intentionally synthetic [[wikilinks]] are not installed targets.
         sources = [ROOT / "README.md", ROOT / "CONTRIBUTING.md"]
-        for folder in ("docs", "starter", "examples"):
+        for folder in ("docs", "starter"):
             sources.extend(sorted((ROOT / folder).rglob("*.md")))
         checked = 0
         for source in sources:
@@ -70,39 +70,75 @@ class DistributionLinkTests(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("git"), "Git is required for the copied-template smoke test")
 class CopiedTemplateSmokeTests(unittest.TestCase):
-    def test_readme_templates_form_a_valid_disposable_brain(self):
-        readme = (ROOT / "examples/git-markdown/README.md").read_text(encoding="utf-8")
-        files = {}
-        for name in ("MEMORY.md", "Map.md", "spaces/Project.md", "CHANGELOG.md"):
-            match = re.search(r"^### " + re.escape(name) + r"\n(?:(?!^### ).)*?^```markdown\n(.*?)^```",
-                              readme, re.MULTILINE | re.DOTALL)
-            self.assertIsNotNone(match, f"Missing concrete {name} template")
-            # This is deliberately synthetic test data, not a claim that an
-            # adopter may leave placeholders or invent a user's state.
-            content = re.sub(r"<[^>\n]+>", "Synthetic fixture", match[1])
-            files[name] = content.replace("YYYY-MM-DD", "2026-01-01")
-        bindings = re.search(r"^### Example local bindings\n.*?^```text\n(.*?)^```",
-                             readme, re.MULTILINE | re.DOTALL)
-        self.assertIsNotNone(bindings, "Missing filled local-binding example")
-        synthetic_bindings = re.sub(r"<[^>\n]+>", "Synthetic fixture", bindings[1])
-        core = (ROOT / "starter/instructions.md").read_text(encoding="utf-8")
-        files["AGENTS.md"], substitutions = re.subn(
-            r"```text\n.*?```", lambda match: "```text\n" + synthetic_bindings + "```",
-            core, count=1, flags=re.DOTALL,
-        )
-        self.assertEqual(substitutions, 1, "Missing runtime binding template")
-        files[".agents/skills/reflect/SKILL.md"] = (ROOT / "starter/skills/reflect/SKILL.md").read_text(encoding="utf-8")
-        files["tools/kb.py"] = (ROOT / "examples/git-markdown/tools/kb.py").read_text(encoding="utf-8")
+    def test_adapted_starter_forms_a_valid_disposable_brain(self):
+        source = ROOT / "starter"
+        files = [path.relative_to(source).as_posix() for path in source.rglob("*")
+                 if path.is_file() and not any(part == "__pycache__" for part in path.parts)
+                 and path.name != ".DS_Store" and path.suffix != ".pyc"]
+        self.assertIn(".agents/skills/reflect/SKILL.md", files)
+        self.assertIn("MAP.md", files)
+        self.assertIn("tools/minibrain.py", files)
+        self.assertNotIn("tools/kb.py", files)
+        self.assertFalse(any(path.endswith(".example") for path in files))
 
         env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
                    GIT_CONFIG_COUNT="2", GIT_CONFIG_KEY_0="maintenance.auto", GIT_CONFIG_VALUE_0="false",
                    GIT_CONFIG_KEY_1="gc.auto", GIT_CONFIG_VALUE_1="0")
         with tempfile.TemporaryDirectory(prefix="minibrain-copied-templates-") as directory:
             brain = Path(directory)
-            for name, content in files.items():
+            for name in files:
                 target = brain / name
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(content, encoding="utf-8")
+                shutil.copyfile(source / name, target)
+
+            # Synthetic adoption values belong in this fixture, not the starter.
+            # Evidence labels inside XML blocks and [[wikilinks]] are not fields.
+            fields = {
+                "user's intended outcomes and scope": "Maintain a synthetic project memory",
+                "delegated actions and conditions": "maintain this synthetic memory",
+                "decisions requiring approval": "scope changes, spending and publication",
+                "approved storage, backup, remote and search-index policy": "private local Git only; no remote, backup or search index",
+                "evidence date": "2026-01-01",
+                "current goal": "Choose the next synthetic task",
+                "area": "Synthetic memory",
+                "user-assigned seat": "TestWriter",
+                "assignment date": "2026-01-01",
+                "scope and overlap constraints": "One writer; helpers read-only",
+                "subject": "Next task",
+                "state": "WAITING on user",
+                "owner": "TestWriter",
+                "next action": "obtain the task choice",
+                "hold and reopening condition, or none": "await user choice; reopen on response",
+                "date": "2026-01-01",
+                "durable outcome": "Established synthetic memory; task choice awaits the user",
+                "current state, decisions and constraints": "The synthetic user has not chosen a task; no implementation is authorised",
+                "owner, next action, decision-maker and reopening condition where applicable": "TestWriter requests the user's task choice; reopen on response",
+                "ref or commit; note uncommitted source changes": "disposable test fixture; no published source revision claimed",
+                "adoption date": "2026-01-01",
+                "changes and reasons, or none": "synthetic values for packaging verification only",
+                "checks, results and limitations": "checks pending; no host-loading claim",
+                "durable decision or change; superseded state and effects on pending work, if any": "Synthetic user reserved the task choice; no previous decision superseded",
+            }
+            placeholder = re.compile(r"(?<!\[)\[([^\[\]\n]+)\](?![\](])")
+            seen = set()
+
+            def fill(match):
+                key = match[1]
+                self.assertIn(key, fields, "New adoption field needs an explicit fixture value")
+                seen.add(key)
+                return fields[key]
+
+            for path in brain.rglob("*.md"):
+                text = path.read_text(encoding="utf-8")
+                if path == brain / "AGENTS.md":
+                    opening, body = text.split("# Agent instructions", 1)
+                    text = opening + "# Agent instructions" + placeholder.sub(fill, body)
+                    self.assertFalse(placeholder.search(text.split("# Agent instructions", 1)[1]))
+                elif path != brain / "CLAUDE.md":
+                    text = placeholder.sub(fill, text)
+                    self.assertFalse(placeholder.search(text))
+                path.write_text(text, encoding="utf-8")
+            self.assertEqual(seen, set(fields), "Fixture values must match the actual starter fields")
 
             def run(*args, expected=0):
                 result = subprocess.run(args, cwd=brain, env=env, text=True,
@@ -110,21 +146,26 @@ class CopiedTemplateSmokeTests(unittest.TestCase):
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
                 return result.stdout
 
+            gate = (brain / "AGENTS.md").read_text().split("</orient>", 1)[0] + "</orient>\n"
+            self.assertEqual((brain / "CLAUDE.md").read_text(), gate + "\n@AGENTS.md\n")
+            self.assertIn("**[verified: source]**", (brain / "AGENTS.md").read_text())
+
             run("git", "init", "-q")
             run("git", "config", "user.name", "Synthetic Test")
             run("git", "config", "user.email", "test@example.invalid")
             run("git", "config", "commit.gpgsign", "false")
             run("git", "add", "--", *files)
-            initial = run(sys.executable, "tools/kb.py", "check", "--staged", expected=1)
+            initial = run(sys.executable, "tools/minibrain.py", "check", "--staged", expected=1)
             problems = [line for line in initial.splitlines() if line.startswith("PROBLEM:")]
             self.assertEqual(len(problems), 1, initial)
             self.assertIn("no commits yet", problems[0])
             run("git", "commit", "-qm", "Create synthetic copied-template brain")
-            reflection = ".agents/skills/reflect/SKILL.md"
-            run("git", "cat-file", "-e", "HEAD:" + reflection)
-            run("git", "check-ignore", "--no-index", "--", reflection, expected=1)
+            for name in ("reflect", "resume", "checkpoint"):
+                skill = f".agents/skills/{name}/SKILL.md"
+                run("git", "cat-file", "-e", "HEAD:" + skill)
+                run("git", "check-ignore", "--no-index", "--", skill, expected=1)
             for args in (("check",), ("check", "--staged")):
-                self.assertNotIn("PROBLEM:", run(sys.executable, "tools/kb.py", *args))
+                self.assertNotIn("PROBLEM:", run(sys.executable, "tools/minibrain.py", *args))
             self.assertEqual(run("git", "status", "--porcelain"), "")
 
 

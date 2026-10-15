@@ -1,6 +1,6 @@
 # Preserve capabilities; improve a named failure
 
-This is explanatory guidance, not a file to install as another operating contract. Ongoing maintenance duties live in the locally adopted contract and its bound reflect procedure. Preserve the original safeguards, not a tiny layout that postpones them. The [contract](../starter/instructions.md) owns the rules. These are illustrative choices, not mandatory stages.
+This is explanatory guidance, not a file to install as another operating contract. Ongoing maintenance duties live in the locally adopted contract and its bound reflect procedure. Preserve the original safeguards, not a tiny layout that postpones them. The [contract](../starter/AGENTS.md) owns the rules. These are illustrative choices, not mandatory stages.
 
 | Observed failure | Candidate change | Verify afterward |
 |---|---|---|
@@ -15,7 +15,7 @@ This is explanatory guidance, not a file to install as another operating contrac
 | Retrieval misses relevant knowledge | Improve pointers first, then permitted search/storage | Useful context without noise or authority confusion |
 | Archive upkeep has little benefit | Inspect retrieval needs and required traceability; consolidate | Preserve useful knowledge with less maintenance |
 
-A reference's 150-line / 12-thread budget is a starting choice, not universal. The obligation to bound startup and expose overflow remains.
+The reference uses a 150-line reflection threshold, not a line cap; its 12-thread cap remains. At ≥150 lines, consider `reflect` at the next useful boundary. Review relevance, navigation and startup cost—not count alone; no forced trimming or repeated review of unchanged content. These defaults are adaptable; keep startup useful and overflow visible.
 
 Recurring cap pressure is a reason to step back: is the index carrying history, is navigation failing, or is the budget wrong for the work? Do not merely trim forever or raise the cap to silence a check. Record any user-delegated maintenance authority, its limits and required verification in the local instructions. If budget adjustments are already authorised, change the local rule and corresponding checker together and verify that startup still exposes current responsibilities within a useful budget. Otherwise propose the change. Delegation is not permission to discard history, weaken safeguards or bypass the restructuring rule below.
 

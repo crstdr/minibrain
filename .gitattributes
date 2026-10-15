@@ -1,5 +1,5 @@
-# Stable LF for reviewed instruction assets and onboarding documentation.
-/starter/instructions.md text eol=lf
-/examples/git-markdown/CLAUDE.md.example text eol=lf
+# Stable LF for instruction blocks and onboarding documentation.
+/starter/AGENTS.md text eol=lf
+/starter/CLAUDE.md text eol=lf
+/starter/.agents/skills/*/SKILL.md text eol=lf
 /README.md text eol=lf
-/starter/environments/rpce.md text eol=lf
