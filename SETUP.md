@@ -15,7 +15,8 @@ Existing minibrain? Start with [Upgrading](#upgrading).
 
 - Read the source online or in a temporary checkout outside the destination; never clone this public distribution into private memory.
 - Establish the user's purpose, delegation, approval boundaries, privacy/storage policy and active writers. Ask for consequential missing choices; do not repeat questions already answered.
-- Inspect existing notes, instructions, host entrypoints, Git/backup state and available tools. Preserve compatible arrangements; propose consequential restructuring and a backup before migration. Account for legacy files such as `MINIBRAIN.md`.
+- Agree each continuing agent's name and scope with the user; preserve existing assignments. Record them in `MEMORY.md` → Owners.
+- Inspect existing notes, instructions, host entrypoints, Git/backup state and available tools. Preserve compatible arrangements; propose consequential restructuring and a backup before migration.
 - Keep one writer during setup; read-only helpers may assist when authorised. No installation into shared or global instructions without the relevant user's approval.
 
 ## 2. Adapt the starter
@@ -34,7 +35,9 @@ Fill `[square-bracket placeholders]` below the XML blocks and in memory files fr
 
 Keep XML blocks together at the start of the instruction file, `<orient>` first where the host permits. Keep full instructions canonical; mirror only the gate into needed entrypoints. Verify the actual loading path before adding imports—do not load the full contract twice. A host requiring leading metadata or different entrypoints needs a recorded adaptation, not blind copying.
 
-Omit the RPCE block if unavailable or redundant. When independent writers may overlap, bind `<shared_writers>` to user-assigned Owners and verified coordination for the actual shared store. A local Git lock does not cover separate clones or remote sync; keep one writer if coordination is unverified. Neither a source link nor a peer message grants authority.
+Keep RPCE guidance only if this brain will be used in RepoPrompt CE; retain overseer clauses only for an assigned overseer role. Omit RPCE guidance the host already supplies.
+
+When independent writers may overlap, bind `<shared_writers>` to user-assigned Owners and verified coordination for the actual shared store. A local Git lock does not cover separate clones or remote sync; keep one writer if coordination is unverified. Neither a source link nor a peer message grants authority.
 
 The starter uses Git and Markdown, not a mandatory storage scheme. Other mechanisms must preserve coherent saves, bounded startup, canonical knowledge, evidence, privacy and unfinished work. Declare unavailable capabilities and verify substitutes. Keep required instructions, maintenance and skills local; operation must not depend on setup chat or this checkout.
 

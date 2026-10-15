@@ -154,6 +154,21 @@ class GitReferenceTests(unittest.TestCase):
                     self.assertEqual("13 open threads" in out, count > 12)
                     self.assertNotIn("thread over 400 characters", out)
 
+    def test_acknowledgments_are_not_threads_but_their_links_are_checked(self):
+        self.stage_outcome()
+        for count, target in ((12, "Project"), (13, "Project"), (12, "Missing")):
+            with self.subTest(threads=count, target=target):
+                memory = ("## Focus\n## Open threads\n" + "- task\n" * count
+                          + "\n## Awaiting acknowledgment\n"
+                          + f"- 2026-01-02 — Outcome. Source: [[{target}]].\n" * 14)
+                self.write("MEMORY.md", memory)
+                self.git("add", "--", "MEMORY.md")
+                expected = int(count > 12 or target == "Missing")
+                for args in (("check",), ("check", "--staged")):
+                    out = self.tool(*args, expected=expected)
+                    self.assertEqual("13 open threads" in out, count > 12)
+                    self.assertEqual("broken wikilink" in out, target == "Missing")
+
     def test_fenced_memory_examples_do_not_count_but_raw_lines_and_links_do(self):
         self.stage_outcome()
         for fence in ("```", "~~~~"):

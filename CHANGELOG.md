@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.3.0
+
+- Clarify continuing agent names and scopes, canonical Owners and RPCE lane titles; retain one active writer session per name.
+- Add compact, conditional RPCE overseer guidance and explicit Oracle/compaction approval cues; move generic delegation briefing into the common contract.
+- Distinguish user-blocked work from notable outcomes awaiting acknowledgment; retain both through ordinary memory and report them without per-turn repetition.
+- Reduce CONTRIBUTING to a short human-and-agent policy. Extend copied-starter and helper tests for the updated naming and acknowledgment section.
+
 - Move setup to root `SETUP.md`, shorten the README agent route and remove its experimental footer. License the distribution under MIT; include the notice in the copied starter.
 
 - Fix prospective-commit checks for intent-to-add placeholders and hidden-change Git flags; count all Markdown thread markers and exclude fenced examples from structural counts. Add focused helper regressions.
@@ -19,9 +26,8 @@
 - Extend the reference checker with qualified space links, note/folder resolution, direct-parent registration and root-only control boundaries; retain legacy topics and prospective-index checks.
 - Add synthetic/static checks and separate mechanical verification from untested agent adoption, growth and upgrade behaviour.
 
-- Put the reviewed PURPOSE / GROUND / IMPROVE / CAPACITY block first in the core starter and recommend the same placement in applicable AGENTS.md and CLAUDE.md entrypoints.
+- Put the PURPOSE / GROUND / IMPROVE / CAPACITY / CEREMONY operating gate first in the core starter and recommend the same placement in applicable AGENTS.md and CLAUDE.md entrypoints.
 - Preserve one authoritative full contract, identical small gate mirrors, existing rules and approval for shared-file changes; verify loading before adding host imports.
-- Illustrate delegated maintenance of recurring cap pressure without weakening bounded startup or granting new authority.
 - Add a worked CLAUDE entrypoint, static wording/placement checks and explicit host/behavioural verification limits. Preserve the original operating detail and leave existing installations, helper acceptance and the v0.2.0 release unchanged.
 
 ## 0.2.0
