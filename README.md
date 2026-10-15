@@ -14,20 +14,13 @@ Open your preferred coding agent in that folder—Claude Code, Codex, OpenCode, 
 
 The agent will guide you through setup. Your memory stays in your folder; you don't need to copy this repository into it.
 
-## For agents installing minibrain
+## For agents
 
-Read this repository online or use a temporary checkout outside the destination; do not clone it into the brain.
-
-**First installation, including adapting an existing memory folder:** start with [Setup](docs/setup.md) and follow it in order.
-
-**Upgrading an existing minibrain:** first read its local instructions and adoption record, then follow [Upgrading](docs/setup.md#upgrading). Preserve user knowledge and local adaptations.
-
-Copyable files live in [starter/](starter/AGENTS.md). Follow [Setup](docs/setup.md) for the reading order, adaptation and verification.
-
-After installation, use the **destination's local instructions**. This repository is the installation and upgrade source, not an everyday runtime dependency.
+- Install/adapt: [SETUP.md](SETUP.md).
+- Upgrade: read local instructions and adoption record, then [Upgrading](SETUP.md#upgrading).
+- Read source online or in a temporary checkout outside the destination.
+- After installation, follow local instructions—not this repository.
 
 ---
 
-**Experimental.** See [verification](docs/setup.md#verify-the-installation) and [limitations](docs/setup.md#implementation-limits), [contributing](CONTRIBUTING.md) and [change history](CHANGELOG.md). No scheduler or autonomous runtime is supplied.
-
-**License:** not yet selected. Public visibility does not itself grant an open-source license; check before redistributing or incorporating the material.
+[MIT license](LICENSE).

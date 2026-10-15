@@ -28,12 +28,14 @@ class OperatingGateTests(unittest.TestCase):
         example = (ROOT / "starter/CLAUDE.md").read_bytes()
         self.assertEqual(example, REVIEWED_GATE + b"\n@AGENTS.md\n")
 
-    def test_readme_links_to_the_canonical_contract_without_copying_the_gate(self):
+    def test_readme_routes_through_setup_without_copying_the_gate(self):
         readme = (ROOT / "README.md").read_bytes()
         self.assertNotIn(REVIEWED_GATE, readme)
         self.assertNotIn(b"<orient>", readme)
         self.assertNotIn(b"</orient>", readme)
-        self.assertRegex(readme, rb"\[[^\]]+\]\(starter/AGENTS\.md\)")
+        self.assertRegex(readme, rb"\[[^\]]+\]\(SETUP\.md\)")
+        setup = (ROOT / "SETUP.md").read_bytes()
+        self.assertRegex(setup, rb"\[[^\]]+\]\(starter/AGENTS\.md\)")
 
 
 if __name__ == "__main__":

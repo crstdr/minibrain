@@ -36,17 +36,17 @@ class AdoptionGuidanceTests(unittest.TestCase):
     def test_readme_keeps_the_two_audiences_and_routes_to_setup(self):
         text = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertEqual(re.findall(r"^## .+$", text, re.MULTILINE),
-                         ["## For humans", "## For agents installing minibrain"])
-        for target in ("docs/setup.md", "docs/setup.md#upgrading", "starter/AGENTS.md"):
+                         ["## For humans", "## For agents"])
+        for target in ("SETUP.md", "SETUP.md#upgrading"):
             self.assertIn(target, re.findall(r"\[[^\]]+\]\(([^)]+)\)", text))
         self.assertIn("preserving existing instructions and knowledge", text)
 
     def test_setup_reads_operating_starter_and_local_skill_before_acceptance(self):
-        setup = (ROOT / "docs/setup.md").read_text(encoding="utf-8")
+        setup = (ROOT / "SETUP.md").read_text(encoding="utf-8")
         items = re.findall(r"^\d+\. (.+)$", section(setup, "## Reading order"), re.MULTILINE)
         self.assertEqual(len(items), 4)
-        for item, destination in ((items[0], "../starter/AGENTS.md"),
-                                  (items[1], "../starter/.agents/skills/reflect/SKILL.md"),
+        for item, destination in ((items[0], "starter/AGENTS.md"),
+                                  (items[1], "starter/.agents/skills/reflect/SKILL.md"),
                                   (items[3], "#verify-the-installation")):
             self.assertIn(destination, re.findall(r"\[[^\]]+\]\(([^)]+)\)", item))
         self.assertIn("Applicable references", items[2])
@@ -61,7 +61,7 @@ class AdoptionGuidanceTests(unittest.TestCase):
             text = (ROOT / "starter" / name).read_text()
             self.assertNotRegex(text, r"\b20\d{2}-\d{2}-\d{2}\b", "Starter must not invent evidence dates")
             self.assertNotIn("issue-tracking", text)
-        setup = (ROOT / "docs/setup.md").read_text()
+        setup = (ROOT / "SETUP.md").read_text()
         self.assertIn("destination root—not a nested `starter/` folder", setup)
         self.assertIn("below the XML blocks and in memory files", setup)
         self.assertIn("placeholders grant no authority", setup)
@@ -137,7 +137,7 @@ class AdoptionGuidanceTests(unittest.TestCase):
         self.assertIn("unlock <issued-label>", writers)
         self.assertNotIn("## Shared writers", self.core)
         self.assertEqual(self.core.count("<shared_writers>"), 1)
-        setup = (ROOT / "docs/setup.md").read_text()
+        setup = (ROOT / "SETUP.md").read_text()
         acceptance = section(setup, "## Verify the installation")
         self.assertIn("Inject faults only into disposable copies", acceptance)
         self.assertIn("Shared writers, if used", acceptance)

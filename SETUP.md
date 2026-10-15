@@ -1,12 +1,12 @@
 # Install or adapt minibrain
 
-Read this guide; adapt the contents of [starter/](../starter/AGENTS.md) into the destination root—not a nested `starter/` folder. Its files use their installed names; this guide and the rest of the distribution stay outside the brain.
+Read this guide; adapt the contents of [starter/](starter/AGENTS.md) into the destination root—not a nested `starter/` folder. Its files use their installed names; this guide and the rest of the distribution stay outside the brain.
 
 ## Reading order
 
-1. [AGENTS.md](../starter/AGENTS.md) — operating blocks, local rules and procedures.
-2. [Reflect](../starter/.agents/skills/reflect/SKILL.md) — locally retained maintenance procedure.
-3. Applicable references: [Git helper header](../starter/tools/minibrain.py). Read it when choosing or changing the Git mechanism, not at every startup.
+1. [AGENTS.md](starter/AGENTS.md) — operating blocks, local rules and procedures.
+2. [Reflect](starter/.agents/skills/reflect/SKILL.md) — locally retained maintenance procedure.
+3. Applicable references: [Git helper header](starter/tools/minibrain.py). Read it when choosing or changing the Git mechanism, not at every startup.
 4. [Acceptance checks](#verify-the-installation) — plan and verify the final adapted installation.
 
 Existing minibrain? Start with [Upgrading](#upgrading).
@@ -28,6 +28,7 @@ Existing minibrain? Start with [Upgrading](#upgrading).
 | `.agents/skills/` | Local `reflect`, plus thin `resume`/`checkpoint` pointers; verify discovery or use explicit reads. |
 | `CLAUDE.md` | Optional identical gate plus `@AGENTS.md`; only for a host that needs and supports that import. |
 | `.gitignore` | Default local exclusions; review them and preserve existing policy. |
+| `licenses/minibrain.txt` | Retain this notice for copied minibrain material; never replace the destination's own license. |
 
 Fill `[square-bracket placeholders]` below the XML blocks and in memory files from established facts; record honest unknowns and remove unused rows/entries. Clarify missing delegation before acting; placeholders grant no authority. Keep usable path defaults or preserve compatible existing paths, updating references together. Seed only explicit user principles or confirmed generalisations; an empty block does not revoke existing rules. Preserve their scope and record where any unmigrated rules remain. Record the source URL, inspected ref/commit/date and local adaptations in the existing canonical record; unknown provenance stays unknown.
 
@@ -43,7 +44,7 @@ Requires Git and Python 3.8+. Install the helper at `<brain>/tools/minibrain.py`
 
 Before `git init`, check for an enclosing repository with `git rev-parse --show-toplevel`; distinguish “not a repository” from inspection failure. Resolve integration rather than nesting accidentally. The helper supports a normal dedicated Git working copy, not linked worktrees or distributed sync. Never adopt a public code remote for private memory.
 
-For a new Git brain, copy only chosen files (including hidden skills), adapt them, stage by name, inspect the complete staged diff/stat and run `python3 tools/minibrain.py check --staged`. Before the first commit only, `no commits yet` and initial dirty/staged warnings are expected; fix other problems, commit once and run `check` again. See [helper header](../starter/tools/minibrain.py).
+For a new Git brain, copy only chosen files (including hidden skills), adapt them, stage by name, inspect the complete staged diff/stat and run `python3 tools/minibrain.py check --staged`. Before the first commit only, `no commits yet` and initial dirty/staged warnings are expected; fix other problems, commit once and run `check` again. See [helper header](starter/tools/minibrain.py).
 
 For existing brains, preserve knowledge and local adaptations; see [Upgrading](#upgrading) for legacy paths and names.
 

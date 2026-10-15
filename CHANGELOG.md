@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Move setup to root `SETUP.md`, shorten the README agent route and remove its experimental footer. License the distribution under MIT; include the notice in the copied starter.
+
 - Fix prospective-commit checks for intent-to-add placeholders and hidden-change Git flags; count all Markdown thread markers and exclude fenced examples from structural counts. Add focused helper regressions.
 - Reduce `docs/` to setup: move installation checks there and helper conventions into the script; remove duplicate growth/space guidance and historical test-run prose. Keep runtime safeguards and update links together.
 

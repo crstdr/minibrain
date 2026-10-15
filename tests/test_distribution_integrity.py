@@ -45,12 +45,17 @@ def heading_anchors(text):
 
 
 class DistributionLinkTests(unittest.TestCase):
+    def test_starter_carries_the_distribution_license(self):
+        notice = (ROOT / "LICENSE").read_bytes()
+        self.assertTrue(notice.startswith(b"MIT License\n"))
+        self.assertIn(b"Copyright (c) 2026 ", notice)
+        self.assertEqual((ROOT / "starter/licenses/minibrain.txt").read_bytes(), notice)
+
     def test_relative_markdown_links_and_section_anchors_resolve(self):
         # Historical source accounts are prose; template snippets inside fences
         # and intentionally synthetic [[wikilinks]] are not installed targets.
-        sources = [ROOT / "README.md", ROOT / "CONTRIBUTING.md"]
-        for folder in ("docs", "starter"):
-            sources.extend(sorted((ROOT / folder).rglob("*.md")))
+        sources = [ROOT / "README.md", ROOT / "CONTRIBUTING.md", ROOT / "SETUP.md"]
+        sources.extend(sorted((ROOT / "starter").rglob("*.md")))
         checked = 0
         for source in sources:
             text = outside_fences(source.read_text(encoding="utf-8"))
@@ -77,6 +82,8 @@ class CopiedTemplateSmokeTests(unittest.TestCase):
                  and path.name != ".DS_Store" and path.suffix != ".pyc"]
         self.assertIn(".agents/skills/reflect/SKILL.md", files)
         self.assertIn("MAP.md", files)
+        self.assertIn("licenses/minibrain.txt", files)
+        self.assertNotIn("LICENSE", files)
         self.assertIn("tools/minibrain.py", files)
         self.assertNotIn("tools/kb.py", files)
         self.assertFalse(any(path.endswith(".example") for path in files))
@@ -160,6 +167,7 @@ class CopiedTemplateSmokeTests(unittest.TestCase):
             self.assertEqual(len(problems), 1, initial)
             self.assertIn("no commits yet", problems[0])
             run("git", "commit", "-qm", "Create synthetic copied-template brain")
+            self.assertEqual(run("git", "show", "HEAD:licenses/minibrain.txt"), (ROOT / "LICENSE").read_text())
             for name in ("reflect", "resume", "checkpoint"):
                 skill = f".agents/skills/{name}/SKILL.md"
                 run("git", "cat-file", "-e", "HEAD:" + skill)
