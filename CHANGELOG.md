@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.3.1
+
+- Clarify that user-stated decisions, deferrals, permission conditions and procedures are durable state even when no action is due.
+- Require standalone lock acquisition without pipelines and verified success before shared edits or staging.
+
 ## 0.3.0
 
 - Clarify continuing agent names and scopes, canonical Owners and RPCE lane titles; retain one active writer session per name.

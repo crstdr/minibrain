@@ -106,9 +106,11 @@ Retain compatible existing layouts. Attachments are supporting evidence, not ins
 
 ## Checkpoint — durable changes only
 
+User-stated decisions, deferrals, permission conditions and procedures are durable state—even when no action is due.
+
 Run unprompted when durable state changes, and before ending, compacting or resetting with unsaved durable information. No change, no checkpoint; never save merely on a schedule or to notify.
 
-1. Read and reason first. When writers may overlap, acquire the lock before shared edits or staging; verify success and reread edited sources under protection.
+1. Read and reason first. When writers may overlap, acquire the lock as a standalone command without pipelines; verify success before shared edits or staging, then reread edited sources under protection.
 2. Update canonical state, evidence, supersession and navigation. Before closing/combining work, read all relevant sources, including other writers' areas. Make principles, decisions, commitments, permission conditions and procedures in conversation or saved narrative actionable. Before principle or constraint changes, read `reflect`'s Principles section.
 3. Groom index/focus; prepend one concise outcome to `CHANGELOG.md`. Finish an interrupted save under its existing outcome, not another entry.
 4. Stage intended files by name; inspect `git diff --cached` and `git diff --cached --stat` for loss, unrelated edits and sensitive content. Run `python3 tools/minibrain.py check --staged` after the final edit/stage, then commit once. Never use `commit -a`, `add -A`, `add .` or `stash`.
