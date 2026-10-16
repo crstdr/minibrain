@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.4.2
+
+- Clarify the README introduction, installation prompt and features, including optional RepoPrompt CE overseer guidance; retain the concise agent setup and upgrade routes.
+- Remove incidental copy checks and frozen prose snapshots from tests; retain preservation, authority, loading, packaging and helper checks.
+- No changes to the starter, helper or installed brains.
+
 ## 0.3.1
 
 - Clarify that user-stated decisions, deferrals, permission conditions and procedures are durable state even when no action is due.

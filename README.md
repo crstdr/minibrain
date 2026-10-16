@@ -1,18 +1,22 @@
 # minibrain
 
-A drop-in, folder-based memory system for AI assistants—minimalist, environment-agnostic, and designed for continuity of purpose and work, self-maintenance, and proactive collaboration when human judgment is needed.
+A drop-in, folder-based, environment-agnostic memory system for AI agents—designed for continuity of purpose and work, self-maintenance, and proactive collaboration when human judgment is needed.
 
-**An operating contract, not a prescribed folder tree or an autonomous runtime.** Minibrain tells an existing agent what its memory must preserve, how to resume and save work responsibly, and how to adapt those obligations to its environment. Concrete implementations are references, not compulsory templates. Minimalism means avoiding unnecessary burden—not removing safeguards or mandating a file count.
+## Installation
 
-## For humans
+Open the folder you want to equip with minibrain in your preferred coding-agent tool—Claude Code, Codex, OpenCode, pi, or an agent-enabled editor—and prompt:
 
-Create or choose a folder for a project or area of your life—your car, finances, holidays, or anything else you want help managing. Existing notes can stay.
+> Update this folder with the memory system from https://github.com/crstdr/minibrain. Adapt it to my needs, preserve existing instructions and knowledge, and ask me about choices that need my judgment.
 
-Open your preferred coding agent in that folder—Claude Code, Codex, OpenCode, Pi, or another—and ask:
+## Features
 
-> Install https://github.com/crstdr/minibrain into this folder, adapting it to my needs and preserving existing instructions and knowledge.
-
-The agent will guide you through setup. Your memory stays in your folder; you don't need to copy this repository into it.
+- **Adapts to your folder.** Starts fresh or builds on existing instructions, conventions and knowledge.
+- **Local files, Git history.** The supplied setup uses a local Git repository to track changes, inspect history and recover earlier saved versions. GitHub isn’t required.
+- **Principles over rigid templates.** Defines what memory must preserve and provides concrete starting points, while leaving organisation and adaptation to the agent’s judgment.
+- **Continuity beyond facts.** Carries goals, decisions, permission conditions and unfinished work across sessions.
+- **Agent-maintained.** Guides the agent to keep memory current and useful as its responsibilities grow.
+- **Human judgment where it matters.** Tracks decisions waiting on you and notable outcomes awaiting your acknowledgment.
+- **[RepoPrompt CE](https://github.com/repoprompt/repoprompt-ce) bonus.** Optional overseer guidance helps coordinate multiple agent lanes while preserving responsibilities, progress and pending decisions across sessions.
 
 ## For agents
 

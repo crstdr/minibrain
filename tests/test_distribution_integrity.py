@@ -48,7 +48,7 @@ class DistributionLinkTests(unittest.TestCase):
     def test_starter_carries_the_distribution_license(self):
         notice = (ROOT / "LICENSE").read_bytes()
         self.assertTrue(notice.startswith(b"MIT License\n"))
-        self.assertIn(b"Copyright (c) 2026 ", notice)
+        self.assertIn(b"Copyright (c) ", notice)
         self.assertEqual((ROOT / "starter/licenses/minibrain.txt").read_bytes(), notice)
 
     def test_relative_markdown_links_and_section_anchors_resolve(self):

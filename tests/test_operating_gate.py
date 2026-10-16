@@ -1,36 +1,33 @@
-"""Static distribution checks, not a test of an agent's behaviour or host loading."""
+"""Loading structure and mirror integrity, not agent-behaviour evidence."""
 
 from pathlib import Path
+import re
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-# Review snapshot. The live canonical source is starter/AGENTS.md.
-# An intentional wording revision updates this snapshot and CHANGELOG; earlier
-# reviews/evaluations do not establish results for the new wording.
-REVIEWED_GATE = '<orient>\nBefore substantive replies or consequential actions:\n1. PURPOSE — User outcome? Does this step advance it?\n2. GROUND — Evidence, assumptions, commitments, authority?\n3. IMPROVE — Recurring friction or changed guidance? Use `reflect`. Preserve safeguard purpose; act within authority, otherwise propose.\n4. CAPACITY — Context fit? If compaction needed: save durable state first; compact at a safe boundary.\n5. CEREMONY — Match effort and process to stakes and context. Preserve safeguards; skip ritual. Ask only when uncertainty is consequential.\nApply proportionately; don’t narrate the checklist.\n</orient>\n'.encode("utf-8")
 
 
 class OperatingGateTests(unittest.TestCase):
-    def test_canonical_starter_begins_with_reviewed_gate(self):
-        starter = (ROOT / "starter/AGENTS.md").read_bytes()
-        self.assertTrue(starter.startswith(REVIEWED_GATE + b"\n<principles>"))
-        self.assertEqual(starter.count(b"<orient>"), 1)
-        self.assertEqual(starter.count(b"</orient>"), 1)
+    def setUp(self):
+        self.starter = (ROOT / "starter/AGENTS.md").read_bytes()
+        match = re.match(rb"\A<orient>\n(.*?)\n</orient>\n", self.starter, re.DOTALL)
+        self.assertIsNotNone(match, "The canonical gate must load first")
+        self.assertTrue(match[1].strip(), "The canonical gate must not be empty")
+        self.gate = match[0]
 
-    def test_claude_starter_begins_with_identical_gate(self):
-        example = (ROOT / "starter/CLAUDE.md").read_bytes()
-        self.assertTrue(example.startswith(REVIEWED_GATE))
-        self.assertEqual(example.count(b"<orient>"), 1)
-        self.assertEqual(example.count(b"</orient>"), 1)
+    def test_canonical_starter_has_one_leading_gate(self):
+        self.assertEqual(self.starter.count(b"<orient>"), 1)
+        self.assertEqual(self.starter.count(b"</orient>"), 1)
 
-    def test_starter_import_follows_gate_without_a_second_contract(self):
+    def test_claude_mirrors_live_gate_then_imports_one_contract(self):
         example = (ROOT / "starter/CLAUDE.md").read_bytes()
-        self.assertEqual(example, REVIEWED_GATE + b"\n@AGENTS.md\n")
+        # Equality prevents mirror drift and duplicate full-contract loading;
+        # intentional edits to the canonical prose need no test snapshot update.
+        self.assertEqual(example, self.gate + b"\n@AGENTS.md\n")
 
     def test_readme_routes_through_setup_without_copying_the_gate(self):
         readme = (ROOT / "README.md").read_bytes()
-        self.assertNotIn(REVIEWED_GATE, readme)
         self.assertNotIn(b"<orient>", readme)
         self.assertNotIn(b"</orient>", readme)
         self.assertRegex(readme, rb"\[[^\]]+\]\(SETUP\.md\)")
