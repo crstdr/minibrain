@@ -14,7 +14,7 @@ Existing minibrain? Start with [Upgrading](#upgrading).
 ## 1. Inspect
 
 - Read the source online or in a temporary checkout outside the destination; never clone this public distribution into private memory.
-- Establish the user's purpose, delegation, approval boundaries, privacy/storage policy and active writers. Ask for consequential missing choices; do not repeat questions already answered.
+- Gather context progressively: the user’s purpose, delegation, approval boundaries, privacy/storage policy and active writers. Ask for consequential missing choices when the answer would change what you do next—not as an upfront questionnaire—and do not repeat questions already answered.
 - Agree each continuing agent's name and scope with the user; preserve existing assignments. Record them in `MEMORY.md` → Owners.
 - Inspect existing notes, instructions, host entrypoints, Git/backup state and available tools. Preserve compatible arrangements; propose consequential restructuring and a backup before migration.
 - Keep one writer during setup; read-only helpers may assist when authorised. No installation into shared or global instructions without the relevant user's approval.

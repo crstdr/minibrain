@@ -99,7 +99,7 @@ class CopiedTemplateSmokeTests(unittest.TestCase):
                 shutil.copyfile(source / name, target)
 
             # Synthetic adoption values belong in this fixture, not the starter.
-            # Evidence labels inside XML blocks and [[wikilinks]] are not fields.
+            # Operating instructions and [[wikilinks]] are not adoption fields.
             fields = {
                 "user's intended outcomes and scope": "Maintain a synthetic project memory",
                 "delegated actions and conditions": "maintain this synthetic memory",
@@ -156,7 +156,11 @@ class CopiedTemplateSmokeTests(unittest.TestCase):
 
             gate = (brain / "AGENTS.md").read_text().split("</orient>", 1)[0] + "</orient>\n"
             self.assertEqual((brain / "CLAUDE.md").read_text(), gate + "\n@AGENTS.md\n")
-            self.assertIn("**[verified: source]**", (brain / "AGENTS.md").read_text())
+            self.assertEqual(
+                (brain / "AGENTS.md").read_text().split("# Agent instructions", 1)[0],
+                (source / "AGENTS.md").read_text().split("# Agent instructions", 1)[0],
+                "Adoption must preserve the starter's operating instructions",
+            )
 
             run("git", "init", "-q")
             run("git", "config", "user.name", "Synthetic Test")

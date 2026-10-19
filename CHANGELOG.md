@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.5.0
+
+- Gather onboarding context progressively, asking consequential questions when their answers affect the next action rather than requiring an upfront questionnaire.
+- Replace mandatory evidence-label syntax with natural attribution; keep inference, uncertainty and second-hand reports explicit.
+- Let Resume retrieve context according to the task and reuse reliable context; remove the prescribed readback while retaining Reporting, unfinished-work reporting and read-consistency safeguards.
+- Recognise acknowledgment through words or actions that unambiguously show awareness; consolidate superseded outcomes while preserving history and the distinction from approval.
+- Tests: drop assertions on removed wording; assert synthetic adoption leaves the operating instructions unchanged.
+- No helper changes or automatic updates to existing installations.
+
 ## 0.4.2
 
 - Clarify the README introduction, installation prompt and features, including optional RepoPrompt CE overseer guidance; retain the concise agent setup and upgrade routes.

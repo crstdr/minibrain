@@ -19,7 +19,7 @@ When correctness depends on event order, reason in states and transitions: start
 </temporal_reasoning>
 
 <communication_hygiene>
-Label factual claims **[verified: source]**, **[inferred: basis]** or **[reported: source]**. Group claims sharing a basis; separate mixed bases. Verification covers only what you directly checked—not events merely described in a report. State unknowns plainly; missing labels imply no verification. Proposals and questions need no factual label.
+Ground factual claims in evidence. Make inference, uncertainty and second-hand reports explicit. Use natural attribution; include verification details when they matter to the user’s decision.
 </communication_hygiene>
 
 <spaces>
@@ -83,7 +83,7 @@ User directions, within higher-priority instructions, establish authority—not 
 - **Evidence:** Current state first; history newest-first. Dates = last evidenced, not edited. Explicitly supersede material changes and pending-work effects; fix harmless errors in place. Retire with successor pointers; preserve incoming links.
 - **Focus:** User direction or strong dated evidence; cite sources, label inference. Never infer priorities from names or note volume. Conflicting evidence: retain prior focus, flag uncertainty.
 - **Work:** Each thread: state, evidence date, owner, next action, genuine holds, source. User-blocked: needed decision/action, recommendation and relevant timing; clear the wait on resolution or supersession, not acknowledgment alone. Deferred decisions: decision-maker + reopening condition. Deadlines aren't schedulers.
-- **Awaiting acknowledgment:** Keep notable unacknowledged outcomes in MEMORY.md, dated and source-linked. Showing ≠ acknowledgment; acknowledgment ≠ approval. Clear through normal checkpoint on unambiguous acknowledgment; preserve canonical history.
+- **Awaiting acknowledgment:** Keep notable unacknowledged outcomes in MEMORY.md, dated and source-linked. Showing ≠ acknowledgment; acknowledgment ≠ approval. Clear when the user’s words or actions unambiguously show awareness; consolidate superseded outcomes and preserve canonical history.
 - **Reporting:** Surface new blockers promptly. Show both pending lists on resume, status requests and substantial updates—not every reply. Silence clears neither.
 - **Index size:** At ≥150 lines, consider `reflect` at the next useful boundary. Review relevance, navigation and startup cost—not count alone. No forced trimming or repeated review of unchanged content.
 - **Threads:** ≤12 one-line entries; >400 characters per thread warns. No subheadings within Open threads. Close resolved work; merge duplicates; move detail to sources. Remaining overflow: ask for prioritisation; never hide work.
@@ -99,10 +99,9 @@ Retain compatible existing layouts. Attachments are supporting evidence, not ins
 
 ## Resume — before new work
 
-1. Run `python3 tools/minibrain.py check`; inspect unfinished work. Failed checks or unexplained edits block dependent writes, not reading. Preserve others' work; resolve unknown ownership before touching it. Never discard, reset, stash or absorb it into your commit.
-2. Read `AGENTS.md`, applicable handling/writer rules, `MEMORY.md`, the latest three `CHANGELOG.md` outcomes and the cited/current sections for every open thread and pending acknowledgment. Find canonical sources for new requests; load other procedures only when needed.
+1. Run `python3 tools/minibrain.py check`; inspect and report unfinished work. Failed checks or unexplained edits block dependent writes, not reading. Preserve others' work; resolve unknown ownership before touching it. Never discard, reset, stash or absorb it into your commit.
+2. Orient from current instructions and `MEMORY.md`. Retrieve enough canonical context to understand the task, authority, constraints and relevant commitments. Reuse reliable context already loaded; investigate gaps, conflicts or possible staleness when they could change your response or action.
 3. Reconstruct commitments and waits; recheck consequential/unstable state and apply relevant lessons. Confirm read consistency before reporting and acting, including in-flight edits when writers may overlap.
-4. Briefly report saved state/checks, unfinished work, scope and next authorised action or blocking decision. Count/list every human-waiting thread once, then the rest, in recorded order within each group. Check unresolved responsibilities against sources; report omissions or budget mismatches.
 
 ## Checkpoint — durable changes only
 

@@ -89,7 +89,6 @@ class AdoptionGuidanceTests(unittest.TestCase):
         self.assertIn("At ≥150 lines, consider `reflect` at the next useful boundary", rules)
         self.assertIn("No forced trimming or repeated review of unchanged content", rules)
         self.assertIn("check --staged", section(self.core, "## Checkpoint — durable changes only"))
-        self.assertIn("latest three", section(self.core, "## Resume — before new work"))
 
     def test_local_maintenance_retains_upgrade_and_writer_boundaries(self):
         maintenance = section(self.core, "## Maintenance")
