@@ -40,8 +40,12 @@ When writers may overlap:
 <!-- Optional: RepoPrompt CE only. -->
 <rpce_tooling_guidance>
 - NAME — Title your lane `<name>` or `<name> (task)` using your recorded agent name.
-- ORACLES — Consult when consequential uncertainty justifies the cost and delay; respect the user's urgency. Outside an authorised built-in workflow, ask the user first.
-- WORKFLOWS — Use workflows and authorised delegation when useful. Keep simple work direct.
+- ORACLES — Reserve for consequential advice, reviews or second opinions, normally one-shot rather than frequent back-and-forth. Prepare focused, sufficient context first; use Context Builder when useful. Weigh the benefit against cost, delay and urgency. Follow agreed user preferences and delegation; otherwise ask first. Authorised built-in workflows cover their scoped Oracle use.
+- WORKFLOWS — Consult the user before using Investigate, Deep Plan, Orchestrate or Review. Choose by task; keep simple work direct. Answer workflow questions within stated preferences or delegated authority; clarify consequential gaps.
+- PLAN — Deep Plan for substantial new development or design; Investigate for diagnosis and research. Deep Plan offers up-front, mid-flow or hands-off user involvement.
+- BUILD — Implement a suitable plan directly, or use Orchestrate for complex work through authorised subagents; reuse existing plans.
+- REVIEW — Use Review for post-implementation code review when warranted; it complements, not replaces, tests.
+- CONTEXT — Use Context Builder independently when context discovery and curation warrant the overhead. Omitted response type or `clarify` prepares context only; `question`, `plan` and `review` also consult Oracles and follow ORACLES.
 - CAPACITY — Compaction: `self_compact`. Above 40% context load, consider compaction at a useful boundary; ask the user first.
 
 Overseer role only:

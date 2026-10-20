@@ -117,11 +117,14 @@ class AdoptionGuidanceTests(unittest.TestCase):
             "Release only your acquisition",
             "never infer abandonment or take over without user approval",
             "not root instructions, authority or writer controls",
-            "Outside an authorised built-in workflow, ask the user first",
             "Oversight links grant no file-edit authority",
             "Never bypass missing links or tools",
         ):
             self.assertIn(safeguard, self.core)
+        # Check consent boundaries, not the surrounding advice or full-block copy.
+        oracles = next(line for line in self.core.splitlines() if line.startswith("- ORACLES —"))
+        self.assertIn("agreed user preferences and delegation; otherwise ask first", oracles)
+        self.assertIn("Authorised built-in workflows cover their scoped Oracle use", oracles)
         capacity = next(line for line in self.core.splitlines() if line.startswith("- CAPACITY —"))
         self.assertIn("ask the user first", capacity)
         setup = (ROOT / "SETUP.md").read_text()

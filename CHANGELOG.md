@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.5.1
+
+- Expand optional RPCE guidance with task-based workflow selection and standalone Context Builder use; consult the user before the named workflows and preserve delegated decision boundaries.
+- Guide Oracle use toward carefully prepared, proportionate, normally one-shot advice, reviews and second opinions; follow agreed preferences and delegation or ask first. Update the consent-policy test without freezing the surrounding advice.
+- No helper changes or automatic updates to existing installations.
+
 ## 0.5.0
 
 - Gather onboarding context progressively, asking consequential questions when their answers affect the next action rather than requiring an upfront questionnaire.
