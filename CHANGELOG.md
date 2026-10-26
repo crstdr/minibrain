@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.5.2
+
+- Encourage available, authorised delegation, including subagents, to protect working context for reasoning, coordination and memory upkeep while following the harness's own mechanisms.
+- Refresh the README opening to explain self-organising working memory and continuity of purpose and responsibility; retain the installation, feature and agent guidance.
+- Honour agreed user preferences and delegation for RPCE workflows and compaction, matching Oracle guidance; otherwise ask first.
+- Isolate disposable Git test fixtures from inherited `GIT_*` settings; regressions cover external index and repository redirection without changing the shipped helper.
+
 ## 0.5.1
 
 - Expand optional RPCE guidance with task-based workflow selection and standalone Context Builder use; consult the user before the named workflows and preserve delegated decision boundaries.

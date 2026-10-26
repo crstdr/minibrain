@@ -122,11 +122,12 @@ class AdoptionGuidanceTests(unittest.TestCase):
         ):
             self.assertIn(safeguard, self.core)
         # Check consent boundaries, not the surrounding advice or full-block copy.
+        for name in ("ORACLES", "WORKFLOWS", "CAPACITY"):
+            with self.subTest(policy=name):
+                policy = next(line for line in self.core.splitlines() if line.startswith(f"- {name} —"))
+                self.assertIn("agreed user preferences and delegation; otherwise ask first", policy)
         oracles = next(line for line in self.core.splitlines() if line.startswith("- ORACLES —"))
-        self.assertIn("agreed user preferences and delegation; otherwise ask first", oracles)
         self.assertIn("Authorised built-in workflows cover their scoped Oracle use", oracles)
-        capacity = next(line for line in self.core.splitlines() if line.startswith("- CAPACITY —"))
-        self.assertIn("ask the user first", capacity)
         setup = (ROOT / "SETUP.md").read_text()
         acceptance = section(setup, "## Verify the installation")
         self.assertIn("Inject faults only into disposable copies", acceptance)

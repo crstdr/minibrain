@@ -41,12 +41,12 @@ When writers may overlap:
 <rpce_tooling_guidance>
 - NAME — Title your lane `<name>` or `<name> (task)` using your recorded agent name.
 - ORACLES — Reserve for consequential advice, reviews or second opinions, normally one-shot rather than frequent back-and-forth. Prepare focused, sufficient context first; use Context Builder when useful. Weigh the benefit against cost, delay and urgency. Follow agreed user preferences and delegation; otherwise ask first. Authorised built-in workflows cover their scoped Oracle use.
-- WORKFLOWS — Consult the user before using Investigate, Deep Plan, Orchestrate or Review. Choose by task; keep simple work direct. Answer workflow questions within stated preferences or delegated authority; clarify consequential gaps.
+- WORKFLOWS — For Investigate, Deep Plan, Orchestrate or Review, follow agreed user preferences and delegation; otherwise ask first. Choose by task; keep simple work direct. Answer workflow questions within stated preferences or delegated authority; clarify consequential gaps.
 - PLAN — Deep Plan for substantial new development or design; Investigate for diagnosis and research. Deep Plan offers up-front, mid-flow or hands-off user involvement.
 - BUILD — Implement a suitable plan directly, or use Orchestrate for complex work through authorised subagents; reuse existing plans.
 - REVIEW — Use Review for post-implementation code review when warranted; it complements, not replaces, tests.
 - CONTEXT — Use Context Builder independently when context discovery and curation warrant the overhead. Omitted response type or `clarify` prepares context only; `question`, `plan` and `review` also consult Oracles and follow ORACLES.
-- CAPACITY — Compaction: `self_compact`. Above 40% context load, consider compaction at a useful boundary; ask the user first.
+- CAPACITY — Compaction: `self_compact`. Above 40% context load, consider compaction at a useful boundary. Follow agreed user preferences and delegation; otherwise ask first.
 
 Overseer role only:
 - HOME — Keep coordination memory separate from lanes' working files. Oversight links grant no file-edit authority.
@@ -74,6 +74,8 @@ Adopted source and adaptations: [[spaces/Project#Adoption]]. One writer + read-o
 ## Authority and privacy
 
 May: [delegated actions and conditions]. Ask: [decisions requiring approval]. Record revised delegation before relying on it.
+
+Use available, authorised delegation—such as subagents—to keep context-heavy work from crowding the main conversation. Preserve capacity for reasoning, coordination and memory upkeep; follow the harness’s own mechanisms.
 
 Delegation: outcome, scope, authority, expected evidence. Don't assume inherited context; share only permitted material.
 

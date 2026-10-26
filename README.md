@@ -1,6 +1,10 @@
-# minibrain
+# Minibrain
 
-A drop-in, folder-based, environment-agnostic memory system for AI agents—designed for continuity of purpose and work, self-maintenance, and proactive collaboration when human judgment is needed.
+**Self-organising working memory for AI agents.**
+
+A lightweight memory system that enables AI agents to function as dependable collaborators over time. It supports continuity of purpose and responsibility across sessions and context compactions by preserving critical knowledge, priorities and decisions, while keeping memory organised and relevant as work evolves.
+
+Drop-in, folder-based and environment-agnostic. Minibrain gives your existing agents a structured way to carry work forward, maintain their memory and surface decisions that need your judgment.
 
 ## Installation
 

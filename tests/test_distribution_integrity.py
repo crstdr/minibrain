@@ -88,7 +88,9 @@ class CopiedTemplateSmokeTests(unittest.TestCase):
         self.assertNotIn("tools/kb.py", files)
         self.assertFalse(any(path.endswith(".example") for path in files))
 
-        env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
+        # Inherited Git overrides must not redirect commands outside this fixture.
+        env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+        env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
                    GIT_CONFIG_COUNT="2", GIT_CONFIG_KEY_0="maintenance.auto", GIT_CONFIG_VALUE_0="false",
                    GIT_CONFIG_KEY_1="gc.auto", GIT_CONFIG_VALUE_1="0")
         with tempfile.TemporaryDirectory(prefix="minibrain-copied-templates-") as directory:

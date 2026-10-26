@@ -23,7 +23,9 @@ class GitReferenceTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="minibrain-reference-")
         self.root = Path(self.temp.name) / "brain"
         self.root.mkdir()
-        self.env = dict(os.environ, GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
+        # Inherited Git overrides must not redirect commands outside this fixture.
+        self.env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+        self.env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
                         GIT_CONFIG_COUNT="2", GIT_CONFIG_KEY_0="maintenance.auto",
                         GIT_CONFIG_VALUE_0="false", GIT_CONFIG_KEY_1="gc.auto", GIT_CONFIG_VALUE_1="0")
         self.git("init", "-q")
@@ -572,6 +574,11 @@ class GitReferenceTests(unittest.TestCase):
             self.root = old
 
     def load_helper(self):
+        # In-process calls need the same isolation as subprocesses; restore the
+        # caller's environment even when import or the test itself fails.
+        environment = mock.patch.dict(os.environ, self.env, clear=True)
+        environment.start()
+        self.addCleanup(environment.stop)
         spec = importlib.util.spec_from_file_location("synthetic_minibrain", self.root / "tools/minibrain.py")
         helper = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(helper)
