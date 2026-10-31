@@ -39,7 +39,7 @@ When writers may overlap:
 
 <!-- Optional: RepoPrompt CE only. -->
 <rpce_tooling_guidance>
-- NAME — Title your lane `<name>` or `<name> (task)` using your recorded agent name.
+- NAME — Title your lane `<name>` or `<name> (task)` using your recorded agent name. If the user or your creating overseer named the lane, keep that name as the title, adding at most a ` (task)` suffix; a lane title assigns no seat or writer name.
 - ORACLES — Reserve for consequential advice, reviews or second opinions, normally one-shot rather than frequent back-and-forth. Prepare focused, sufficient context first; use Context Builder when useful. Weigh the benefit against cost, delay and urgency. Follow agreed user preferences and delegation; otherwise ask first. Authorised built-in workflows cover their scoped Oracle use.
 - WORKFLOWS — For Investigate, Deep Plan, Orchestrate or Review, follow agreed user preferences and delegation; otherwise ask first. Choose by task; keep simple work direct. Answer workflow questions within stated preferences or delegated authority; clarify consequential gaps.
 - PLAN — Deep Plan for substantial new development or design; Investigate for diagnosis and research. Deep Plan offers up-front, mid-flow or hands-off user involvement.

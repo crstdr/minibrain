@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- RepoPrompt lanes keep a name given by the user or their creating overseer instead of retitling themselves after the task.
+
 ## 0.5.2
 
 - Encourage available, authorised delegation, including subagents, to protect working context for reasoning, coordination and memory upkeep while following the harness's own mechanisms.
