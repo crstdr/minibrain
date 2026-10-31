@@ -117,7 +117,7 @@ Run unprompted when durable state changes, and before ending, compacting or rese
 
 1. Read and reason first. When writers may overlap, acquire the lock as a standalone command without pipelines; verify success before shared edits or staging, then reread edited sources under protection.
 2. Update canonical state, evidence, supersession and navigation. Before closing/combining work, read all relevant sources, including other writers' areas. Make principles, decisions, commitments, permission conditions and procedures in conversation or saved narrative actionable. Before principle or constraint changes, read `reflect`'s Principles section.
-3. Groom index/focus; prepend one concise outcome to `CHANGELOG.md`. Finish an interrupted save under its existing outcome, not another entry.
+3. Groom index/focus; add new outcomes per Awaiting acknowledgment; prepend one concise outcome to `CHANGELOG.md`. Finish an interrupted save under its existing outcome, not another entry.
 4. Stage intended files by name; inspect `git diff --cached` and `git diff --cached --stat` for loss, unrelated edits and sensitive content. Run `python3 tools/minibrain.py check --staged` after the final edit/stage, then commit once. Never use `commit -a`, `add -A`, `add .` or `stash`.
 5. Run `python3 tools/minibrain.py check`; verify saved content, navigation, pending work and unrelated state. Checks establish structure, not truth or completeness. Verify required assets and hidden skills separately. Correct your own unfinished omissions; completed history stays additive.
 6. Only after successful verification, release this session's lock. On failure/interruption, preserve and report unfinished work and held protection; do not claim a clean handoff or release by assumption.
