@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Resume step 2 retrieves only enough canonical context for the task, after orienting from `MEMORY.md`.
 - Evidence tells agents to keep status short and move embedded history to a separate section or linked source when updating it.
 - Canonical says to record or link a set's members, not just counts or classes, when membership matters.
 - Checkpoint step 3 tells agents to add new outcomes to Awaiting acknowledgment.
