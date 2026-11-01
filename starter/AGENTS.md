@@ -85,7 +85,7 @@ User directions, within higher-priority instructions, establish authority—not 
 
 ## Memory rules
 
-- **Canonical:** One home per claim; indexes link. Closing work must preserve its durable record. No competing memory or handoff files.
+- **Canonical:** One home per claim; indexes link. Closing work must preserve its durable record. When membership matters, record or link members—not just counts or classes. No competing memory or handoff files.
 - **Evidence:** Current state first; history newest-first. Dates = last evidenced, not edited. Explicitly supersede material changes and pending-work effects; fix harmless errors in place. Retire with successor pointers; preserve incoming links.
 - **Focus:** User direction or strong dated evidence; cite sources, label inference. Never infer priorities from names or note volume. Conflicting evidence: retain prior focus, flag uncertainty.
 - **Work:** Each thread: state, evidence date, owner, next action, genuine holds, source. User-blocked: needed decision/action, recommendation and relevant timing; clear the wait on resolution or supersession, not acknowledgment alone. Deferred decisions: decision-maker + reopening condition. Deadlines aren't schedulers.

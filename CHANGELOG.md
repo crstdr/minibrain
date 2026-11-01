@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Canonical says to record or link a set's members, not just counts or classes, when membership matters.
 - Checkpoint step 3 tells agents to add new outcomes to Awaiting acknowledgment.
 - RepoPrompt lanes keep a name given by the user or their creating overseer instead of retitling themselves after the task.
 
