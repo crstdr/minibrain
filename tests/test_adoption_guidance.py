@@ -103,7 +103,7 @@ class AdoptionGuidanceTests(unittest.TestCase):
 
     def test_principle_edits_and_lock_release_have_explicit_guards(self):
         checkpoint = section(self.core, "## Checkpoint — durable changes only")
-        self.assertIn("Before principle or constraint changes, read `reflect`'s Principles section", checkpoint)
+        self.assertIn("Before changing principles, constraints or operating instructions, read `reflect`'s Principles and Destinations", checkpoint)
         self.assertIn("Only after successful verification, release", checkpoint)
         self.assertIn("preserve and report unfinished work and held protection", checkpoint)
         writers = section(self.core, "## Writer bindings")

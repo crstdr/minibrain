@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Checkpoint step 2 reads `reflect`'s Principles and Destinations before changing principles, constraints or operating instructions.
 - Resume step 2 retrieves only enough canonical context for the task, after orienting from `MEMORY.md`.
 - Evidence tells agents to keep status short and move embedded history to a separate section or linked source when updating it.
 - Canonical says to record or link a set's members, not just counts or classes, when membership matters.
