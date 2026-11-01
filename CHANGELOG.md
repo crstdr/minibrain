@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `reflect` Destinations is now an ordered question flow for categorising and storing information: authority, standing rules, procedures, lessons and subject knowledge, then working-index follow-ups.
 - Checkpoint step 2 reads `reflect`'s Principles and Destinations before changing principles, constraints or operating instructions.
 - Resume step 2 retrieves only enough canonical context for the task, after orienting from `MEMORY.md`.
 - Evidence tells agents to keep status short and move embedded history to a separate section or linked source when updating it.

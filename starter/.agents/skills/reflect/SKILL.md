@@ -16,10 +16,19 @@ Maintain one root `<principles>` block: concise general rules, one per bullet, n
 Keep evidence, rationale and supersession in canonical memory outside the block. Routine capture need not wait for reflection. Permission or procedure changes retain normal approval and writer safeguards; communicate changed constraints before affected writers continue dependent work.
 
 ## Destinations
+Split mixed material into durable claims. Store each where the agent who needs it will read it when it applies. Ask in order, root before nested:
+1. Authority, permissions or writer responsibilities? → Root instructions (Authority and privacy) or `MEMORY.md` Owners; never a nested space.
+2. General rule for agent behaviour across tasks, including a standing preference? → `<principles>`; apply Principles above.
+3. User-directed or approved steps for a repeatable activity? → Its owning instruction section or skill; amend in place, preserving safeguards.
+4. Learned remedy for a recurring situation? → A lesson where that action will find it; apply Lessons.
+5. Fact, finding, state, commitment, decision or deferral? → Subject's canonical space; apply Evidence and Work.
 
-- Standing rules → `<principles>` in the canonical instructions.
-- Procedures → owning instruction section or skill.
-- Knowledge, decisions and lessons → existing canonical memory space, with scope/evidence.
-- Commitments/actions → authoritative source and working-index pointer.
+Reuse appropriate existing homes; create only if absent (`<spaces>`). Update or link; never duplicate (Canonical).
+
+Then check working-index follow-ups:
+- Pending action or decision? → `MEMORY.md` Open threads pointer; apply Work and Threads.
+- Priority changed? → Focus.
+- Notable outcome unacknowledged? → Awaiting acknowledgment.
+- Pointers/navigation stale or missing? → Fix them.
 
 Update only what needs changing; destinations are not a checklist. Persist through the local checkpoint procedure; no reflection diary or duplicate records. If nothing durable changed, no checkpoint.
