@@ -26,7 +26,6 @@ class AdoptionGuidanceTests(unittest.TestCase):
         self.assertIn("https://github.com/crstdr/minibrain", installation)
         for target in ("SETUP.md", "SETUP.md#upgrading"):
             self.assertIn(target, re.findall(r"\[[^\]]+\]\(([^)]+)\)", agents))
-        self.assertIn("preserve existing instructions and knowledge", installation)
 
     def test_setup_links_required_local_material_and_verification(self):
         setup = (ROOT / "SETUP.md").read_text(encoding="utf-8")

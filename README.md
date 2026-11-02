@@ -10,7 +10,7 @@ Drop-in, folder-based and environment-agnostic. Minibrain gives your existing ag
 
 Open the folder you want to equip with minibrain in your preferred coding-agent tool—Claude Code, Codex, OpenCode, pi, or an agent-enabled editor—and prompt:
 
-> Update this folder with the memory system from https://github.com/crstdr/minibrain. Adapt it to my needs, preserve existing instructions and knowledge, and ask me about choices that need my judgment.
+> Update this folder with the memory system from https://github.com/crstdr/minibrain.
 
 ## Features
 
