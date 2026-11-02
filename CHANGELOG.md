@@ -1,5 +1,17 @@
 # Changes
 
+Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` files relative to its linked predecessor; unlisted files are unchanged for that comparison. For upgrades across releases, compare the adopted ref directly with the target.
+
+| Release | Changed in `starter/` |
+|---|---|
+| [0.6.0](https://github.com/crstdr/minibrain/compare/v0.5.2...v0.6.0) | `AGENTS.md`: Checkpoint, Memory rules, Resume, `<rpce_tooling_guidance>`. `.agents/skills/reflect/SKILL.md`: Destinations |
+| [0.5.2](https://github.com/crstdr/minibrain/compare/v0.5.1...v0.5.2) | `AGENTS.md`: Authority and privacy, `<rpce_tooling_guidance>` |
+| [0.5.1](https://github.com/crstdr/minibrain/compare/v0.5.0...v0.5.1) | `AGENTS.md`: `<rpce_tooling_guidance>` |
+| [0.5.0](https://github.com/crstdr/minibrain/compare/v0.4.2...v0.5.0) | `AGENTS.md`: Memory rules, Resume, `<communication_hygiene>` |
+| [0.4.2](https://github.com/crstdr/minibrain/compare/v0.3.1...v0.4.2) | nothing |
+| [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
+| [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
+
 ## 0.6.0
 
 - `reflect` Destinations is now an ordered question flow for categorising and storing information: authority, standing rules, procedures, lessons and subject knowledge, then working-index follow-ups.

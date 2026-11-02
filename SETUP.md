@@ -91,10 +91,11 @@ or comparative benefit.
 
 ## Upgrading
 
-1. Read the destination's instructions and adoption record. Obtain upgrade authority; preserve unfinished work and keep other writers read-only during protocol changes.
-2. Compare the adopted source, proposed revision and current local rules, skills and helper configuration. Read this guide and the changed source files. If the old source or uncommitted base is unavailable, disclose that limit.
-3. Preserve user knowledge, principles and adaptations; resolve consequential conflicts with the user. Inspect newly managed paths before replacing the helper. A new upstream version grants no authority to migrate, install or publish.
-4. Verify the final local result and loading paths, then record the new adopted source and changes. All writers reload before overlap resumes.
+1. Read the destination's instructions and adoption record: note the adopted ref and its local adaptations. Obtain upgrade authority; preserve unfinished work and keep other writers read-only during protocol changes.
+2. Inspect the upstream delta outside the destination: `git diff <adopted-ref> <target-ref> -- starter`, or the corresponding GitHub compare view. Read changed source files. Use the recorded commit even if untagged; if unavailable, disclose the missing baseline rather than assume the nearest release. For pre-0.3.0 installations or those without a recorded minibrain ref, follow this guide's adaptation process while preserving existing memory and local rules.
+3. Compare each upstream change with the matching local file: skip it if already fully present; take it where the local text still equals the adopted ref; merge where adapted; ask the user about a change that conflicts with a local rule. Keep local rules pending resolution; report any unapplied upstream changes. Preserve user knowledge, principles and adaptations. Inspect newly managed paths before replacing the helper. A new release grants no authority to migrate, install or publish.
+4. Check references to changed sections, commands and skills. Verify each recorded local adaptation against the merged files; changes or removals require approval. Verify helper configuration and coverage match the installed layout.
+5. Run applicable [acceptance checks](#verify-the-installation), using the installed helper or verified equivalent. Verify before recording the adopted target ref, local adaptations and unapplied upstream changes; disclose remaining verification gaps. All writers reload before overlap resumes.
 
 Legacy root notes and `topics/` remain supported; folder-space features apply only under `spaces/`. Retain `Map.md` with a matching `MAP_FILE` setting, or agree a file/link migration; case-only renames may need an intermediate name. Existing installations may retain `kb.py`; rename only during an authorised upgrade and update command references together.
 

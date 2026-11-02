@@ -51,6 +51,12 @@ class DistributionLinkTests(unittest.TestCase):
         self.assertIn(b"Copyright (c) ", notice)
         self.assertEqual((ROOT / "starter/licenses/minibrain.txt").read_bytes(), notice)
 
+    def test_current_version_has_a_changelog_section_and_upgrade_row(self):
+        version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertIn(f"\n## {version}\n", changelog)
+        self.assertIn(f"| [{version}](", changelog)
+
     def test_relative_markdown_links_and_section_anchors_resolve(self):
         # Historical source accounts are prose; template snippets inside fences
         # and intentionally synthetic [[wikilinks]] are not installed targets.
