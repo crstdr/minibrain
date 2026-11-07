@@ -27,12 +27,16 @@ Staged memory changes—including space assets—require staged CHANGELOG.md.
 A staged path edited again after staging is a PROBLEM in check --staged.
 Relevant .gitignore files must match the index, except CRLF/LF endings.
 
+With tools/collection.py installed, check also runs its collection checks and
+keeps record ids out of the bare-name link namespace; unchanged otherwise.
+
 Not checked: factual truth, complete capture, status/history order, section
 anchors, ordinary Markdown links, hidden skills or attachment retention/privacy.
 """
 
 from pathlib import Path, PurePosixPath
 import datetime
+import importlib.util
 import json
 import os
 import re
@@ -449,6 +453,17 @@ def release_lock():
         return False
 
 
+def extension():
+    """tools/collection.py when installed: an optional extension whose checks run only then."""
+    path = ROOT / "tools" / "collection.py"
+    if not path.is_file():
+        return None
+    spec = importlib.util.spec_from_file_location("collection", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def check(staged_view=False, allow_unborn=False, base="HEAD"):
     error = repository_error()
     if error:
@@ -529,8 +544,11 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
 
     managed = {rel: content for rel, content in documents.items() if is_managed_path(rel)}
     canonical = {rel: content for rel, content in managed.items() if not is_space_asset(rel)}
+    records = extension()
     by_basename = {}
     for rel in documents:
+        if records and records.is_record(rel):
+            continue  # records are reached by qualified links only, so ids may repeat across collections
         by_basename.setdefault(Path(rel).stem, []).append(rel)
     for basename, paths in sorted(by_basename.items()):
         # Qualified spaces/assets cannot collide with the legacy bare-name namespace.
@@ -546,6 +564,9 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
             _, error = resolve_link(target, documents, by_basename)
             if error:
                 problems.append(f"{error} wikilink in {rel}: [[{target}]]")
+
+    if records:
+        records.check(staged_view, documents, problems, warnings, git, base)
 
     for rel in canonical:
         if is_space_path(rel) and PurePosixPath(rel).name == "index.md":

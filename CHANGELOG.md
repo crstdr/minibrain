@@ -18,7 +18,8 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 - `check --staged` reports a PROBLEM for a staged path edited again after staging.
 - New `minibrain.py commit [--label <label>] -m <message>... [--amend]`: refuses under another writer's lock and on any `check --staged` PROBLEM, commits the index without `-a`, then runs `check`; `--amend` recommits only the acquisition's own commit (the lock now records the full HEAD hash) and never opens an editor. `AGENTS.md` Checkpoint steps 4–5 name it, with the unpiped `check --staged` + `&&` path for helpers without it; take the contract hunk and the helper together.
 - `SETUP.md`: a missing commit identity is set for the repository only, never globally.
-- New optional `tools/collection.py`: one Markdown file per record (default `collection.<name>/<id>.md`), with governed fields as append-only history, source pointers and prose conditions. The core leaves collection folders unmanaged: records need no Map entry, and a commit confined to collection folders needs no changelog line. Adoption test: `SETUP.md` §2.
+- `check` runs `tools/collection.py`'s checks when that file is installed and keeps record ids out of the bare-name link namespace; unchanged otherwise.
+- New optional `tools/collection.py`: one Markdown file per record (default `collection.<name>/<id>.md`), with governed fields as append-only history, source pointers and prose conditions; `check` validates the format, references and history rules, `graph` prints prerequisites and dependants, `view` lists a collection. The core leaves collection folders unmanaged: records need no Map entry, and a commit confined to collection folders needs no changelog line. Adoption test: `SETUP.md` §2.
 - `reflect` Destinations question 2 says a standing user preference *about agent behaviour* goes to `<principles>`, so subject preferences stay in their topics.
 
 ## 0.6.1
