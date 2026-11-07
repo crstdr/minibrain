@@ -2,13 +2,14 @@
 """Collections: related records as plain Markdown files.
 
 Collection = brain-root folder <COLLECTION_PREFIX><name>/; default prefix
-"collection." (collection.tasks/). Record = one Markdown file in it; the
+"collection." (collection.tasks/). Records sit directly in that folder, not
+in subfolders. Record = one Markdown file; the
 filename stem is its id, stable and unique within the collection
-(collection.tasks/T-0142.md has id T-0142; ids contain no spaces).
+(collection.tasks/T-0142.md has id T-0142; ids contain no whitespace or commas).
 
 Layout: title line; optional "- key: value" bullets directly below it, ending
 at the first blank line; then the brain's own Markdown. Parsed keys, all
-optional: state (the brain's vocabulary); tags (#tag …); needs (space-separated
+optional: state (the brain's vocabulary); tags (#tag …); needs (comma- or space-separated
 prerequisite ids: <id> in this collection, <name>/<id> in another); source
 (below). Other keys and the body are the brain's.
 
@@ -21,10 +22,9 @@ No helper command writes sections.
 Governed fields: GOVERNED_FIELDS (below) names fields, not header keys, whose
 value the user controls or has delegated; who may set each one is written where
 the brain records delegation, and each entry cites it. A governed value lives
-only under "## History", one entry per assignment, change or clearance, newest
+only under "## History", one line per assignment, change or clearance, newest
 first, e.g.
-  - 2026-11-07 priority: P2 — fits the release goal; authority: user,
-    2026-11-05; assent: planner, scheduler
+  - 2026-11-07 priority: P2 — fits the release goal; authority: user, 2026-11-05; assent: planner, scheduler
 The newest entry is the value; none means unset; "cleared" unsets. To correct
 an entry, append a new one; never edit or remove an earlier one (check --staged
 compares with HEAD). Changing GOVERNED_FIELDS is an instruction change and needs
@@ -50,7 +50,7 @@ entry, and a commit confined to collection folders needs no changelog line;
 durable outcomes still get theirs.
 
 Checks: with this file installed, check and check --staged also validate every
-collection folder: a title line and an id without spaces; header syntax; needs
+collection folder: a title line and an id without whitespace or commas; header syntax; needs
 references that exist, with no cycles (members named); governed fields only
 under ## History, as well-formed entries newest first, earlier entries unchanged
 (staged view); no deletion of a committed record. Problems name the fix. Links
@@ -59,9 +59,18 @@ bare-name namespace, so two collections may reuse an id.
 
 graph <name>/<id> prints the transitive prerequisites and dependants, each once
 at its shortest depth, with states; it draws no readiness verdict.
-view <name> [--state s] [--tag t] prints one line per record (id, state, days
-since its last commit, title) and stores nothing. For detail, discovery and
-change review use cat, grep and git log -p <rev>..HEAD -- 'collection.*'.
+view <name> [--state s] [--tag t] [--show k1,k2] [--sort k | --sort a/b]
+[--desc] [--top N] lists records (id, state, days since last commit, title).
+--show adds header fields; governed fields use their newest History value.
+--sort orders a field numerically when it starts with a number, otherwise as
+natural text (P2 before P10); a/b divides two fields' leading numbers. Ascending
+by default; --desc reverses it. Missing/invalid values and zero denominators
+sort last as n/a; zero numerators are valid. Ratios show inputs and result.
+Sorted output is a proposal, never authority; scores are not stored. No other
+expressions or dependency-based scoring. Example:
+  python3 tools/collection.py view tasks --show priority,benefit,cost --sort benefit/cost --desc --top 5
+For detail, discovery and change review use cat, grep and
+git log -p <rev>..HEAD -- 'collection.*'.
 
 One home: a marked line in a topic stays the light form for a single fact,
 decision or wait; a record is for an entry that needs sections, governance,
@@ -76,7 +85,9 @@ authority, approved source access, one canonical home.
 """
 
 from pathlib import Path
+import argparse
 import datetime
+import math
 import re
 import subprocess
 import sys
@@ -89,6 +100,16 @@ HEADER = re.compile(r"^- ([A-Za-z][\w-]*): (.*)$")
 DATED = re.compile(r"^- (\d{4}-\d{2}-\d{2}) ([A-Za-z][\w-]*):")
 ENTRY = re.compile(r"^- (\d{4}-\d{2}-\d{2}) ([A-Za-z][\w-]*): (.+?) — (.+?); authority: ([^;]+?)(?:; assent: (.+?))?\s*$")
 ENTRY_FORM = "- YYYY-MM-DD field: value — reason; authority: ref[; assent: who]"
+FIELD = r"[A-Za-z][\w-]*"
+NUMBER = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?=$|[\s(])")
+
+
+def governed_fields():
+    return {field.lower() for field in GOVERNED_FIELDS}
+
+
+def prerequisites(header):
+    return [token for token in re.split(r"[,\s]+", header.get("needs", "")) if token]
 
 
 def is_record(rel):
@@ -104,7 +125,7 @@ def key_of(rel):
 
 
 def parse(content):
-    """(title, header dict, history bullet lines); unknown layout yields None/empty, never an exception."""
+    """(title, header dict, history entries); retain continuations so validation cannot overlook them."""
     lines = content.splitlines()
     title = lines[0][2:].strip() if lines and lines[0].startswith("# ") else None
     header, i = {}, 1
@@ -113,22 +134,32 @@ def parse(content):
         if match:
             header.setdefault(match.group(1).lower(), match.group(2).strip())
         i += 1
-    history, inside = [], False
+    history, inside, continuation = [], False, False
     for line in lines:
         if line.startswith("## "):
             inside = line.strip() == "## History"
+            continuation = False
         elif inside and line.startswith("- "):
             history.append(line.rstrip())
+            continuation = True
+        elif inside and continuation and line.strip():
+            history[-1] += "\n" + line.rstrip()
+        else:
+            continuation = False
     return title, header, history
 
 
 def governed_entries(history, problems, rel):
     entries = []
+    fields = governed_fields()
     for line in history:
         dated = DATED.match(line)
-        if not dated or dated.group(2) not in GOVERNED_FIELDS:
+        if not dated or dated.group(2).lower() not in fields:
             continue
-        if not ENTRY.match(line):
+        if "\n" in line:
+            problems.append(f"governed entries must use one line each in {rel}: {line.splitlines()[0][:70]}")
+            continue
+        if not ENTRY.fullmatch(line):
             problems.append(f"malformed governed entry in {rel}: {line[:70]} (form: {ENTRY_FORM})")
             continue
         entries.append(line)
@@ -182,15 +213,24 @@ def check(staged_view, documents, problems, warnings, git, base="HEAD"):
     records = load_records(staged_view, documents, problems)
     by_key = {key_of(rel): rel for rel in records}
     needs = {}
+    fields = governed_fields()
+    changed = set()
+    if staged_view and fields:
+        # HEAD^ during amend: compare the whole unfinished commit, not just its latest edits.
+        diff = git("diff", "--cached", "--name-only", "-z", *([base] if base != "HEAD" else []))
+        if diff.returncode:
+            problems.append(f"cannot inspect changed records: {diff.stderr.strip()}")
+        else:
+            changed = set(diff.stdout.split("\0"))
     for rel, content in sorted(records.items()):
         collection, record_id = key_of(rel)
-        if " " in record_id:
-            problems.append(f"record id contains spaces: {rel}")
+        if re.search(r"[\s,]", record_id):
+            problems.append(f"record id contains spaces or commas: {rel}")
         title, header, history = parse(content)
         if title is None:
             problems.append(f"record has no title line (# Title): {rel}")
         for key in header:
-            if key in GOVERNED_FIELDS:
+            if key in fields:
                 problems.append(f"{key} is governed: record it under ## History, not in the header ({rel})")
         bad_tags = [tag for tag in header.get("tags", "").split() if not tag.startswith("#")]
         if bad_tags:
@@ -201,7 +241,7 @@ def check(staged_view, documents, problems, warnings, git, base="HEAD"):
             if not separator or not location.strip() or not observed.strip():
                 problems.append(f"source needs '<location> @ <revision or time last observed>' or unknown: {rel}")
         refs = []
-        for token in header.get("needs", "").split():
+        for token in prerequisites(header):
             key = tuple(token.split("/", 1)) if "/" in token else (collection, token)
             if key not in by_key:
                 problems.append(f"needs unknown record {token}: {rel}")
@@ -209,7 +249,7 @@ def check(staged_view, documents, problems, warnings, git, base="HEAD"):
                 refs.append(by_key[key])
         needs[rel] = refs
         entries = governed_entries(history, problems, rel)
-        if staged_view and GOVERNED_FIELDS:
+        if rel in changed:
             previous = git("show", f"{base}:{rel}")
             if previous.returncode == 0:
                 for entry in governed_entries(parse(previous.stdout)[2], [], rel):
@@ -252,7 +292,7 @@ def graph(args):
         return 1
     forward, backward = {}, {}
     for key, (rel, (_, header, _)) in parsed.items():
-        for token in header.get("needs", "").split():
+        for token in prerequisites(header):
             target = tuple(token.split("/", 1)) if "/" in token else (key[0], token)
             forward.setdefault(key, []).append(target)
             backward.setdefault(target, []).append(key)
@@ -278,24 +318,57 @@ def graph(args):
     return 1 if problems else 0
 
 
+def field_value(field, header, history):
+    if field not in governed_fields():
+        return header.get(field)
+    for line in history:
+        match = ENTRY.fullmatch(line)
+        if match and match.group(2).lower() == field:
+            value = match.group(3).strip()
+            return None if value.lower() == "cleared" else value
+    return None
+
+
+def leading_number(value):
+    match = NUMBER.match(value.strip()) if value else None
+    number = float(match.group()) if match else None
+    return number if number is not None and math.isfinite(number) else None
+
+
+def order_key(value):
+    if not value or value.strip().lower() in {"n/a", "unknown", "unset", "cleared"}:
+        return None
+    number = leading_number(value)
+    if number is not None:
+        return (0, number)
+    return (1, tuple(int(part) if part.isdigit() else part for part in re.split(r"(\d+)", value.casefold())))
+
+
 def view(args):
-    name, state, tag, rest = "", None, None, list(args)
-    while rest:
-        arg = rest.pop(0)
-        if arg == "--state" and rest:
-            state = rest.pop(0)
-        elif arg == "--tag" and rest:
-            tag = rest.pop(0) if rest[0].startswith("#") else "#" + rest.pop(0)
-        elif not name and not arg.startswith("--"):
-            name = arg
-        else:
-            name = ""
-            break
-    if not name:
-        print("usage: python3 tools/collection.py view <name> [--state s] [--tag t]")
-        return 2
+    parser = argparse.ArgumentParser(prog="python3 tools/collection.py view")
+    parser.add_argument("name")
+    parser.add_argument("--state")
+    parser.add_argument("--tag")
+    parser.add_argument("--show", default="")
+    parser.add_argument("--sort")
+    parser.add_argument("--desc", action="store_true")
+    parser.add_argument("--top", type=int)
+    options = parser.parse_args(args)
+    shown = [key.strip().lower() for key in options.show.split(",")] if options.show else []
+    if any(not re.fullmatch(FIELD, key) for key in shown):
+        parser.error("--show needs comma-separated field names")
+    if options.sort and not re.fullmatch(rf"{FIELD}(?:/{FIELD})?", options.sort):
+        parser.error("--sort accepts one field or field/field only")
+    if options.desc and not options.sort:
+        parser.error("--desc needs --sort")
+    if options.top is not None and options.top < 1:
+        parser.error("--top must be positive")
+    sort_fields = options.sort.lower().split("/") if options.sort else []
+    columns = list(dict.fromkeys(shown + sort_fields))
+    ratio = len(sort_fields) == 2
+    tag = options.tag.lstrip("#") if options.tag else None
     parsed, problems = records_by_key()
-    folder = COLLECTION_PREFIX + name
+    folder = COLLECTION_PREFIX + options.name
     log = run_git("log", "--format=%cs", "--name-only", "--", folder)
     last_commit, date = {}, None
     for line in log.stdout.splitlines():
@@ -304,17 +377,47 @@ def view(args):
         elif line and date:
             last_commit.setdefault(line, date)
     today = datetime.date.today()
+    rows = []
     for key in sorted(parsed):
-        if key[0] != name:
+        if key[0] != options.name:
             continue
-        rel, (title, header, _) = parsed[key]
-        if state and header.get("state") != state:
+        rel, (title, header, history) = parsed[key]
+        if options.state and header.get("state") != options.state:
             continue
-        if tag and tag not in header.get("tags", "").split():
+        if tag and "#" + tag not in header.get("tags", "").split():
             continue
+        governed_entries(history, problems, rel)
+        values = {field: field_value(field, header, history) for field in columns}
+        score, rank = None, None
+        if ratio:
+            numerator, denominator = (leading_number(values[field]) for field in sort_fields)
+            if numerator is not None and denominator is not None and denominator != 0:
+                score = numerator / denominator
+                if math.isfinite(score):
+                    rank = (0, score)
+        elif sort_fields:
+            rank = order_key(values[sort_fields[0]])
         committed = last_commit.get(rel)
         age = str((today - datetime.date.fromisoformat(committed)).days) if committed else "new"
-        print(f"{key[1]}\t{header.get('state', '-')}\t{age}\t{title or '(no title)'}")
+        cells = [key[1], header.get("state", "-"), age, title or "(no title)"]
+        cells += [values[field] or "n/a" for field in columns]
+        if ratio:
+            cells.append(format(score, ".6g") if rank is not None else "n/a")
+        elif sort_fields and rank is None:
+            cells[4 + columns.index(sort_fields[0])] = "n/a"
+        rows.append((rank, cells))
+    missing = [row for row in rows if row[0] is None]
+    if sort_fields:
+        valid = sorted((row for row in rows if row[0] is not None), key=lambda row: row[0], reverse=options.desc)
+        rows = valid + missing  # Missing values stay last, including in descending order.
+        print(f"# proposal order; no authority to act; {len(missing)} n/a last")
+    if options.top is not None:
+        print(f"# showing {min(options.top, len(rows))} of {len(rows)} records")
+        rows = rows[:options.top]
+    if columns:
+        print("\t".join(["id", "state", "age", "title"] + columns + ([options.sort.lower()] if ratio else [])))
+    for _, cells in rows:
+        print("\t".join(cells))
     for problem in problems:
         print("PROBLEM:", problem)
     return 1 if problems else 0
@@ -327,6 +430,6 @@ if __name__ == "__main__":
         sys.exit(0)
     handler = {"graph": graph, "view": view}.get(argv[0])
     if handler is None:
-        print("usage: python3 tools/collection.py [graph <name>/<id> | view <name> [--state s] [--tag t]]")
+        print("usage: python3 tools/collection.py [graph <name>/<id> | view <name> --help]")
         sys.exit(2)
     sys.exit(handler(argv[1:]))

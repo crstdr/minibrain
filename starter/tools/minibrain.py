@@ -544,10 +544,17 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
 
     managed = {rel: content for rel, content in documents.items() if is_managed_path(rel)}
     canonical = {rel: content for rel, content in managed.items() if not is_space_asset(rel)}
-    records = extension()
+    records, record_paths = None, set()
+    try:
+        records = extension()
+        if records:
+            record_paths = {rel for rel in documents if records.is_record(rel)}
+    except Exception as error:
+        problems.append(f"cannot load tools/collection.py: {error}")
+        records = None
     by_basename = {}
     for rel in documents:
-        if records and records.is_record(rel):
+        if rel in record_paths:
             continue  # records are reached by qualified links only, so ids may repeat across collections
         by_basename.setdefault(Path(rel).stem, []).append(rel)
     for basename, paths in sorted(by_basename.items()):
@@ -566,7 +573,10 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
                 problems.append(f"{error} wikilink in {rel}: [[{target}]]")
 
     if records:
-        records.check(staged_view, documents, problems, warnings, git, base)
+        try:
+            records.check(staged_view, documents, problems, warnings, git, base)
+        except Exception as error:
+            problems.append(f"cannot run tools/collection.py checks: {error}")
 
     for rel in canonical:
         if is_space_path(rel) and PurePosixPath(rel).name == "index.md":

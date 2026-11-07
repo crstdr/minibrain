@@ -20,6 +20,8 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 - `SETUP.md`: a missing commit identity is set for the repository only, never globally.
 - `check` runs `tools/collection.py`'s checks when that file is installed and keeps record ids out of the bare-name link namespace; unchanged otherwise.
 - New optional `tools/collection.py`: one Markdown file per record (default `collection.<name>/<id>.md`), with governed fields as append-only history, source pointers and prose conditions; `check` validates the format, references and history rules, `graph` prints prerequisites and dependants, `view` lists a collection. The core leaves collection folders unmanaged: records need no Map entry, and a commit confined to collection folders needs no changelog line. Adoption test: `SETUP.md` §2.
+- Collection views support `--show`, `--sort field` or `--sort numerator/denominator`, `--desc` and `--top`. Governed values come from history; ratios show their inputs and result. Rankings are proposals, not authority; missing/invalid values and zero denominators sort last. No arbitrary expressions or stored scores.
+- Collection checks reject wrapped governed entries, accept comma-separated prerequisites and match governed field names case-insensitively. History comparisons read only staged-changed records; extension failures report a PROBLEM instead of a traceback.
 - `reflect` Destinations question 2 says a standing user preference *about agent behaviour* goes to `<principles>`, so subject preferences stay in their topics.
 
 ## 0.6.1
