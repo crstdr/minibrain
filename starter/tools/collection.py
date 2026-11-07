@@ -12,6 +12,12 @@ optional: state (the brain's vocabulary); tags (#tag …); needs (space-separate
 prerequisite ids: <id> in this collection, <name>/<id> in another). Other keys
 and the body are the brain's.
 
+Agent sections: where writers have user-assigned agent names (MEMORY.md →
+Owners), a heading that starts with an agent's name ("## <Agent> assessment")
+belongs to it; edit only your own, following Checkpoint (lock, reread, staged
+diff). A single-writer brain needs no agent sections; its headings are its own.
+No helper command writes sections.
+
 Archive by state, never by deletion; a merged record keeps a successor link and
 the reason. The core leaves collection folders unmanaged: records need no Map
 entry, and a commit confined to collection folders needs no changelog line;
