@@ -59,6 +59,9 @@ bare-name namespace, so two collections may reuse an id.
 
 graph <name>/<id> prints the transitive prerequisites and dependants, each once
 at its shortest depth, with states; it draws no readiness verdict.
+view and graph emit TSV with one header line; graph includes the origin at
+depth 0. Cells use standard CSV quoting with a tab delimiter. Diagnostics,
+counts and proposal notices go to stderr. No output-format option.
 view <name> [--state s] [--tag t] [--show k1,k2] [--sort k | --sort a/b]
 [--desc] [--top N] lists records (id, state, days since last commit, title).
 --show adds header fields; governed fields use their newest History value.
@@ -86,6 +89,7 @@ authority, approved source access, one canonical home.
 
 from pathlib import Path
 import argparse
+import csv
 import datetime
 import math
 import re
@@ -276,19 +280,20 @@ def records_by_key():
     return parsed, problems
 
 
-def describe(key, parsed):
-    rel, (title, header, _) = parsed[key]
-    return f"{key[0]}/{key[1]} — {title or '(no title)'} ({header.get('state', 'no state')})"
+def write_tsv(columns, rows):
+    writer = csv.writer(sys.stdout, delimiter="\t", lineterminator="\n")
+    writer.writerow(columns)
+    writer.writerows(rows)
 
 
 def graph(args):
     if len(args) != 1 or "/" not in args[0]:
-        print("usage: python3 tools/collection.py graph <name>/<id>")
+        print("usage: python3 tools/collection.py graph <name>/<id>", file=sys.stderr)
         return 2
     parsed, problems = records_by_key()
     start = tuple(args[0].split("/", 1))
     if start not in parsed:
-        print(f"unknown record: {args[0]}")
+        print(f"unknown record: {args[0]}", file=sys.stderr)
         return 1
     forward, backward = {}, {}
     for key, (rel, (_, header, _)) in parsed.items():
@@ -308,13 +313,19 @@ def graph(args):
                     frontier.append(nxt)
         return [(depth[k], k) for k in order]
 
-    print(describe(start, parsed))
+    def row(direction, depth, key):
+        if key not in parsed:
+            return [direction, depth, f"{key[0]}/{key[1]}", "unknown", "(unknown record)"]
+        _, (title, header, _) = parsed[key]
+        return [direction, depth, f"{key[0]}/{key[1]}", header.get("state", "-"), title or "(no title)"]
+
+    rows = [row("origin", 0, start)]
     for label, edges in (("prerequisites", forward), ("dependants", backward)):
-        print(f"{label}:")
         for depth, key in walk(edges):
-            print(f"  {depth} " + (describe(key, parsed) if key in parsed else f"{key[0]}/{key[1]} — unknown record"))
+            rows.append(row(label, depth, key))
+    write_tsv(["direction", "depth", "id", "state", "title"], rows)
     for problem in problems:
-        print("PROBLEM:", problem)
+        print("PROBLEM:", problem, file=sys.stderr)
     return 1 if problems else 0
 
 
@@ -410,16 +421,14 @@ def view(args):
     if sort_fields:
         valid = sorted((row for row in rows if row[0] is not None), key=lambda row: row[0], reverse=options.desc)
         rows = valid + missing  # Missing values stay last, including in descending order.
-        print(f"# proposal order; no authority to act; {len(missing)} n/a last")
+        print(f"# proposal order; no authority to act; {len(missing)} n/a last", file=sys.stderr)
     if options.top is not None:
-        print(f"# showing {min(options.top, len(rows))} of {len(rows)} records")
+        print(f"# showing {min(options.top, len(rows))} of {len(rows)} records", file=sys.stderr)
         rows = rows[:options.top]
-    if columns:
-        print("\t".join(["id", "state", "age", "title"] + columns + ([options.sort.lower()] if ratio else [])))
-    for _, cells in rows:
-        print("\t".join(cells))
+    write_tsv(["id", "state", "age", "title"] + columns + ([options.sort.lower()] if ratio else []),
+              (cells for _, cells in rows))
     for problem in problems:
-        print("PROBLEM:", problem)
+        print("PROBLEM:", problem, file=sys.stderr)
     return 1 if problems else 0
 
 
@@ -430,6 +439,6 @@ if __name__ == "__main__":
         sys.exit(0)
     handler = {"graph": graph, "view": view}.get(argv[0])
     if handler is None:
-        print("usage: python3 tools/collection.py [graph <name>/<id> | view <name> --help]")
+        print("usage: python3 tools/collection.py [graph <name>/<id> | view <name> --help]", file=sys.stderr)
         sys.exit(2)
     sys.exit(handler(argv[1:]))
