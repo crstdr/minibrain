@@ -16,7 +16,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 ## Unreleased
 
 - `check --staged` reports a PROBLEM for a staged path edited again after staging.
-- `AGENTS.md` Checkpoint: both checks run unpiped, and a commit follows `check --staged` only through `&&`.
+- New `minibrain.py commit [--label <label>] -m <message>... [--amend]`: refuses under another writer's lock and on any `check --staged` PROBLEM, commits the index without `-a`, then runs `check`; `--amend` recommits only the acquisition's own commit (the lock now records the full HEAD hash) and never opens an editor. `AGENTS.md` Checkpoint steps 4–5 name it, with the unpiped `check --staged` + `&&` path for helpers without it; take the contract hunk and the helper together.
 - `SETUP.md`: a missing commit identity is set for the repository only, never globally.
 - New optional `tools/collection.py`: one Markdown file per record (default `collection.<name>/<id>.md`). The core leaves collection folders unmanaged: records need no Map entry, and a commit confined to collection folders needs no changelog line. Adoption test: `SETUP.md` §2.
 - `reflect` Destinations question 2 says a standing user preference *about agent behaviour* goes to `<principles>`, so subject preferences stay in their topics.

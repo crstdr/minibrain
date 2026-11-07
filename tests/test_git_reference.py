@@ -3,6 +3,7 @@ import contextlib
 import errno
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import re
@@ -21,13 +22,18 @@ HELPER = Path(__file__).resolve().parents[1] / "starter/tools/minibrain.py"
 class GitReferenceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="minibrain-reference-")
-        self.root = Path(self.temp.name) / "brain"
-        self.root.mkdir()
         # Inherited Git overrides must not redirect commands outside this fixture.
         self.env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
-        self.env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
+        self.env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_EDITOR="false",
                         GIT_CONFIG_COUNT="2", GIT_CONFIG_KEY_0="maintenance.auto",
                         GIT_CONFIG_VALUE_0="false", GIT_CONFIG_KEY_1="gc.auto", GIT_CONFIG_VALUE_1="0")
+        self.root = Path(self.temp.name) / "brain"
+        self.stage_fixture()
+        self.git("commit", "-qm", "Synthetic fixture")
+
+    def stage_fixture(self):
+        """A fresh repository at self.root with the synthetic brain staged, not yet committed."""
+        self.root.mkdir()
         self.git("init", "-q")
         self.git("config", "user.name", "Synthetic Test")
         self.git("config", "user.email", "test@example.invalid")
@@ -43,7 +49,15 @@ class GitReferenceTests(unittest.TestCase):
         for name, text in content.items():
             self.write(name, text)
         self.git("add", "--", *content)
-        self.git("commit", "-qm", "Synthetic fixture")
+
+    def stage_change(self, status="Changed."):
+        """A valid prospective checkpoint: a topic edit with its changelog line, staged by name."""
+        self.write("topics/Project.md", f"# Project\n\n## Current status\n\n{status}\n\n## History\n")
+        self.write("CHANGELOG.md", f"# Changelog\n\n2026-01-02 - {status}\n2026-01-01 - Created synthetic fixture.\n")
+        self.git("add", "--", "topics/Project.md", "CHANGELOG.md")
+
+    def commits(self):
+        return self.git("rev-list", "--count", "HEAD").stdout.strip()
 
     def tearDown(self):
         self.temp.cleanup()
@@ -704,6 +718,83 @@ class GitReferenceTests(unittest.TestCase):
         for args in [(label, "extra"), (label, "--force"), ("--force", "extra"), ()]:
             self.assertIn("usage:", self.tool("unlock", *args, expected=2))
             self.assertTrue((self.root / ".git/kb-writer.lock").exists())
+        self.tool("unlock", label)
+
+    def test_commit_refuses_without_the_lock_holders_label_staged_paths_or_a_message(self):
+        label = self.acquire()
+        self.assertIn("nothing is staged", self.tool("commit", "--label", label, "-m", "x", expected=1))
+        self.stage_change()
+        self.assertIn("pass --label", self.tool("commit", "-m", "x", expected=1))
+        self.assertIn("not Alpha/0000", self.tool("commit", "--label", "Alpha/0000", "-m", "x", expected=1))
+        for args in [(), ("-m",), ("-a", "-m", "x"), ("-m", "x", "topics/Project.md")]:
+            self.assertIn("usage:", self.tool("commit", "--label", label, *args, expected=2))
+        self.assertEqual(self.commits(), "1")
+        self.tool("unlock", label)
+        self.assertIn("proves nothing", self.tool("commit", "--label", label, "-m", "x", expected=1))
+        self.assertIn("needs --label", self.tool("commit", "--amend", expected=1))
+        self.assertEqual(self.commits(), "1")
+
+    def test_commit_refuses_on_a_staged_problem_and_commits_only_the_index(self):
+        label = self.acquire()
+        self.write("topics/Project.md", "# Project\n\n## Current status\n\nNo changelog line.\n\n## History\n")
+        self.git("add", "--", "topics/Project.md")
+        out = self.tool("commit", "--label", label, "-m", "Alpha: x", expected=1)
+        self.assertIn("PROBLEM", out)
+        self.assertIn("REFUSED: fix the PROBLEMs", out)
+        self.assertEqual(self.commits(), "1")
+        self.stage_change("Second.")
+        self.write("MEMORY.md", "# Memory\n\n## Focus\n\nUnstaged edit.\n\n## Open threads\n\n")
+        out = self.tool("commit", "--label", label, "-m", "Alpha: Record state",
+                        "-m", "Co-Authored-By: Synthetic <test@example.invalid>")
+        self.assertIn("committed", out)
+        self.assertIn("Alpha: Record state\n\nCo-Authored-By: Synthetic", self.git("log", "-1", "--format=%B").stdout)
+        committed = set(self.git("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").stdout.split())
+        self.assertEqual(committed, {"topics/Project.md", "CHANGELOG.md"})  # no -a: MEMORY.md stays unstaged
+        self.assertTrue((self.root / ".git/kb-writer.lock").is_dir())  # commit never releases
+        self.tool("unlock", label)
+
+    def test_commit_amend_is_bound_to_the_acquisitions_own_commit(self):
+        label = self.acquire()
+        meta = json.loads((self.root / ".git/kb-writer.lock/meta.json").read_text())
+        self.assertEqual(meta["head"], self.git("rev-parse", "HEAD").stdout.strip())  # full hash
+        self.stage_change("First.")
+        self.tool("commit", "--label", label, "-m", "Alpha: First")
+        self.write("MAP.md", "# Map\n\n- [[Project]] — synthetic state, amended.\n")
+        self.git("add", "--", "MAP.md")
+        self.assertIn("(amended)", self.tool("commit", "--label", label, "--amend"))  # keeps the message, no editor
+        self.assertEqual(self.commits(), "2")
+        self.assertEqual(self.git("log", "-1", "--format=%s").stdout.strip(), "Alpha: First")
+        self.git("commit", "-q", "--allow-empty", "-m", "raw second commit")
+        self.stage_change("Third.")
+        out = self.tool("commit", "--label", label, "--amend", "-m", "x", expected=1)
+        self.assertIn("not this acquisition's own commit", out)
+        self.assertEqual(self.git("log", "-1", "--format=%s").stdout.strip(), "raw second commit")
+        self.tool("unlock", label)
+
+    def test_commit_amend_accepts_an_older_helpers_abbreviated_lock_head(self):
+        label = self.acquire()
+        metadata = self.root / ".git/kb-writer.lock/meta.json"
+        meta = json.loads(metadata.read_text())
+        meta["head"] = meta["head"][:7]
+        metadata.write_text(json.dumps(meta))
+        self.stage_change("First.")
+        self.tool("commit", "--label", label, "-m", "Alpha: First")
+        self.stage_change("Amended.")
+        self.assertIn("(amended)", self.tool("commit", "--label", label, "--amend", "-m", "Alpha: Amended"))
+        self.assertEqual(self.commits(), "2")
+        self.tool("unlock", label)
+
+    def test_commit_makes_the_first_commit_on_an_unborn_branch(self):
+        self.root = Path(self.temp.name) / "fresh"
+        self.stage_fixture()
+        self.assertIn("no commits yet", self.tool("check", "--staged", expected=1))
+        self.assertIn("committed", self.tool("commit", "-m", "Install the brain"))  # no lock, no label
+        self.assertEqual(self.commits(), "1")
+        self.assertNotIn("PROBLEM", self.tool("check"))
+        label = self.acquire()
+        self.stage_change("Second.")
+        out = self.tool("commit", "--label", label, "--amend", "-m", "x", expected=1)
+        self.assertIn("HEAD^ is none", out)  # the acquisition's commit does not exist yet
         self.tool("unlock", label)
 
     def test_lock_metadata_symlink_is_not_read_or_deleted(self):

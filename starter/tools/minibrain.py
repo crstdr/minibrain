@@ -5,6 +5,14 @@ check / check --staged: validate working tree / prospective commit; read-only.
 PROBLEMs fail; warnings don't. A pass proves structure, not completeness.
 lock <name> / unlock <label>: acquisition-specific ownership, not enforcement.
 unlock --force requires user approval. No cross-clone coordination.
+commit [--label <label>] -m <message> [-m <paragraph>...] [--amend]: gated
+commit of the index. Refuses under a lock unless the label is its owner's, and
+on any check --staged PROBLEM; commits without -a; then runs check (a PROBLEM
+then exits non-zero and keeps the lock). --amend needs the label and recommits
+only this acquisition's own commit (HEAD^ equals the acquisition HEAD); it keeps
+the message unless -m is given and never opens an editor. Never releases the
+lock. Cooperative: raw Git bypasses it; a host grant for
+"python3 tools/minibrain.py *" also permits commits.
 
 Normal dedicated Git working copy. Configuration and limits below.
 Managed Markdown: root *.md, topics/**/*.md, spaces/**/*.md;
@@ -272,8 +280,9 @@ def status_paths():
     return paths, None
 
 
-def staged_paths():
-    result = git("diff", "--cached", "--name-status", "-z", "-M")
+def staged_paths(base="HEAD"):
+    """Paths the prospective commit changes against base; HEAD^ while amending, so the gate sees the whole commit."""
+    result = git("diff", "--cached", "--name-status", "-z", "-M", *([base] if base != "HEAD" else []))
     if result.returncode != 0:
         return set(), result.stderr.strip() or "git diff --cached failed"
     records = result.stdout.split("\0")
@@ -419,6 +428,12 @@ def lock_meta():
     return meta
 
 
+def shown_head(meta):
+    """The acquisition HEAD for messages: abbreviated, since the lock stores the full hash."""
+    head = meta.get("head") or ""
+    return head[:12] if head else "?"
+
+
 def release_lock():
     try:
         items = list(LOCK.iterdir())
@@ -434,14 +449,14 @@ def release_lock():
         return False
 
 
-def check(staged_view=False):
+def check(staged_view=False, allow_unborn=False, base="HEAD"):
     error = repository_error()
     if error:
         print(f"PROBLEM: {error}")
         return 1
     problems, warnings = [], []
 
-    if git("rev-parse", "--verify", "HEAD").returncode != 0:
+    if not allow_unborn and git("rev-parse", "--verify", "HEAD").returncode != 0:
         problems.append("no commits yet, or Git is not functioning")
 
     if REQUIRE_LOCAL_REMOTES:
@@ -458,7 +473,7 @@ def check(staged_view=False):
         if meta:
             warnings.append(
                 f"writer lock held by {meta['owner']} since {meta.get('at', '?')} "
-                f"(HEAD {meta.get('head', '?')}) — memory files, staging and commits belong to that "
+                f"(HEAD {shown_head(meta)}) — memory files, staging and commits belong to that "
                 "checkpoint until release; if this session did not acquire it, do not touch them"
             )
         else:
@@ -588,7 +603,7 @@ def check(staged_view=False):
         shown = ", ".join(sorted(changed)[:8]) + (" …" if len(changed) > 8 else "")
         warnings.append(f"working tree is dirty ({len(changed)} paths): {shown}")
 
-    staged, staged_error = staged_paths()
+    staged, staged_error = staged_paths(base)
     if staged_error:
         problems.append(f"cannot inspect staged changes: {staged_error}")
     else:
@@ -643,7 +658,7 @@ def lock(args):
     except FileExistsError:
         meta = lock_meta()
         print(f"LOCK HELD: {meta.get('owner', '(owner unreadable)')} since {meta.get('at', '?')} "
-              f"(HEAD {meta.get('head', '?')}).\n"
+              f"(HEAD {shown_head(meta)}).\n"
               "A lock this session did not acquire is never its own, whatever name it carries.\n"
               "Do not change shared memory files or stage anything; continue read-only.\n"
               "Recheck at an appropriate later point; report owner, timestamp and unfinished state\n"
@@ -666,7 +681,7 @@ def lock(args):
         return 1
     owner = f"{name}/{secrets.token_hex(16)}"
     meta = {"owner": owner, "at": datetime.datetime.now().isoformat(timespec="seconds"),
-            "head": git("rev-parse", "--short", "HEAD").stdout.strip()}
+            "head": git("rev-parse", "--verify", "HEAD").stdout.strip()}  # full hash: commit --amend compares it
     try:
         (LOCK / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     except OSError as error:
@@ -707,6 +722,80 @@ def unlock(args):
     return 0
 
 
+def commit(args):
+    """Gated commit of the index: the staged check, git commit without -a, then the working-tree check."""
+    usage = ("usage: python3 tools/minibrain.py commit [--label <label>] -m <message> [-m <paragraph>]... [--amend]\n"
+             "Commits only what is staged; stage by name first. --label: the label this session's lock\n"
+             "acquisition issued (required while a lock is held). --amend: this acquisition's own commit only.")
+    label, messages, amend, rest = "", [], False, list(args)
+    while rest:
+        arg = rest.pop(0)
+        if arg == "--label" and rest and not label and rest[0].strip():
+            label = rest.pop(0).strip()
+        elif arg == "-m" and rest:
+            messages.append(rest.pop(0))
+        elif arg == "--amend" and not amend:
+            amend = True
+        else:
+            print(usage)
+            return 2
+    if not messages and not amend:
+        print(usage)
+        return 2
+    error = repository_error()
+    if error:
+        print(f"REFUSED: {error}")
+        return 1
+    meta = lock_meta() if LOCK.is_dir() else {}
+    if LOCK.is_dir() and not meta:
+        print("REFUSED: a writer lock is held but its owner is unreadable; treat it as held and report it to the person")
+        return 1
+    if meta and meta["owner"] != label:
+        print(f"REFUSED: the lock belongs to {meta['owner']} (since {meta.get('at', '?')})"
+              + (f", not {label}" if label else "; pass --label with the label this session received")
+              + ".\nOnly the lock holder commits; if that is another session, stop and report.")
+        return 1
+    if label and not meta:
+        print(f"REFUSED: no lock is held, so {label} proves nothing; acquire the lock first or omit --label")
+        return 1
+    unborn = git("rev-parse", "--verify", "HEAD").returncode != 0
+    if amend:
+        if not label:
+            print("REFUSED: --amend needs --label; only this acquisition's own commit is amended")
+            return 1
+        parent = git("rev-parse", "--verify", "HEAD^").stdout.strip() if not unborn else ""
+        base = meta.get("head") or ""
+        # An older helper stored the abbreviated hash; a prefix match of 7+ characters is the same commit.
+        if not parent or len(base) < 7 or not parent.startswith(base):
+            print(f"REFUSED: HEAD is not this acquisition's own commit (acquired at {base[:12] or 'no commit'}, "
+                  f"HEAD^ is {parent[:12] or 'none'}); amend only the commit made under this lock, never an earlier one")
+            return 1
+    staged, staged_error = staged_paths()
+    if staged_error:
+        print(f"REFUSED: cannot inspect the staging area ({staged_error})")
+        return 1
+    if not staged:
+        print("REFUSED: nothing is staged; stage the intended files by name")
+        return 1
+    if check(staged_view=True, allow_unborn=unborn, base="HEAD^" if amend else "HEAD") != 0:
+        print("REFUSED: fix the PROBLEMs above, re-stage and run commit again")
+        return 1
+    command = ["commit"] + (["--amend"] if amend else []) + (["--no-edit"] if amend and not messages else [])
+    for message in messages:
+        command += ["-m", message]
+    result = git(*command)
+    if result.returncode != 0:
+        print(f"REFUSED by git: {(result.stderr or result.stdout).strip()}")
+        return 1
+    head = git("rev-parse", "--short", "HEAD").stdout.strip()
+    print(f"committed {head}{' (amended)' if amend else ''}; working-tree check follows")
+    code = check()
+    if code:
+        print(f"PROBLEM after committing {head}: fix it, re-stage and recommit (--amend with the same label under "
+              "a lock, a further commit otherwise); nothing was released")
+    return code
+
+
 if __name__ == "__main__":
     # Keep diagnostics readable even for POSIX filenames with non-UTF-8 bytes.
     sys.stdout.reconfigure(errors="backslashreplace")
@@ -717,8 +806,9 @@ if __name__ == "__main__":
             print("usage: python3 tools/minibrain.py check [--staged]")
             sys.exit(2)
         sys.exit(check(staged_view=argv[1:] == ["--staged"]))
-    handler = {"lock": lock, "unlock": unlock}.get(cmd)
+    handler = {"lock": lock, "unlock": unlock, "commit": commit}.get(cmd)
     if handler is None:
-        print("usage: python3 tools/minibrain.py [check [--staged] | lock <name> | unlock <label> | unlock --force]")
+        print("usage: python3 tools/minibrain.py [check [--staged] | lock <name> | unlock <label> | unlock --force\n"
+              "        | commit [--label <label>] -m <message> [-m <paragraph>]... [--amend]]")
         sys.exit(2)
     sys.exit(handler(argv[1:]))
