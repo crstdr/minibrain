@@ -26,10 +26,13 @@ Existing minibrain? Start with [Upgrading](#upgrading).
 | `AGENTS.md` | One authoritative local operating contract; preserve unrelated existing rules. |
 | `MEMORY.md`, `MAP.md`, `CHANGELOG.md`, `spaces/Project.md` | Working index, discovery, outcomes and canonical knowledge; adapt paths/content to existing memory. |
 | `tools/minibrain.py` | Ready-made Git/Python helper; preserve its safeguards and reconcile existing local configuration. |
+| `tools/records.py` | Optional. One Markdown file per record (default `collection.<name>/<id>.md`); adoption test below. |
 | `.agents/skills/` | Local `reflect`, plus thin `resume`/`checkpoint` pointers; verify discovery or use explicit reads. |
 | `CLAUDE.md` | Optional identical gate plus `@AGENTS.md`; only for a host that needs and supports that import. |
 | `.gitignore` | Default local exclusions; review them and preserve existing policy. |
 | `licenses/minibrain.txt` | Retain this notice for copied minibrain material; never replace the destination's own license. |
+
+Keep a table or marked lines while they suffice. Consider `tools/records.py` for a collection of entries that several seats must assess separately, or whose prerequisite chains you repeatedly trace by hand. At setup, if the stated purpose names such a collection, ask once whether to add it; otherwise omit it and say it can be added later. On adoption, install the file, create each collection folder and list it under `AGENTS.md` → This brain, e.g. "- `collection.tasks/` — one file per task; format in the `tools/records.py` docstring." Adoption does not authorise migrating existing content.
 
 Fill `[square-bracket placeholders]` below the XML blocks and in memory files from established facts; record honest unknowns and remove unused rows/entries. Clarify missing delegation before acting; placeholders grant no authority. Keep usable path defaults or preserve compatible existing paths, updating references together. Seed only explicit user principles or confirmed generalisations; an empty block does not revoke existing rules. Preserve their scope and record where any unmigrated rules remain. Record the source URL, inspected ref/commit/date and local adaptations in the existing canonical record; unknown provenance stays unknown.
 

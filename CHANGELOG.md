@@ -15,6 +15,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 ## Unreleased
 
+- New optional `tools/records.py`: one Markdown file per record (default `collection.<name>/<id>.md`). The core leaves collection folders unmanaged: records need no Map entry, and a commit confined to collection folders needs no changelog line. Adoption test: `SETUP.md` §2.
 - `reflect` Destinations question 2 says a standing user preference *about agent behaviour* goes to `<principles>`, so subject preferences stay in their topics.
 
 ## 0.6.1
