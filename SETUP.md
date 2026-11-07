@@ -46,7 +46,7 @@ The starter uses Git and Markdown, not a mandatory storage scheme. Other mechani
 
 ## 3. Save and verify
 
-Requires Git and Python 3.8+. Install the helper at `<brain>/tools/minibrain.py`; it locates the brain from that path.
+Requires Git and Python 3.8+. Install the helper at `<brain>/tools/minibrain.py`; it locates the brain from that path. If Git has no commit identity, set one for this repository only, never globally.
 
 Before `git init`, check for an enclosing repository with `git rev-parse --show-toplevel`; distinguish “not a repository” from inspection failure. Resolve integration rather than nesting accidentally. The helper supports a normal dedicated Git working copy, not linked worktrees or distributed sync. Never adopt a public code remote for private memory.
 

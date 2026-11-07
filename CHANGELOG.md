@@ -15,6 +15,9 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 ## Unreleased
 
+- `check --staged` reports a PROBLEM for a staged path edited again after staging.
+- `AGENTS.md` Checkpoint: both checks run unpiped, and a commit follows `check --staged` only through `&&`.
+- `SETUP.md`: a missing commit identity is set for the repository only, never globally.
 - New optional `tools/collection.py`: one Markdown file per record (default `collection.<name>/<id>.md`). The core leaves collection folders unmanaged: records need no Map entry, and a commit confined to collection folders needs no changelog line. Adoption test: `SETUP.md` §2.
 - `reflect` Destinations question 2 says a standing user preference *about agent behaviour* goes to `<principles>`, so subject preferences stay in their topics.
 

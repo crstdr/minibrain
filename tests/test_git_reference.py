@@ -214,6 +214,18 @@ class GitReferenceTests(unittest.TestCase):
         self.assertEqual(paths, {"topics/Project.md", "CHANGELOG.md"})
         self.assertIn("clean", self.tool("check"))
 
+    def test_a8_staged_path_edited_after_staging_is_a_problem_in_staged_view_only(self):
+        self.write("topics/Project.md", "# Project\n\n## Current status\nStaged version.\n")
+        self.write("CHANGELOG.md", "# Changelog\n\n2026-01-02 - Changed synthetic state.\n")
+        self.git("add", "--", "topics/Project.md", "CHANGELOG.md")
+        self.write("topics/Project.md", "# Project\n\n## Current status\nEdited after staging.\n")
+        out = self.tool("check", "--staged", expected=1)
+        self.assertIn("edited after staging", out)
+        self.assertIn("topics/Project.md", out)
+        self.assertNotIn("edited after staging", self.tool("check"))
+        self.git("add", "--", "topics/Project.md")
+        self.assertNotIn("PROBLEM", self.tool("check", "--staged"))
+
     def test_a6_reports_broken_link_and_thirteenth_thread(self):
         self.write("MEMORY.md", "# Memory\n## Focus\n[[Nowhere]]\n## Open threads\n" + "- item\n" * 13)
         out = self.tool("check", expected=1)
@@ -252,7 +264,11 @@ class GitReferenceTests(unittest.TestCase):
                 self.git("add", "--", "MEMORY.md")
                 self.write("MEMORY.md", self.memory_with_lines(working_count))
                 self.assertEqual("review threshold" in self.tool("check"), working_count >= 150)
-                self.assertEqual("review threshold" in self.tool("check", "--staged"), staged_count >= 150)
+                # The working edit after staging is now itself a PROBLEM in the staged view (A8);
+                # the view-specific threshold still comes from the index.
+                staged_out = self.tool("check", "--staged", expected=1)
+                self.assertIn("edited after staging", staged_out)
+                self.assertEqual("review threshold" in staged_out, staged_count >= 150)
 
     def test_memory_review_warning_does_not_hide_real_errors(self):
         memory = "# Memory\n## Focus\n[[Nowhere]]\n## Open threads\n" + "- item\n" * 13

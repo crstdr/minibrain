@@ -16,6 +16,7 @@ Register spaces once: top-level in MAP_FILE, children under parent ## Spaces,
 using leading "- [[path]]" bullets. Assets aren't registered spaces.
 
 Staged memory changes—including space assets—require staged CHANGELOG.md.
+A staged path edited again after staging is a PROBLEM in check --staged.
 Relevant .gitignore files must match the index, except CRLF/LF endings.
 
 Not checked: factual truth, complete capture, status/history order, section
@@ -601,6 +602,17 @@ def check(staged_view=False):
             shown = ", ".join(sorted(staged)[:8]) + (" …" if len(staged) > 8 else "")
             warnings.append(f"{len(staged)} staged paths while the writer lock is held: {shown} "
                             "— only the lock holder stages; anyone else stop and report")
+        if staged and staged_view:
+            # The index is what would be committed; a later working-tree edit to the same path is
+            # a stale staged version (the slip behind re-staging instructions).
+            stale = git("diff", "--name-only", "-z")  # no pathspec: bulk changes exceed argument limits
+            if stale.returncode != 0:
+                problems.append(f"cannot compare staged paths with the working tree: {stale.stderr.strip()}")
+            else:
+                edited = sorted(set(path for path in stale.stdout.split("\0") if path) & staged)
+                if edited:
+                    problems.append("staged paths edited after staging (re-stage or restore them): "
+                                    + ", ".join(edited))
 
     short_head = git("rev-parse", "--short", "HEAD").stdout.strip() or "none"
     view = "index / prospective commit" if staged_view else "working tree"
