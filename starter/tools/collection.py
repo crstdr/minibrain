@@ -19,33 +19,36 @@ NULL. A count conveys neither authority nor capacity. Other columns are
 effective fields. Blanks and governed clearances are NULL. Only configured
 numeric fields use REAL. The leading number is the score and trailing commentary
 is non-computational. For example, 1 (1 day), 2 (1 week), 3 (1 month) score
-1, 2, 3; no unit conversion occurs. day(text) validates YYYY-MM-DD. COLLATE natural_id
-orders P2 before P10. Use IS NULL for missing values. Inspect the records for
+1, 2, 3; no unit conversion occurs. day(text) returns a valid YYYY-MM-DD date,
+else NULL. COLLATE natural_id orders P2 before P10. Use IS NULL for missing values. Inspect the records for
 rationale. Include operands and known/total coverage in ranked briefs.
 Downstream sums do not measure causal unlock value.
 
 needs(item,need), reach(item,need,depth), tags(item,tag), sections(item,heading)
-use qualified refs. reach excludes self and gives shortest distances. graph
-NAME/ID traverses both directions. Results are LF-ended, CSV-quoted TSV with headers.
+use qualified refs. sections lists level-2 headings. reach excludes self and
+gives shortest distances. graph NAME/ID traverses both directions. Results are LF-ended, CSV-quoted TSV with headers.
 SQL NULL prints an empty cell. SQL runs against memory with an instruction
 budget. No extension loading, SQL writes, or source access.
 The budget excludes snapshot setup; reach is built only when queried and can
 grow quadratically. This is not a memory sandbox for adversarial SQL.
 
 edit NAME/ID (--set KEY VALUE | --unset KEY | --section HEADING) [--expect REV]
-[--label LABEL] changes one existing regular file. Section bodies use stdin.
-Section edits refuse records with unclosed code fences or recognized HTML comment
-blocks starting at the beginning of a line. Close them or edit manually. Inline or reopened comment
+[--label LABEL] changes one existing regular file. With --section, stdin replaces
+the entire level-2 section body, including subsections; match the title exactly.
+A missing section is appended.
+Section edits refuse an unclosed code fence or an unclosed HTML comment opened
+at line start (up to three spaces). Close it or edit manually. Inline or reopened comment
 forms are not comprehensively tracked. Replacements refuse old bodies containing
 raw ATX H1/H2 or Setext heading examples, even in code/comments and even if
 repeated in the payload. Edit manually. Ordinary field edits remain available;
-creating History requires a closed fence/recognized comment block.
+creating ## History refuses the same unclosed fence/comment state.
 Governed changes require --reason and --authority. Supply locally required
 assent with --assent. History entries are newest first under '## History'.
 - YYYY-MM-DD field: value — reason; authority: ref[; assent: names]
 Clearance records 'cleared'. Corrections prepend. Promote within a collection
 by changing its locally defined state. Across collections, create the destination
-record and archive the source with a qualified successor wikilink. Retain the
+record and archive the source with a root-relative successor wikilink,
+e.g. [[collection.tasks/T-1]] for the ref tasks/T-1. Retain the
 committed source. Keep one canonical home. Records require neither map
 registration nor a routine collection-only changelog entry. Follow the brain's
 Checkpoint procedure for durable outcomes.
