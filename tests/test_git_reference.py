@@ -724,13 +724,13 @@ class GitReferenceTests(unittest.TestCase):
         label = self.acquire()
         self.assertIn("nothing is staged", self.tool("commit", "--label", label, "-m", "x", expected=1))
         self.stage_change()
-        self.assertIn("pass --label", self.tool("commit", "-m", "x", expected=1))
+        self.assertIn("use this session's issued label", self.tool("commit", "-m", "x", expected=1))
         self.assertIn("not Alpha/0000", self.tool("commit", "--label", "Alpha/0000", "-m", "x", expected=1))
         for args in [(), ("-m",), ("-a", "-m", "x"), ("-m", "x", "topics/Project.md")]:
             self.assertIn("usage:", self.tool("commit", "--label", label, *args, expected=2))
         self.assertEqual(self.commits(), "1")
         self.tool("unlock", label)
-        self.assertIn("proves nothing", self.tool("commit", "--label", label, "-m", "x", expected=1))
+        self.assertIn(f"no lock is held for {label}", self.tool("commit", "--label", label, "-m", "x", expected=1))
         self.assertIn("needs --label", self.tool("commit", "--amend", expected=1))
         self.assertEqual(self.commits(), "1")
 

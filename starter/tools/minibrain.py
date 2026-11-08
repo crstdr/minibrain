@@ -24,7 +24,8 @@ never both. Explicit .md = exact file; bare names = legacy non-space targets.
 Register spaces once: top-level in MAP_FILE, children under parent ## Spaces,
 using leading "- [[path]]" bullets. Assets aren't registered spaces.
 
-Staged memory changes—including space assets—require staged CHANGELOG.md.
+Staged managed Markdown or space paths require staged CHANGELOG.md.
+Collection records alone do not trigger this gate.
 A staged path edited again after staging is a PROBLEM in check --staged.
 Relevant .gitignore files must match the index, except CRLF/LF endings.
 
@@ -711,7 +712,8 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
                           if (is_managed_path(p) or is_space_path(p)) and p != "CHANGELOG.md"}
         if staged_managed and "CHANGELOG.md" not in staged:
             problems.append("staged memory requires staged CHANGELOG.md: "
-                            + ", ".join(sorted(staged_managed)))
+                            + ", ".join(sorted(staged_managed))
+                            + ". Keep your changes: add a CHANGELOG.md line for them and stage it.")
         if staged and LOCK.is_dir():
             shown = ", ".join(sorted(staged)[:8]) + (" …" if len(staged) > 8 else "")
             warnings.append(f"{len(staged)} staged paths while the writer lock is held: {shown} "
@@ -836,13 +838,16 @@ def writer_guard(label):
     if error:
         return {}, error
     if not LOCK.is_dir():
-        return {}, (f"no lock is held, so {label} proves nothing; acquire the lock first or omit --label"
+        return {}, (f"no lock is held for {label}. If other writers may be active, "
+                    "acquire the lock first; otherwise omit --label."
                     if label else None)
     meta = lock_meta()
     if not meta:
         return {}, "a writer lock is held but its owner is unreadable; treat it as held and report it to the person"
     if meta["owner"] != label:
-        detail = f", not {label}" if label else "; pass --label with the label this session received"
+        detail = f", not {label}; " if label else "; "
+        detail += ("use this session's issued label, or stay read-only "
+                   "if this session did not acquire it")
         return {}, f"the lock belongs to {meta['owner']} (since {meta.get('at', '?')}){detail}"
     return meta, None
 
