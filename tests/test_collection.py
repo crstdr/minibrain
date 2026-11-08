@@ -84,8 +84,8 @@ class Collections(unittest.TestCase):
                  '- code: 0012\n- review-a: P10\n- tags: #go\n\n## Reviewer\n\n## History\n' + EVENT + "\n")
         self.put("jobs/B", "# B\n- cost: 3oops\n- review-a: P2\n")
         rows, err = self.rows("query", "jobs", "-", data="""SELECT _id,_title,typeof(cost),cost,
-            typeof(benefit),benefit/nullif(cost,0),code,"never-used",priority FROM jobs ORDER BY _id""")
-        self.assertEqual(rows[1], ["001", 'One\t"quoted"', "real", "2.5", "real", "0.0", "0012", "", "P2"])
+            typeof(benefit),benefit/nullif(cost,0),code,[never-used],priority FROM jobs ORDER BY _id""")
+        self.assertEqual(rows[1], ["001", 'One\t"quoted"', "real", "2.5", "real", "0", "0012", "", "P2"])
         self.assertEqual(rows[2][2:4], ["null", ""])
         self.assertIn("invalid numeric", err)
         rows, _ = self.rows("query", "jobs", """SELECT _id FROM jobs ORDER BY "review-a" COLLATE natural_id""")
@@ -99,10 +99,15 @@ class Collections(unittest.TestCase):
         rows, err = self.rows("query", "jobs")
         self.assertEqual(rows[0], ["_id", "state", "_age", "_title"])
         self.assertEqual(rows[1][2], "0")
-        self.assertIn('"never-used" REAL', err)
-        (self.root / 'collection.a"b').mkdir()
-        rows, _ = self.rows("query", 'a"b', 'SELECT _id FROM "a""b"')
-        self.assertEqual(rows, [["_id"]])
+        self.assertIn("[jobs] (", err)
+        self.assertIn("[never-used] REAL", err)
+        for name, identifier in (('a"b', '[a"b]'), ('a]b`c', '`a]b``c`')):
+            with self.subTest(name=name):
+                (self.root / ("collection." + name)).mkdir()
+                rows, _ = self.rows("query", name, "SELECT _id FROM " + identifier)
+                self.assertEqual(rows, [["_id"]])
+                _, err = self.rows("query", name)
+                self.assertIn(identifier + " (", err)
         self.assertIn("unknown collection", self.cli("query", "nope", ok=False)[1])
         (self.root / "collection.reach").mkdir()
         self.assertIn("collision", self.cli("query", "jobs", ok=False)[1])
@@ -128,9 +133,29 @@ class Collections(unittest.TestCase):
             ("dependants", "1", "jobs/B"), ("dependants", "2", "jobs/C")])
         rows, _ = self.rows("query", "other", """SELECT count(*),count(benefit),sum(benefit),max(depth)
             FROM reach JOIN jobs ON _ref=item WHERE need='other/X'""")
-        self.assertEqual(rows[1:], [["3", "1", "4.0", "2"]])
+        self.assertEqual(rows[1:], [["3", "1", "4", "2"]])
         rows, _ = self.rows("query", "jobs", "SELECT count(*) FROM reach WHERE item=need")
         self.assertEqual(rows[1:], [["0"]])
+
+    @unittest.skipUnless(sqlite3, "sqlite3 required for SQL tests")
+    def test_count_star_over_recursive_and_ordinary_ctes(self):
+        self.put("jobs/A")
+        for sql, expected in (
+            ("WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c WHERE n < 3) "
+             "SELECT count(*) FROM c", "3"),
+            ("WITH c AS (SELECT _id FROM jobs) SELECT count(*) FROM c", "1"),
+            ("WITH c(n) AS (VALUES(1),(2),(3)) SELECT count(*) FROM c", "3"),
+        ):
+            with self.subTest(sql=sql):
+                rows, _ = self.rows("query", "jobs", sql)
+                self.assertEqual(rows[1:], [[expected]])
+
+    @unittest.skipUnless(sqlite3, "sqlite3 required for SQL tests")
+    def test_real_tsv_values_are_compact_without_changing_text_or_fractions(self):
+        self.put("jobs/A", "# A\n- benefit: 8\n- cost: 2.5\n- code: 0012\n")
+        rows, _ = self.rows("query", "jobs", "SELECT typeof(benefit),benefit,cost,code,"
+                            "8.0 AS calculated,1.25 AS fraction FROM jobs")
+        self.assertEqual(rows[1:], [["real", "8", "2.5", "0012", "8", "1.25"]])
 
     @unittest.skipUnless(sqlite3, "sqlite3 required for SQL tests")
     def test_sql_guards(self):
@@ -138,13 +163,18 @@ class Collections(unittest.TestCase):
         for sql in ("DELETE FROM jobs", "ATTACH 'external' AS x", "PRAGMA table_info(jobs)",
                     "SELECT * FROM pragma_table_info('jobs')", "SELECT load_extension('x')",
                     "SELECT writefile('external','x')", "SELECT * FROM sqlite_master",
+                    "SELECT count(*) FROM sqlite_master", "SELECT count(*) FROM sqlite_schema",
+                    "WITH c AS (SELECT name FROM sqlite_master) SELECT count(*) FROM c",
                     "CREATE TEMP TABLE t(x)", "SELECT 1; SELECT 2"):
             with self.subTest(sql=sql):
                 self.assertTrue(self.cli("query", "jobs", sql, ok=False)[1])
         self.assertFalse((self.root / "external").exists())
-        err = self.cli("query", "jobs", """WITH RECURSIVE loop(x) AS
-            (VALUES(1) UNION ALL SELECT x+1 FROM loop) SELECT sum(x) FROM loop""", ok=False)[1]
-        self.assertIn("budget", err)
+        for aggregate in ("sum(x)", "count(*)"):
+            with self.subTest(aggregate=aggregate):
+                err = self.cli("query", "jobs", "WITH RECURSIVE loop(x) AS "
+                               "(VALUES(1) UNION ALL SELECT x+1 FROM loop) "
+                               f"SELECT {aggregate} FROM loop", ok=False)[1]
+                self.assertIn("budget", err)
         if hasattr(sqlite3.Connection, "setconfig") and hasattr(sqlite3, "SQLITE_DBCONFIG_DQS_DML"):
             self.assertIn("no such column", self.cli("query", "jobs", 'SELECT "typo" FROM jobs', ok=False)[1])
 

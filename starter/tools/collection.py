@@ -9,7 +9,7 @@ or 'unknown'. Source pointers are data and are never fetched.
 
 query NAME [SQL|-] reads one SQLite SELECT from argv or stdin when SQL is '-'.
 No SQL gives a summary and schema. Each local collection is a table.
-Use [brackets] for SQL identifiers and single quotes for strings; on older
+Use [brackets] (or backticks) for SQL identifiers and single quotes for strings; on older
 Python, a misspelled double-quoted column may become a string instead of failing.
 _id, _ref, _title, _age (days since commit), _rev (SHA-256), _unmet are
 metadata. NULL _age means uncommitted. _unmet counts distinct unsatisfied
@@ -404,9 +404,15 @@ def check(staged_view, documents, problems, warnings, git, base="HEAD"):
 
 
 def tsv(columns, rows):
+    def cell(value):
+        if isinstance(value, float):
+            text = str(value)
+            return text[:-2] if text.endswith(".0") else text
+        return value
+
     writer = csv.writer(sys.stdout, delimiter="\t", lineterminator="\r\n")
     writer.writerow(columns)
-    writer.writerows(rows)
+    writer.writerows([cell(value) for value in row] for row in rows)
 
 
 def graph(records, ref):
@@ -476,7 +482,7 @@ def ages(revision):
 
 
 def quote(name):
-    return '"' + name.replace('"', '""') + '"'
+    return "[" + name + "]" if "]" not in name else "`" + name.replace("`", "``") + "`"
 
 
 def natural(left, right):
@@ -565,8 +571,14 @@ def restrict(db, sqlite, tables, sql="", reads=None):
     def authorize(action, arg1, arg2, database, source):
         if action == sqlite.SQLITE_READ and reads is not None:
             reads.add(arg1)
+        # SQLite reports COUNT(*) on a CTE as a columnless read with no
+        # database. Permit its cardinality; reads inside the CTE are checked
+        # separately. Keep SQLite's own schema names denied, even for counts.
+        cte_count = (database is None and arg2 == "" and bool(arg1)
+                     and not arg1.lower().startswith("sqlite_"))
         ok = (action in (sqlite.SQLITE_SELECT, getattr(sqlite, "SQLITE_RECURSIVE", -1))
               or (action == sqlite.SQLITE_READ and database in (None, "main") and arg1 in allowed)
+              or (action == sqlite.SQLITE_READ and cte_count)
               or (action == sqlite.SQLITE_FUNCTION and (arg2 or "").lower() in functions))
         return sqlite.SQLITE_OK if ok else sqlite.SQLITE_DENY
 

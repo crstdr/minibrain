@@ -39,7 +39,7 @@ class CollectionSafety(unittest.TestCase):
                  "- 2020-02-01 state: ok — accepted; authority: D1\n")
         rows, _ = self.rows("query", "jobs",
                             "SELECT _id,_unmet,typeof(benefit),benefit FROM jobs WHERE _id='A'")
-        self.assertEqual(rows[1:], [["A", "0", "real", "8.0"]])
+        self.assertEqual(rows[1:], [["A", "0", "real", "8"]])
         rows, _ = self.rows("query", "jobs", "SELECT need FROM needs WHERE item='jobs/A' ORDER BY need")
         self.assertEqual(rows[1:], [["jobs/B"], ["other/X"]])
         self.core("check")
