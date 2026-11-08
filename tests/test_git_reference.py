@@ -1069,6 +1069,70 @@ class GitReferenceTests(unittest.TestCase):
         self.assertIn("plan.txt", self.tool("commit", "-m", "Stale plan", expected=1))
         self.assertEqual(self.git("rev-parse", "HEAD").stdout, before)
 
+    def test_collection_root_gitlink_refused_before_commit(self):
+        self.install_collection(governed=False)
+        nested = self.root / "collection.jobs"
+        nested.mkdir()
+        for args in (("init", "-q"), ("config", "user.name", "Synthetic Test"),
+                     ("config", "user.email", "test@example.invalid"),
+                     ("config", "commit.gpgsign", "false")):
+            self.git("-C", str(nested), *args)
+        self.write("collection.jobs/A.md", "# A\n")
+        self.git("-C", str(nested), "add", "--", "A.md")
+        self.git("-C", str(nested), "commit", "-qm", "Nested record")
+        self.git("add", "--", "collection.jobs")
+        self.assertIn("160000", self.git("ls-files", "--stage", "--", "collection.jobs").stdout)
+        before = self.git("rev-parse", "HEAD").stdout
+        self.assertIn("gitlink collection path", self.tool("check", "--staged", expected=1))
+        self.tool("commit", "-m", "Must not claim record saved", expected=1)
+        self.assertEqual(self.git("rev-parse", "HEAD").stdout, before)
+
+    def test_staged_file_to_directory_replacement(self):
+        self.write("plan", "original\n")
+        self.git("add", "--", "plan")
+        self.git("commit", "-qm", "Plan baseline")
+        (self.root / "plan").unlink()
+        self.write("plan/nested/overview.txt", "replacement\n")
+        self.git("add", "--", "plan")
+        self.assertEqual(self.git("diff", "--name-only").stdout, "")
+        self.tool("check", "--staged")
+        self.write("plan/nested/overview.txt", "stale child\n")
+        self.assertIn("plan/nested/overview.txt", self.tool("check", "--staged", expected=1))
+        self.git("add", "--", "plan")
+        self.tool("commit", "-m", "Replace plan with directory")
+        self.assertEqual(self.git("show", "HEAD:plan/nested/overview.txt").stdout, "stale child\n")
+
+    def test_staged_deletion_recreated_path_controls(self):
+        for kind in ("absent", "regular", "ignored", "symlink", "dangling", "directory"):
+            with self.subTest(kind=kind):
+                name = "deleted-" + kind
+                self.write(name, "original\n")
+                self.git("add", "--", name)
+                self.git("commit", "-qm", "Deletion baseline")
+                self.git("rm", "--", name)
+                if kind in ("regular", "ignored"):
+                    self.write(name, "recreated\n")
+                elif kind in ("symlink", "dangling"):
+                    self.symlink(self.root / name, self.root / ("CHANGELOG.md" if kind == "symlink" else "missing"))
+                elif kind == "directory":
+                    self.write(name + "/unindexed.txt", "not staged\n")
+                if kind == "ignored":
+                    self.write(".git/info/exclude", name + "\n")
+                before = self.git("rev-parse", "HEAD").stdout
+                expected = 0 if kind == "absent" else 1
+                out = self.tool("check", "--staged", expected=expected)
+                if expected:
+                    self.assertIn("staged paths edited after staging", out)
+                self.tool("commit", "-m", "Delete path", expected=expected)
+                if expected:
+                    self.assertEqual(self.git("rev-parse", "HEAD").stdout, before)
+                    path = self.root / name
+                    if path.is_dir() and not path.is_symlink():
+                        shutil.rmtree(path)
+                    else:
+                        path.unlink()
+                    self.tool("commit", "-m", "Delete path after manual cleanup")
+
     def test_staged_collection_root_symlink_refused_before_commit(self):
         self.install_collection(governed=False)
         target = Path(self.temp.name) / "outside"

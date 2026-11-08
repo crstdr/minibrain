@@ -143,8 +143,8 @@ def index_entries(problems, staged=False):
         if rel in MANAGED_DIRS or (Path(rel).parts[0] in MANAGED_DIRS and mode not in ("100644", "100755")):
             problems.append(f"managed path is not an ordinary directory or regular file in index: {rel}")
         if staged:
-            if "/" not in rel and rel.startswith("collection.") and rel != "collection." and mode == "120000":
-                problems.append(f"symlink collection path in index: {rel}")
+            if "/" not in rel and rel.startswith("collection.") and rel != "collection." and mode in ("120000", "160000"):
+                problems.append(f"symlink or gitlink collection path in index: {rel}")
             check_space_path(rel, problems)
             check_collection_control_path(rel, problems)
     return entries
@@ -726,7 +726,10 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
             else:
                 candidates = staged | current_staged
                 # Inspect only absent-index candidates, including ignored recreated deletions.
-                recreated = {p for p in candidates - set(tracked.stdout.split("\0")) if os.path.lexists(ROOT / p)}
+                indexed = set(filter(None, tracked.stdout.split("\0")))
+                directories = {str(parent) for p in indexed for parent in Path(p).parents}
+                recreated = {p for p in candidates - indexed if os.path.lexists(ROOT / p)
+                             and not (p in directories and (ROOT / p).is_dir() and not (ROOT / p).is_symlink())}
                 edited = sorted((set(stale.stdout.split("\0")) | recreated) & candidates)
                 if edited:
                     problems.append("staged paths edited after staging (re-stage or restore them): "

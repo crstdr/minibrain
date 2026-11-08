@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Local Markdown collections. Create records by writing collection.NAME/ID.md.
+For wikilinks, avoid # and brackets in IDs.
 
 Start with '# Title', optionally one blank line, then single-line '- key: value'
 fields. Separate the body with a blank line. An ordinary prose list is body.
@@ -34,7 +35,9 @@ grow quadratically. This is not a memory sandbox for adversarial SQL.
 edit NAME/ID (--set KEY VALUE | --unset KEY | --section HEADING) [--expect REV]
 [--label LABEL] changes one existing regular file. Section bodies use stdin.
 Section edits refuse records with any unclosed code fence or HTML comment;
-close it or edit manually. Field edits are unaffected.
+close it or edit manually. Replacements must preserve all heading-like lines
+starting with # or ##, even in code/comments; otherwise edit manually. Ordinary
+field edits remain available; creating History requires a closed fence/comment.
 Governed changes require --reason and --authority. Supply locally required
 assent with --assent. History entries are newest first under '## History'.
 - YYYY-MM-DD field: value — reason; authority: ref[; assent: names]
@@ -72,7 +75,7 @@ An SQL error can follow streamed rows: nonzero exit means discard that result.
 """
 
 import argparse
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 import csv
 from datetime import date
 import hashlib
@@ -99,7 +102,8 @@ FIELDLIKE = re.compile(r"^\s*[-*+][ \t]+[^\s:]+[ \t]*:(?!//)")
 NUMBER = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?=$|[\s(])")
 ENTRY = re.compile(r"^- (\d{4}-\d{2}-\d{2}) (" + FIELD +
                    r"): (.+?) — (.+?); authority: ([^;]+?)(?:; assent: (.+?))?$")
-EVENT = re.compile(r"^\s*[-*+]\s+(?:[^\s:]+\s+)?([*_`]*)(" + FIELD + r")[*_`]*\s*:")
+EVENT = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+(?:\d{4}-\d{2}-\d{2}\s*[:—-]\s*|[^\s:]+\s+)?"
+                   r"([*_`]*)(" + FIELD + r")[*_`]*\s*:")
 FENCE = re.compile(r"^ {0,3}(\x60{3,}|~{3,})(.*)$")
 ATX = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*)|$)")
 SYSTEM = {"needs": ("item", "need"), "reach": ("item", "need", "depth"),
@@ -180,7 +184,7 @@ def structure(lines):
         s = raw.rstrip("\r\n")
         if not fence and (comment or re.match(r"^ {0,3}<!--", s)):
             literal.add(i)
-            comment = "-->" not in (s if comment else s[s.index("<!--") + 4:])
+            comment = "-->" not in s
             continue
         mark = FENCE.match(s)
         if not fence and mark and mark[1][0] == "`" and "`" in mark[2]:
@@ -286,7 +290,7 @@ class Record:
             if not event or event[2].rstrip(event[1]).lower() not in governed:
                 continue
             if not lo <= i < hi:
-                if re.match(r"^\s*[-*+]\s+\d", s):
+                if re.match(r"^\s*(?:[-*+]\s+\d|\d+[.)]\s+)", s):
                     self.error("governed entry outside ## History")
                 continue
             if not valid:
@@ -533,12 +537,17 @@ def natural(left, right):
     return (a > b) - (a < b)
 
 
+def sql_name(value):
+    """SQLite identifier comparison folds ASCII letters only."""
+    return value.translate(str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"))
+
+
 def schema(names, records):
     tables, reserved = {}, set(SYSTEM)
     for name in sorted(names):
-        if name.lower() in reserved or name.lower().startswith("sqlite_"):
+        if sql_name(name) in reserved or sql_name(name).startswith("sqlite_"):
             die(f"SQL relation name collision: {name!r}")
-        reserved.add(name.lower())
+        reserved.add(sql_name(name))
         numeric = {k.lower() for k in NUMERIC_FIELDS.get(name, ())}
         keys = ["state"] + sorted(GOVERNED_FIELDS) + sorted(NUMERIC_FIELDS.get(name, ()))
         for r in records.values():
@@ -549,8 +558,7 @@ def schema(names, records):
             if not re.fullmatch(FIELD, k):
                 die(f"invalid configured field name {k!r} in {name!r}")
             first = spellings.setdefault(k.lower(), k)
-            fold = lambda value: value.translate(str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"))
-            if fold(first) != fold(k):
+            if sql_name(first) != sql_name(k):
                 die(f"ambiguous SQL field spellings {first!r} and {k!r} in {name!r}")
         tables[name] = dict(META)
         for key, spelling in sorted(spellings.items()):
@@ -590,10 +598,10 @@ def fill(db, tables, records, dates):
         db.executemany("INSERT INTO needs VALUES (?,?)", ((ref, n) for n in r.needs))
         db.executemany("INSERT INTO tags VALUES (?,?)", ((ref, t) for t in sorted(set(r.tags))))
         db.executemany("INSERT INTO sections VALUES (?,?)", ((ref, h) for h in r.sections))
-    public_names = {name.lower() for name in tables}
+    public_names = {sql_name(name) for name in tables}
     for name, col in [(name, cols[0]) for name, cols in SYSTEM.items()] + [("reach", "need")]:
         index = name + "_" + col
-        while index.lower() in public_names:
+        while sql_name(index) in public_names:
             index += "_"
         db.execute(f"CREATE INDEX {quote(index)} ON {name} ({col})")
     db.commit()
@@ -602,7 +610,7 @@ def fill(db, tables, records, dates):
 def restrict(db, sqlite, tables, sql="", reads=None):
     if not all(callable(getattr(db, method, None)) for method in ("set_authorizer", "set_progress_handler")):
         die("query requires SQLite authorizer and progress-handler support")
-    allowed = set(tables) | set(SYSTEM)
+    allowed = {sql_name(name) for name in tables} | set(SYSTEM)
     functions = set("""abs avg ceil ceiling coalesce count cume_dist date datetime day
         dense_rank first_value floor glob group_concat hex ifnull iif instr julianday
         lag last_value lead length like likelihood likely lower ltrim max min nth_value
@@ -610,15 +618,16 @@ def restrict(db, sqlite, tables, sql="", reads=None):
         substr substring sum time total trim typeof unicode unixepoch unlikely upper""".split())
 
     def authorize(action, arg1, arg2, database, source):
+        arg1, database = sql_name(arg1 or ""), sql_name(database or "")
         if action == sqlite.SQLITE_READ and reads is not None:
             reads.add(arg1)
         # Columnless reads with no database include CTE counts and some
         # table-valued-function cardinalities. Column reads remain checked
         # separately; SQLite's schema names are denied even for counts.
-        cte_count = (database is None and arg2 == "" and bool(arg1)
-                     and not arg1.lower().startswith("sqlite_"))
+        cte_count = (not database and arg2 == "" and bool(arg1)
+                     and not arg1.startswith("sqlite_"))
         ok = (action in (sqlite.SQLITE_SELECT, getattr(sqlite, "SQLITE_RECURSIVE", -1))
-              or (action == sqlite.SQLITE_READ and database in (None, "main") and arg1 in allowed)
+              or (action == sqlite.SQLITE_READ and database in ("", "main") and arg1 in allowed)
               or (action == sqlite.SQLITE_READ and cte_count)
               or (action == sqlite.SQLITE_FUNCTION and (arg2 or "").lower() in functions))
         return sqlite.SQLITE_OK if ok else sqlite.SQLITE_DENY
@@ -750,6 +759,13 @@ def edited(r, args):
             die("section payload contains an escaping heading, unclosed fence/comment or NUL")
         body = re.sub(r"\r\n|\r|\n", lambda _: r.nl, body)
         candidate = splice(r, *spans[0], body) if spans else appended(r, title, body)
+        # Preserve raw heading bytes independently of the section parser:
+        # unsupported Markdown containers must not hide peers from this guard.
+        if spans:
+            raw_heads = Counter(line for line in r.lines[slice(*spans[0])]
+                                if re.match(r"^ {0,3}#{1,2}(?:[ \t]|[\r\n]|$)", line))
+            if raw_heads - Counter(physical_lines(body)):
+                die("section edit would remove heading-like lines; preserve them or edit manually")
         expected = [h[1] for h in r.heads if h[0] <= 2]
         if not spans:
             expected.append(title)
