@@ -5,7 +5,7 @@ import importlib.util
 import io
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import re
 import shlex
 import shutil
@@ -1101,6 +1101,43 @@ class GitReferenceTests(unittest.TestCase):
         self.git("add", "--", "plan")
         self.tool("commit", "-m", "Replace plan with directory")
         self.assertEqual(self.git("show", "HEAD:plan/nested/overview.txt").stdout, "stale child\n")
+
+    def test_intent_only_directory_replacement_is_not_committed(self):
+        self.write("plan", "original\n")
+        self.git("add", "--", "plan")
+        self.git("commit", "-qm", "Plan baseline")
+        self.git("rm", "--", "plan")
+        self.write("plan/note", "replacement\n")
+        self.git("add", "-N", "--", "plan/note")
+        before = self.git("rev-parse", "HEAD").stdout
+        self.assertIn("plan", self.tool("check", "--staged", expected=1))
+        self.tool("commit", "-m", "Incomplete replacement", expected=1)
+        self.assertEqual(self.git("rev-parse", "HEAD").stdout, before)
+        self.assertIn("plan", self.git("ls-tree", "HEAD", "--", "plan").stdout)
+        self.git("add", "--", "plan/note")
+        self.tool("check", "--staged")
+        self.tool("commit", "-m", "Complete replacement")
+        self.assertEqual(self.git("show", "HEAD:plan/note").stdout, "replacement\n")
+
+    def test_nested_replacement_uses_git_posix_parents(self):
+        self.write("src/plan", "original\n")
+        self.git("add", "--", "src/plan")
+        self.git("commit", "-qm", "Nested plan baseline")
+        self.git("rm", "--", "src/plan")
+        child = "src/plan/nested/overview.txt"
+        self.write(child, "replacement\n")
+        self.git("add", "--", child)
+        helper = self.load_helper()
+
+        def native_path(value):
+            # Simulate native Windows parents for the indexed Git path only.
+            return PureWindowsPath(value) if value == child else Path(value)
+
+        with mock.patch.object(helper, "Path", side_effect=native_path), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(helper.check(staged_view=True), 0, output.getvalue())
+        self.tool("commit", "-m", "Nested replacement")
+        self.assertEqual(self.git("show", "HEAD:" + child).stdout, "replacement\n")
 
     def test_staged_deletion_recreated_path_controls(self):
         for kind in ("absent", "regular", "ignored", "symlink", "dangling", "directory"):

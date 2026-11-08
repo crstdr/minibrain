@@ -290,7 +290,7 @@ class Record:
             if not event or event[2].rstrip(event[1]).lower() not in governed:
                 continue
             if not lo <= i < hi:
-                if re.match(r"^\s*(?:[-*+]\s+\d|\d+[.)]\s+)", s):
+                if re.match(r"^\s*(?:[-*+]|\d+[.)])\s+\d", s):
                     self.error("governed entry outside ## History")
                 continue
             if not valid:

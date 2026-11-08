@@ -239,8 +239,9 @@ def staged_ignore_rules_match(paths, entries, problems):
     return matches
 
 
-def load_markdown(staged, problems, records=None):
-    entries = index_entries(problems, staged)
+def load_markdown(staged, problems, records=None, entries=None):
+    if entries is None:
+        entries = index_entries(problems, staged)
     indexed_markdown = {rel for rel in entries if rel.endswith(".md") and
                         (is_managed_path(rel) or (records and records.is_record(rel))
                          or not any(part.startswith(".") for part in Path(rel).parts))}
@@ -561,7 +562,8 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
 
     try:
         records = extension(staged_view)
-        documents = load_markdown(staged_view, problems, records)
+        entries = index_entries(problems, staged_view)
+        documents = load_markdown(staged_view, problems, records, entries)
         record_paths = {rel for rel in (documents or {}) if records and records.is_record(rel)}
     except (Exception, SystemExit) as error:
         print(f"PROBLEM: cannot load Markdown or tools/collection.py: {type(error).__name__}: {error}")
@@ -727,7 +729,7 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
                 candidates = staged | current_staged
                 # Inspect only absent-index candidates, including ignored recreated deletions.
                 indexed = set(filter(None, tracked.stdout.split("\0")))
-                directories = {str(parent) for p in indexed for parent in Path(p).parents}
+                directories = {str(parent) for p in entries for parent in PurePosixPath(p).parents}
                 recreated = {p for p in candidates - indexed if os.path.lexists(ROOT / p)
                              and not (p in directories and (ROOT / p).is_dir() and not (ROOT / p).is_symlink())}
                 edited = sorted((set(stale.stdout.split("\0")) | recreated) & candidates)

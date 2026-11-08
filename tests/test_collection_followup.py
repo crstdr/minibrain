@@ -117,6 +117,33 @@ for name in tables:
         if fixtures.sqlite3:
             self.assertEqual(self.rows("query", "jobs", "SELECT priority FROM jobs")[0][1:], [["P1"]])
 
+    def test_numbered_priority_prose_outside_history_is_not_a_decision(self):
+        for prose in ("1. Priority: P1 — foundational", "2) Recommended priority: P1",
+                      "1. Proposed priority: P1 until costs are known.",
+                      "- Proposed priority: P1 until costs are known."):
+            with self.subTest(prose=prose):
+                self.put("jobs/A", "# A\n\n## Assessment\n" + prose + "\n")
+                self.core("check")
+                self.git("add", "--", "collection.jobs/A.md")
+                self.core("check", "--staged")
+                self.cli("graph", "jobs/A")
+                if fixtures.sqlite3:
+                    self.rows("query", "jobs", "SELECT priority FROM jobs")
+
+    def test_dated_governed_lists_outside_history_still_fail(self):
+        for marker in ("-", "*", "+", "1.", "2)"):
+            for date in ("2026-11-08", "2026-11-99"):
+                with self.subTest(marker=marker, date=date):
+                    self.put("jobs/A", "# A\n\n## Assessment\n" + marker + " " + date +
+                             " priority: P1 — reviewed; authority: D8\n")
+                    self.assertIn("governed entry outside", self.core("check", ok=False))
+                    self.git("add", "--", "collection.jobs/A.md")
+                    self.assertIn("governed entry outside", self.core("check", "--staged", ok=False))
+                    self.assertIn("governed entry outside", self.cli("graph", "jobs/A", ok=False)[1])
+                    if fixtures.sqlite3:
+                        self.assertIn("governed entry outside", self.cli(
+                            "query", "jobs", "SELECT priority FROM jobs", ok=False)[1])
+
 
 if __name__ == "__main__":
     unittest.main()
