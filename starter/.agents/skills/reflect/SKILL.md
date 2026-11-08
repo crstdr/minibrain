@@ -18,7 +18,7 @@ Keep evidence, rationale and supersession in canonical memory outside the block.
 ## Destinations
 Split mixed material into durable claims. Store each where the agent who needs it will read it when it applies. Ask in order, root before nested:
 1. Authority, permissions or writer responsibilities? → Root instructions (Authority and privacy) or `MEMORY.md` Owners; never a nested space.
-2. General rule for agent behaviour across tasks, including a standing preference? → `<principles>`; apply Principles above.
+2. General rule for agent behaviour across tasks, including a standing user preference about agent behaviour? → `<principles>`; apply Principles above.
 3. User-directed or approved steps for a repeatable activity? → Its owning instruction section or skill; amend in place, preserving safeguards.
 4. Learned remedy for a recurring situation? → A lesson where that action will find it; apply Lessons.
 5. Fact, finding, state, commitment, decision or deferral? → Subject's canonical space; apply Evidence and Work.
@@ -30,5 +30,6 @@ Then check working-index follow-ups:
 - Priority changed? → Focus.
 - Notable outcome unacknowledged? → Awaiting acknowledgment.
 - Pointers/navigation stale or missing? → Fix them.
+- Collection entries repeatedly scanned whole, assessed by several agents, traced for prerequisites or governed? → Propose `tools/collection.py` (upstream minibrain `SETUP.md` §2, from the source recorded in the brain's adoption record) to the user; never install or migrate unprompted.
 
 Update only what needs changing; destinations are not a checklist. Persist through the local checkpoint procedure; no reflection diary or duplicate records. If nothing durable changed, no checkpoint.

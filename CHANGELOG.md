@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [0.7.0-alpha.1](https://github.com/crstdr/minibrain/compare/v0.6.1...v0.7.0-alpha.1) | Core upgrade: `AGENTS.md` Checkpoint steps 3–5, `tools/minibrain.py` and `.agents/skills/reflect/SKILL.md` Destinations. Take the contract and core helper changes together, including in brains without collections. Optional: new `tools/collection.py`; use the matching core helper, setting `CORE_HELPER` to its local filename. |
 | [0.6.1](https://github.com/crstdr/minibrain/compare/v0.6.0...v0.6.1) | nothing |
 | [0.6.0](https://github.com/crstdr/minibrain/compare/v0.5.2...v0.6.0) | `AGENTS.md`: Checkpoint, Memory rules, Resume, `<rpce_tooling_guidance>`. `.agents/skills/reflect/SKILL.md`: Destinations |
 | [0.5.2](https://github.com/crstdr/minibrain/compare/v0.5.1...v0.5.2) | `AGENTS.md`: Authority and privacy, `<rpce_tooling_guidance>` |
@@ -12,6 +13,15 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.4.2](https://github.com/crstdr/minibrain/compare/v0.3.1...v0.4.2) | nothing |
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
+
+## 0.7.0-alpha.1
+
+- Optional `tools/collection.py` supplies `query`, `graph` and one-operation `edit` for Markdown records. Read-only SQL uses an in-memory snapshot with configured numeric fields and prerequisite states, dependency relations and assessment-section presence. Query and graph emit LF-ended, headered TSV with CSV quoting for embedded CR, LF, tabs and quotes. Integral REAL results omit `.0`.
+- Collection checks preserve canonical decision History even after governance retirement, report malformed governed entries, reject committed-record deletion and check outgoing wikilinks without Map registration or routine collection-only changelog entries. Section edits preserve peer sections across indented Setext continuations and HTML comments. All section edits refuse records with unclosed code fences or recognized HTML comment blocks starting at the beginning of a line. Close them or edit manually. Unusual inline or reopened comment forms are not comprehensively tracked. Section replacements refuse old bodies containing possible raw ATX H1/H2 or Setext peer headings, including code/comment examples, even if repeated in the payload. Edit manually. Field edits are unchanged. Added-edge checks report cycles even when unrelated cycles already exist. Private SQL indexes no longer collide with collection names. CTE counts work without opening schema reads or writes.
+- Core checks run the optional extension, report unexpected extension exits as PROBLEMs and keep record ids out of the bare-name link namespace. Staged checks execute indexed extension bytes, allowing only CRLF/LF and executable-bit differences from the regular working file. They reject stale staged paths, including working rename sources and recreated deletions, and collection-root symlinks or gitlinks before commit.
+- `minibrain.py commit [--label <label>] -m <message>... [--amend]` gates the index through `check --staged`, commits without `-a`, compares the saved tree with the validated tree, then runs `check`. If a hook changes the committed tree or tree verification fails, the helper reports that a commit already happened and grants no success or amend receipt. Hooks remain enabled. Amend requires this acquisition's recorded commit at HEAD. Checkpoint retains legacy pre/post checks and additive correction when amend is unavailable. Take the contract and core changes together. Core commits and collection edits share the writer-label guard.
+- Collection help shows usable ranking operands and a local candidate-state filter, section editing through stdin, bracketed hyphenated identifiers, explicit assessment dates, exact state matching and promotion routes. Numeric fields retain the leading-number rule: all suffix text is commentary, with no unit conversion. `SETUP.md` covers approved manual governance conversion, optional adoption and matching core/extension configuration and repository-local commit identity. Reflect points to upstream setup rather than an installed setup file. README describes optional collections and keeps installation guidance in SETUP.
+- Reflect's Destinations question 2 keeps subject preferences out of `<principles>`; its collection cue requires approval before installation or migration.
 
 ## 0.6.1
 

@@ -5,6 +5,15 @@ check / check --staged: validate working tree / prospective commit; read-only.
 PROBLEMs fail; warnings don't. A pass proves structure, not completeness.
 lock <name> / unlock <label>: acquisition-specific ownership, not enforcement.
 unlock --force requires user approval. No cross-clone coordination.
+commit [--label <label>] -m <message> [-m <paragraph>...] [--amend]: gated
+commit of the index. Refuses under a lock unless the label is its owner's, and
+on any check --staged PROBLEM; commits without -a; then runs check (a PROBLEM
+then exits non-zero and keeps the lock). A changed committed tree is reported
+after commit, without a success receipt. --amend needs the label and recommits
+only a commit recorded as made by this acquisition; it keeps
+the message unless -m is given and never opens an editor. Never releases the
+lock. Cooperative: raw Git bypasses it; a host grant for
+"python3 tools/minibrain.py *" also permits commits.
 
 Normal dedicated Git working copy. Configuration and limits below.
 Managed Markdown: root *.md, topics/**/*.md, spaces/**/*.md;
@@ -16,7 +25,14 @@ Register spaces once: top-level in MAP_FILE, children under parent ## Spaces,
 using leading "- [[path]]" bullets. Assets aren't registered spaces.
 
 Staged memory changes—including space assets—require staged CHANGELOG.md.
+A staged path edited again after staging is a PROBLEM in check --staged.
 Relevant .gitignore files must match the index, except CRLF/LF endings.
+
+With tools/collection.py installed, check also runs its collection checks and
+keeps record ids out of the bare-name link namespace. Staged checks require the
+extension to match the index except CRLF/LF endings and executable bits.
+Collection folders may not contain root control files, even before the extension
+is installed.
 
 Not checked: factual truth, complete capture, status/history order, section
 anchors, ordinary Markdown links, hidden skills or attachment retention/privacy.
@@ -24,6 +40,7 @@ anchors, ordinary Markdown links, hidden skills or attachment retention/privacy.
 
 from pathlib import Path, PurePosixPath
 import datetime
+import importlib.util
 import json
 import os
 import re
@@ -64,6 +81,11 @@ def git(*args, input=None, binary=False):
 
 def repository_error():
     """Fail explicitly instead of checking or locking a parent repository."""
+    redirected = sorted(name for name in ("GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+                                          "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE")
+                        if name in os.environ)
+    if redirected:
+        return "Git repository/index overrides are unsupported: " + ", ".join(redirected)
     if not (ROOT / ".git").is_dir() or (ROOT / ".git").is_symlink():
         return "requires a normal dedicated Git working copy (.git directory); worktrees are unsupported"
     top = git("rev-parse", "--show-toplevel")
@@ -71,6 +93,12 @@ def repository_error():
         return f"cannot inspect Git root: {top.stderr.strip()}"
     if Path(top.stdout.strip()).resolve() != ROOT.resolve():
         return "Git working-copy root does not match the installed helper's root"
+    directory = git("rev-parse", "--absolute-git-dir")
+    if directory.returncode or Path(directory.stdout.strip()).resolve() != (ROOT / ".git").resolve():
+        return "Git directory does not match the installed helper's dedicated working copy"
+    index = ROOT / ".git" / "index"
+    if index.is_symlink() or (index.exists() and not index.is_file()):
+        return "Git index is not an ordinary file in the dedicated working copy"
     if LOCK.is_symlink() or (LOCK.exists() and not LOCK.is_dir()):
         return "writer lock path is not an ordinary directory; preserve it and report"
     return None
@@ -115,7 +143,10 @@ def index_entries(problems, staged=False):
         if rel in MANAGED_DIRS or (Path(rel).parts[0] in MANAGED_DIRS and mode not in ("100644", "100755")):
             problems.append(f"managed path is not an ordinary directory or regular file in index: {rel}")
         if staged:
+            if "/" not in rel and rel.startswith("collection.") and rel != "collection." and mode in ("120000", "160000"):
+                problems.append(f"symlink or gitlink collection path in index: {rel}")
             check_space_path(rel, problems)
+            check_collection_control_path(rel, problems)
     return entries
 
 
@@ -123,6 +154,13 @@ def working_markdown(problems):
     files = {relative(p) for p in ROOT.glob("*.md")}
     def walk_error(error):
         problems.append(f"cannot inspect managed directory: {error}")
+    # Check all names, not only records: host entrypoints are case-insensitive
+    # and nested controls remain dangerous even outside the queried layout.
+    for folder in ROOT.glob("collection.*"):
+        if folder.is_dir() and not folder.is_symlink():
+            for current, dirs, names in os.walk(folder, followlinks=False, onerror=walk_error):
+                for name in dirs + names:
+                    check_collection_control_path(relative(Path(current) / name), problems)
     for dirname in sorted(MANAGED_DIRS):
         folder = ROOT / dirname
         if folder.is_symlink() or (folder.exists() and not folder.is_dir()):
@@ -201,12 +239,16 @@ def staged_ignore_rules_match(paths, entries, problems):
     return matches
 
 
-def load_markdown(staged, problems):
-    entries = index_entries(problems, staged)
+def load_markdown(staged, problems, records=None, entries=None):
+    if entries is None:
+        entries = index_entries(problems, staged)
     indexed_markdown = {rel for rel in entries if rel.endswith(".md") and
-                        (is_managed_path(rel) or not any(part.startswith(".") for part in Path(rel).parts))}
+                        (is_managed_path(rel) or (records and records.is_record(rel))
+                         or not any(part.startswith(".") for part in Path(rel).parts))}
     paths = indexed_markdown if staged else working_markdown(problems)
     if not staged:
+        if records:
+            paths.update(records.inventory()[1])
         # Supporting targets are tracked, present Markdown outside hidden folders.
         paths.update(rel for rel in indexed_markdown if os.path.lexists(ROOT / rel))
     documents = {}
@@ -230,12 +272,12 @@ def load_markdown(staged, problems):
             documents[rel] = content
         except (OSError, UnicodeError) as error:
             problems.append(f"cannot read Markdown {rel}: {error}")
-    managed = {rel for rel in paths if is_managed_path(rel)}
-    if managed and staged and not staged_ignore_rules_match(managed, entries, problems):
+    durable = {rel for rel in paths if is_managed_path(rel) or (records and records.is_record(rel))}
+    if durable and staged and not staged_ignore_rules_match(durable, entries, problems):
         return None  # Later Git operations could reopen a rejected special file.
-    if managed:
+    if durable:
         ignored = git("check-ignore", "--no-index", "-z", "--stdin",
-                      input="\0".join(sorted(managed)) + "\0")
+                      input="\0".join(sorted(durable)) + "\0")
         if ignored.returncode not in (0, 1):
             problems.append(f"cannot verify ignore rules: {ignored.stderr.strip()}")
         else:
@@ -271,8 +313,9 @@ def status_paths():
     return paths, None
 
 
-def staged_paths():
-    result = git("diff", "--cached", "--name-status", "-z", "-M")
+def staged_paths(base="HEAD"):
+    """Paths the prospective commit changes against base; HEAD^ while amending, so the gate sees the whole commit."""
+    result = git("diff", "--cached", "--name-status", "-z", "-M", *([base] if base != "HEAD" else []))
     if result.returncode != 0:
         return set(), result.stderr.strip() or "git diff --cached failed"
     records = result.stdout.split("\0")
@@ -303,6 +346,13 @@ def is_space_path(rel):
 
 def is_space_asset(rel):
     return is_space_path(rel) and "assets" in PurePosixPath(rel).parts[1:-1]
+
+
+def check_collection_control_path(rel, problems):
+    path = PurePosixPath(rel)
+    if (len(path.parts) > 1 and path.parts[0].startswith("collection.")
+            and path.name.casefold() in {name.casefold() for name in ROOT_ONLY}):
+        problems.append(f"root-only control file inside a collection: {rel}; use a non-entrypoint name")
 
 
 def check_space_path(rel, problems):
@@ -418,6 +468,12 @@ def lock_meta():
     return meta
 
 
+def shown_head(meta):
+    """The acquisition HEAD for messages: abbreviated, since the lock stores the full hash."""
+    head = meta.get("head") or ""
+    return head[:12] if isinstance(head, str) and head else "?"
+
+
 def release_lock():
     try:
         items = list(LOCK.iterdir())
@@ -433,14 +489,54 @@ def release_lock():
         return False
 
 
-def check(staged_view=False):
+def extension(staged=False):
+    """tools/collection.py when installed: an optional extension whose checks run only then."""
+    path = ROOT / "tools" / "collection.py"
+    present = os.path.lexists(path)
+    content = None
+    if staged:
+        result = git("ls-files", "--stage", "-z", "--", "tools/collection.py")
+        if result.returncode:
+            raise ValueError(f"cannot inspect tools/collection.py in index: {result.stderr.strip()}")
+        entries = list(filter(None, result.stdout.split("\0")))
+        if not present and not entries:
+            return None
+        mismatch = ("tools/collection.py must match the index as a regular file except CRLF/LF endings "
+                    "and executable bits before staged checks")
+        if not present or len(entries) != 1 or not regular_working_file("tools/collection.py"):
+            raise ValueError(mismatch)
+        mode, oid, stage = entries[0].split("\t", 1)[0].split()
+        if stage != "0" or mode not in ("100644", "100755"):
+            raise ValueError(mismatch)
+        content = path.read_bytes()
+        blob = git("cat-file", "blob", oid, binary=True)
+        if blob.returncode or blob.stdout.replace(b"\r\n", b"\n") != content.replace(b"\r\n", b"\n"):
+            raise ValueError(mismatch)
+        content = blob.stdout
+    if not present:
+        return None
+    if not regular_working_file("tools/collection.py"):
+        raise ValueError("tools/collection.py must be a regular file, with no linked parents")
+    spec = importlib.util.spec_from_file_location("collection", path)
+    module = importlib.util.module_from_spec(spec)
+    previous = sys.dont_write_bytecode
+    try:
+        sys.dont_write_bytecode = True
+        # Execute precisely the checked bytes, not a possibly stale bytecode cache.
+        exec(compile(content if content is not None else path.read_bytes(), str(path), "exec"), module.__dict__)
+    finally:
+        sys.dont_write_bytecode = previous
+    return module
+
+
+def check(staged_view=False, allow_unborn=False, base="HEAD"):
     error = repository_error()
     if error:
         print(f"PROBLEM: {error}")
         return 1
     problems, warnings = [], []
 
-    if git("rev-parse", "--verify", "HEAD").returncode != 0:
+    if not allow_unborn and git("rev-parse", "--verify", "HEAD").returncode != 0:
         problems.append("no commits yet, or Git is not functioning")
 
     if REQUIRE_LOCAL_REMOTES:
@@ -457,14 +553,21 @@ def check(staged_view=False):
         if meta:
             warnings.append(
                 f"writer lock held by {meta['owner']} since {meta.get('at', '?')} "
-                f"(HEAD {meta.get('head', '?')}) — memory files, staging and commits belong to that "
+                f"(HEAD {shown_head(meta)}) — memory files, staging and commits belong to that "
                 "checkpoint until release; if this session did not acquire it, do not touch them"
             )
         else:
             warnings.append("writer lock held but its owner is unreadable — treat it as held and "
                             "report it to the person")
 
-    documents = load_markdown(staged_view, problems)
+    try:
+        records = extension(staged_view)
+        entries = index_entries(problems, staged_view)
+        documents = load_markdown(staged_view, problems, records, entries)
+        record_paths = {rel for rel in (documents or {}) if records and records.is_record(rel)}
+    except (Exception, SystemExit) as error:
+        print(f"PROBLEM: cannot load Markdown or tools/collection.py: {type(error).__name__}: {error}")
+        return 1
     if documents is None:
         for item in problems:
             print("PROBLEM:", item)
@@ -515,14 +618,18 @@ def check(staged_view=False):
     canonical = {rel: content for rel, content in managed.items() if not is_space_asset(rel)}
     by_basename = {}
     for rel in documents:
+        if rel in record_paths:
+            continue  # records are reached by qualified links only, so ids may repeat across collections
         by_basename.setdefault(Path(rel).stem, []).append(rel)
     for basename, paths in sorted(by_basename.items()):
         # Qualified spaces/assets cannot collide with the legacy bare-name namespace.
         legacy = [rel for rel in paths if not is_space_path(rel)]
         if len(legacy) > 1 and basename not in RESERVED:
             problems.append(f"duplicate Markdown basename {basename}.md: {', '.join(legacy)}")
-    # Check wikilinks even in fences; space assets and CHANGELOG history are excluded.
-    for rel, content in canonical.items():
+    # Records have outgoing links too, but no Map or routine-changelog obligations.
+    # Check even in fences; space assets and CHANGELOG history are excluded.
+    for rel in sorted(canonical.keys() | record_paths):
+        content = documents[rel]
         if Path(rel).name == "CHANGELOG.md":
             continue
         for match in WIKILINK.finditer(content):
@@ -530,6 +637,14 @@ def check(staged_view=False):
             _, error = resolve_link(target, documents, by_basename)
             if error:
                 problems.append(f"{error} wikilink in {rel}: [[{target}]]")
+
+    if records:
+        try:
+            # Amend's parent baseline is only for the aggregate changelog gate.
+            # Already committed history, including this acquisition's event, is immutable.
+            records.check(staged_view, documents, problems, warnings, git, "HEAD")
+        except (Exception, SystemExit) as error:
+            problems.append(f"cannot run tools/collection.py checks: {type(error).__name__}: {error}")
 
     for rel in canonical:
         if is_space_path(rel) and PurePosixPath(rel).name == "index.md":
@@ -587,7 +702,7 @@ def check(staged_view=False):
         shown = ", ".join(sorted(changed)[:8]) + (" …" if len(changed) > 8 else "")
         warnings.append(f"working tree is dirty ({len(changed)} paths): {shown}")
 
-    staged, staged_error = staged_paths()
+    staged, staged_error = staged_paths(base)
     if staged_error:
         problems.append(f"cannot inspect staged changes: {staged_error}")
     else:
@@ -601,6 +716,26 @@ def check(staged_view=False):
             shown = ", ".join(sorted(staged)[:8]) + (" …" if len(staged) > 8 else "")
             warnings.append(f"{len(staged)} staged paths while the writer lock is held: {shown} "
                             "— only the lock holder stages; anyone else stop and report")
+        if staged_view:
+            # The index is what would be committed; a later working-tree edit to the same path is
+            # a stale staged version (the slip behind re-staging instructions).
+            current_staged, current_error = (staged, None) if base == "HEAD" else staged_paths()
+            stale = git("diff", "--name-only", "--no-renames", "-z")  # no bulk pathspec argument limit
+            tracked = git("ls-files", "--cached", "-z")
+            if current_error or stale.returncode or tracked.returncode:
+                detail = current_error or (stale.stderr.strip() if stale.returncode else tracked.stderr.strip())
+                problems.append(f"cannot compare staged paths with the working tree: {detail}")
+            else:
+                candidates = staged | current_staged
+                # Inspect only absent-index candidates, including ignored recreated deletions.
+                indexed = set(filter(None, tracked.stdout.split("\0")))
+                directories = {str(parent) for p in entries for parent in PurePosixPath(p).parents}
+                recreated = {p for p in candidates - indexed if os.path.lexists(ROOT / p)
+                             and not (p in directories and (ROOT / p).is_dir() and not (ROOT / p).is_symlink())}
+                edited = sorted((set(stale.stdout.split("\0")) | recreated) & candidates)
+                if edited:
+                    problems.append("staged paths edited after staging (re-stage or restore them): "
+                                    + ", ".join(edited))
 
     short_head = git("rev-parse", "--short", "HEAD").stdout.strip() or "none"
     view = "index / prospective commit" if staged_view else "working tree"
@@ -631,7 +766,7 @@ def lock(args):
     except FileExistsError:
         meta = lock_meta()
         print(f"LOCK HELD: {meta.get('owner', '(owner unreadable)')} since {meta.get('at', '?')} "
-              f"(HEAD {meta.get('head', '?')}).\n"
+              f"(HEAD {shown_head(meta)}).\n"
               "A lock this session did not acquire is never its own, whatever name it carries.\n"
               "Do not change shared memory files or stage anything; continue read-only.\n"
               "Recheck at an appropriate later point; report owner, timestamp and unfinished state\n"
@@ -654,7 +789,7 @@ def lock(args):
         return 1
     owner = f"{name}/{secrets.token_hex(16)}"
     meta = {"owner": owner, "at": datetime.datetime.now().isoformat(timespec="seconds"),
-            "head": git("rev-parse", "--short", "HEAD").stdout.strip()}
+            "head": git("rev-parse", "--verify", "HEAD").stdout.strip()}
     try:
         (LOCK / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     except OSError as error:
@@ -695,6 +830,116 @@ def unlock(args):
     return 0
 
 
+def writer_guard(label):
+    """Return (lock metadata, refusal). A lockless single writer passes without a label."""
+    error = repository_error()
+    if error:
+        return {}, error
+    if not LOCK.is_dir():
+        return {}, (f"no lock is held, so {label} proves nothing; acquire the lock first or omit --label"
+                    if label else None)
+    meta = lock_meta()
+    if not meta:
+        return {}, "a writer lock is held but its owner is unreadable; treat it as held and report it to the person"
+    if meta["owner"] != label:
+        detail = f", not {label}" if label else "; pass --label with the label this session received"
+        return {}, f"the lock belongs to {meta['owner']} (since {meta.get('at', '?')}){detail}"
+    return meta, None
+
+
+def commit(args):
+    """Gated commit of the index: the staged check, git commit without -a, then the working-tree check."""
+    usage = ("usage: python3 tools/minibrain.py commit [--label <label>] -m <message> [-m <paragraph>]... [--amend]\n"
+             "Commits only what is staged; stage by name first. --label: the label this session's lock\n"
+             "acquisition issued (required while a lock is held). --amend: this acquisition's own commit only.")
+    label, messages, amend, rest = "", [], False, list(args)
+    while rest:
+        arg = rest.pop(0)
+        if arg == "--label" and rest and not label and rest[0].strip():
+            label = rest.pop(0).strip()
+        elif arg == "-m" and rest:
+            messages.append(rest.pop(0))
+        elif arg == "--amend" and not amend:
+            amend = True
+        else:
+            print(usage)
+            return 2
+    if not messages and not amend:
+        print(usage)
+        return 2
+    meta, error = writer_guard(label)
+    if error:
+        print(f"REFUSED: {error}")
+        return 1
+    current = git("rev-parse", "--verify", "HEAD")
+    unborn = current.returncode != 0
+    check_base = "HEAD"
+    if amend:
+        if not label:
+            print("REFUSED: --amend needs --label; only this acquisition's own commit is amended")
+            return 1
+        if unborn or meta.get("commit") != current.stdout.strip():
+            print("REFUSED: HEAD is not this acquisition's own commit; no matching gated-commit receipt "
+                  "under this lock. Use an additive commit, never infer ownership from ancestry")
+            return 1
+        parent = git("rev-parse", "--verify", "HEAD^")
+        if parent.returncode == 0:
+            check_base = parent.stdout.strip()
+        else:
+            # An owned initial commit has no parent. The empty tree works with
+            # the repository's object format and does not write an object.
+            empty = git("hash-object", "-t", "tree", "--stdin", input="")
+            if empty.returncode:
+                print(f"REFUSED: cannot inspect initial commit baseline: {empty.stderr.strip()}")
+                return 1
+            check_base = empty.stdout.strip()
+    staged, staged_error = staged_paths()
+    if staged_error:
+        print(f"REFUSED: cannot inspect the staging area ({staged_error})")
+        return 1
+    if not staged:
+        print("REFUSED: nothing is staged; stage the intended files by name")
+        return 1
+    validated_tree = git("write-tree")
+    if validated_tree.returncode:
+        print(f"REFUSED: cannot snapshot the staged tree: {validated_tree.stderr.strip()}")
+        return 1
+    if check(staged_view=True, allow_unborn=unborn, base=check_base) != 0:
+        print("REFUSED: fix the PROBLEMs above, re-stage and run commit again")
+        return 1
+    command = ["commit"] + (["--amend"] if amend else []) + (["--no-edit"] if amend and not messages else [])
+    for message in messages:
+        command += ["-m", message]
+    result = git(*command)
+    if result.returncode != 0:
+        print(f"REFUSED by git: {(result.stderr or result.stdout).strip()}")
+        return 1
+    created = git("rev-parse", "--verify", "HEAD")
+    head = created.stdout.strip()
+    saved_tree = git("rev-parse", "--verify", f"{head}^{{tree}}")
+    if created.returncode or saved_tree.returncode or saved_tree.stdout.strip() != validated_tree.stdout.strip():
+        print(f"PROBLEM after committing {head or '(ID unreadable)'}: a commit was already created, but its tree "
+              "cannot be verified against the validated index tree (a hook may have changed it). "
+              "No success or amend receipt; preserve state and report; nothing was released")
+        return 1
+    print(f"committed {head[:12]}{' (amended)' if amend else ''}; working-tree check follows")
+    if label:
+        try:
+            if created.returncode or not head:
+                raise OSError("cannot read the created commit ID")
+            meta["commit"] = head
+            (LOCK / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        except OSError as error:
+            print(f"PROBLEM after committing: cannot record this acquisition's commit ({error}); "
+                  "lock remains held, do not amend without its receipt; preserve state and report")
+            return 1
+    code = check()
+    if code:
+        print(f"PROBLEM after committing {head}: fix it, re-stage and recommit (--amend with the same label under "
+              "a lock, a further commit otherwise); nothing was released")
+    return code
+
+
 if __name__ == "__main__":
     # Keep diagnostics readable even for POSIX filenames with non-UTF-8 bytes.
     sys.stdout.reconfigure(errors="backslashreplace")
@@ -705,8 +950,9 @@ if __name__ == "__main__":
             print("usage: python3 tools/minibrain.py check [--staged]")
             sys.exit(2)
         sys.exit(check(staged_view=argv[1:] == ["--staged"]))
-    handler = {"lock": lock, "unlock": unlock}.get(cmd)
+    handler = {"lock": lock, "unlock": unlock, "commit": commit}.get(cmd)
     if handler is None:
-        print("usage: python3 tools/minibrain.py [check [--staged] | lock <name> | unlock <label> | unlock --force]")
+        print("usage: python3 tools/minibrain.py [check [--staged] | lock <name> | unlock <label> | unlock --force\n"
+              "        | commit [--label <label>] -m <message> [-m <paragraph>]... [--amend]]")
         sys.exit(2)
     sys.exit(handler(argv[1:]))
