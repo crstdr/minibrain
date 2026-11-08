@@ -83,16 +83,15 @@ for name in tables:
                 self.assertEqual(record.read_bytes(), ("# A\n\n## Mine\n" + payload + peer).encode())
                 self.cli("edit", "jobs/A", "--section", "Mine", data="replacement\n")
                 self.assertEqual(record.read_bytes(), ("# A\n\n## Mine\nreplacement\n" + peer).encode())
-        # Heading examples are allowed as payloads; replacing them must preserve
-        # their exact heading bytes, rather than trusting parser boundaries.
+        # Heading examples remain valid payloads, but then require manual editing.
         payload = "```md\n## Example\n## Example\n```\n"
         record = self.put("jobs/A", "# A\n\n## Mine\nold\n" + peer)
         self.cli("edit", "jobs/A", "--section", "Mine", data=payload)
         original = record.read_bytes()
         self.cli("edit", "jobs/A", "--section", "Mine", data=payload.replace("## Example\n", "", 1), ok=False)
         self.assertEqual(record.read_bytes(), original)
-        self.cli("edit", "jobs/A", "--section", "Mine", data=payload.replace("```md", "~~~md").replace("```", "~~~"))
-        self.assertTrue(record.read_bytes().endswith(peer.encode()))
+        self.cli("edit", "jobs/A", "--section", "Mine", data=payload, ok=False)
+        self.assertEqual(record.read_bytes(), original)
         record = self.put("jobs/A", "# A")
         self.cli("edit", "jobs/A", "--section", "Mine", data="ordinary body\n")
         self.assertEqual(record.read_bytes(), b"# A\n\n## Mine\nordinary body\n")

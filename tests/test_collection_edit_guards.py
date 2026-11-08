@@ -37,6 +37,43 @@ class CollectionEditGuards(unittest.TestCase):
                 self.assertIn(b"## Mine\nreplacement\n", content)
                 self.assertNotIn(b"\nold\n", content)
 
+    def test_possible_peer_in_old_body_refuses_even_when_repeated(self):
+        paired = "old\n\n- ~~~\n  mine code\n  ~~~\n\n{}\n- ~~~\n  peer code\n  ~~~\n"
+        bodies = [paired.format("Peer\n----\nPeer assessment, keep exact.\n"),
+                  paired.format("## Peer\nPeer assessment, keep exact.\n")]
+        for heading in ("# Example", " ## Example", "   # Example", "Title\n===", "Title\n   ---"):
+            bodies.extend(("```md\n" + heading + "\n```\n",
+                           "<!--\n" + heading + "\n-->\n"))
+        for body in bodies:
+            for payload in ("replacement\n", body, "replacement\n```md\n## Peer\n```\n"):
+                with self.subTest(body=body, payload=payload):
+                    original = "# A\n- cost: 1\n\n## Mine\n" + body
+                    record = self.put("jobs/A", original)
+                    _, err = self.cli("edit", "jobs/A", "--section", "Mine", data=payload, ok=False)
+                    self.assertIn("manually", err)
+                    self.assertEqual(record.read_bytes(), original.encode())
+                    self.cli("edit", "jobs/A", "--set", "cost", "2")
+                    self.assertEqual(record.read_bytes(), original.replace("cost: 1", "cost: 2").encode())
+
+    def test_ordinary_subheadings_and_code_remain_replaceable(self):
+        for body in ("ordinary\n", "### Detail\ntext\n", "```py\nprint(1)\n```\n"):
+            with self.subTest(body=body):
+                peer = "## Peer\nKeep exact.  \r\n"
+                record = self.put("jobs/A", "# A\n\n## Mine\n" + body + peer)
+                self.cli("edit", "jobs/A", "--section", "Mine", data="replacement\n")
+                self.assertEqual(record.read_bytes(), ("# A\n\n## Mine\nreplacement\n" + peer).encode())
+
+    def test_comment_tracking_is_limited_to_recognized_blocks(self):
+        for comment, refused in (("<!-- open\n", True), ("   <!-- open\n", True),
+                                 ("draft <!-- open\n", False),
+                                 ("<!-- closed --> <!-- reopened\n", False)):
+            with self.subTest(comment=comment):
+                original = "# A\n\n## Mine\nold\n" + comment
+                record = self.put("jobs/A", original)
+                self.cli("edit", "jobs/A", "--section", "Mine", data="replacement\n", ok=not refused)
+                self.assertEqual(record.read_bytes(), original.encode() if refused
+                                 else b"# A\n\n## Mine\nreplacement\n")
+
     def test_malformed_new_governed_entries_cannot_hide_behind_old_value(self):
         original = "# A\n\n## History\n" + fixtures.EVENT + "\n"
         self.put("jobs/A", original)

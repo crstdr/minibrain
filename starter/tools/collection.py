@@ -34,10 +34,12 @@ grow quadratically. This is not a memory sandbox for adversarial SQL.
 
 edit NAME/ID (--set KEY VALUE | --unset KEY | --section HEADING) [--expect REV]
 [--label LABEL] changes one existing regular file. Section bodies use stdin.
-Section edits refuse records with any unclosed code fence or HTML comment;
-close it or edit manually. Replacements must preserve all heading-like lines
-starting with # or ##, even in code/comments; otherwise edit manually. Ordinary
-field edits remain available; creating History requires a closed fence/comment.
+Section edits refuse records with unclosed code fences or recognized HTML comment
+blocks starting at the beginning of a line. Close them or edit manually. Inline or reopened comment
+forms are not comprehensively tracked. Replacements refuse old bodies containing
+raw ATX H1/H2 or Setext heading examples, even in code/comments and even if
+repeated in the payload. Edit manually. Ordinary field edits remain available;
+creating History requires a closed fence/recognized comment block.
 Governed changes require --reason and --authority. Supply locally required
 assent with --assent. History entries are newest first under '## History'.
 - YYYY-MM-DD field: value — reason; authority: ref[; assent: names]
@@ -75,7 +77,7 @@ An SQL error can follow streamed rows: nonzero exit means discard that result.
 """
 
 import argparse
-from collections import Counter, defaultdict, deque
+from collections import defaultdict, deque
 import csv
 from datetime import date
 import hashlib
@@ -759,13 +761,14 @@ def edited(r, args):
             die("section payload contains an escaping heading, unclosed fence/comment or NUL")
         body = re.sub(r"\r\n|\r|\n", lambda _: r.nl, body)
         candidate = splice(r, *spans[0], body) if spans else appended(r, title, body)
-        # Preserve raw heading bytes independently of the section parser:
-        # unsupported Markdown containers must not hide peers from this guard.
+        # Raw checks deliberately include heading examples in code and comments.
         if spans:
-            raw_heads = Counter(line for line in r.lines[slice(*spans[0])]
-                                if re.match(r"^ {0,3}#{1,2}(?:[ \t]|[\r\n]|$)", line))
-            if raw_heads - Counter(physical_lines(body)):
-                die("section edit would remove heading-like lines; preserve them or edit manually")
+            old_body = r.lines[slice(*spans[0])]
+            if any(re.match(r"^ {0,3}#{1,2}(?:[ \t]|[\r\n]|$)", line)
+                   or (i and old_body[i - 1].strip()
+                       and re.fullmatch(r" {0,3}(?:=+|-+)[ \t]*", line.rstrip("\r\n")))
+                   for i, line in enumerate(old_body)):
+                die("section body contains a possible peer heading; edit manually")
         expected = [h[1] for h in r.heads if h[0] <= 2]
         if not spans:
             expected.append(title)

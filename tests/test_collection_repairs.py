@@ -69,8 +69,8 @@ class CollectionRepairs(unittest.TestCase):
     def test_indented_code_is_not_a_setext_heading(self):
         original = "# A\n\n## Mine\nold\n\n    code\n    continuation\n----\n"
         record = self.put("jobs/A", original)
-        self.cli("edit", "jobs/A", "--section", "Mine", data="replacement\n")
-        self.assertEqual(record.read_bytes(), b"# A\n\n## Mine\nreplacement\n")
+        self.cli("edit", "jobs/A", "--section", "Mine", data="replacement\n", ok=False)
+        self.assertEqual(record.read_bytes(), original.encode())
 
     def test_retired_governance_preserves_canonical_history_not_prose(self):
         second = fixtures.EVENT.replace("P2", "P3")
