@@ -16,7 +16,9 @@ metadata. NULL _age means uncommitted. _unmet counts distinct unsatisfied
 direct needs. Incomplete evidence below an item or a reachable cycle gives
 NULL. A count conveys neither authority nor capacity. Other columns are
 effective fields. Blanks and governed clearances are NULL. Only configured
-numeric fields use REAL. day(text) validates YYYY-MM-DD. COLLATE natural_id
+numeric fields use REAL. The leading number is the score and trailing commentary
+is non-computational. For example, 1 (1 day), 2 (1 week), 3 (1 month) score
+1, 2, 3; no unit conversion occurs. day(text) validates YYYY-MM-DD. COLLATE natural_id
 orders P2 before P10. Use IS NULL for missing values. Inspect the records for
 rationale. Include operands and known/total coverage in ranked briefs.
 Downstream sums do not measure causal unlock value.
@@ -34,10 +36,12 @@ edit NAME/ID (--set KEY VALUE | --unset KEY | --section HEADING) [--expect REV]
 Governed changes require --reason and --authority. Supply locally required
 assent with --assent. History entries are newest first under '## History'.
 - YYYY-MM-DD field: value — reason; authority: ref[; assent: names]
-Clearance records 'cleared'. Corrections prepend. Archive by state and retain
-a successor when merging. Keep one canonical home. Point to promoted records
-with qualified wikilinks. Records require neither map registration nor a
-collection-only changelog entry. Record durable outcomes per local policy.
+Clearance records 'cleared'. Corrections prepend. Promote within a collection
+by changing its locally defined state. Across collections, create the destination
+record and archive the source with a qualified successor wikilink. Retain the
+committed source. Keep one canonical home. Records require neither map
+registration nor a routine collection-only changelog entry. Follow the brain's
+Checkpoint procedure for durable outcomes.
 
 Follow the brain's writer/delegation rules, edit only your own assessments,
 and recheck waiting conditions at their approved sources before acting.
@@ -46,15 +50,20 @@ during a snapshot. Cooperating writers provide isolation. A label does not
 authenticate authority. An edit never stages, commits, or releases a lock.
 
 Set GOVERNED_FIELDS for authority-controlled fields across all collections.
-Configure numeric fields and satisfying prerequisite states per collection;
-changing governance or delegation requires the brain's instruction authority.
+Configure numeric fields and satisfying prerequisite states per collection.
+State values match exactly, including case. Changing governance or delegation
+requires the brain's instruction authority.
 Source-owned facts stay at their source. A waiting record describes the trigger,
 where to check, its dated observation and the next permitted action in prose.
 
-For example, with benefit/cost declared numeric in collection.tasks:
-  query tasks "SELECT _id,benefit,cost,benefit/cost AS score FROM tasks WHERE _unmet=0 ORDER BY score DESC NULLS LAST LIMIT 5"
-  edit tasks/T-1 --set cost 3
-  edit tasks/T-1 --set priority P2 --reason "Accepted trade-off" --authority "Decision D7"
+For example, with benefit/cost numeric and 'open' the local candidate state:
+  query tasks "SELECT _id,benefit,cost,benefit/cost AS score FROM [tasks] WHERE state='open' AND _unmet=0 AND benefit IS NOT NULL AND cost>0 ORDER BY score DESC LIMIT 5"
+  edit tasks/T-1 --section 'My review' <<'EOF'
+Evidence and rationale for this assessment.
+EOF
+Use explicit assessment dates, e.g. day([assessed-on]), to check assessment
+freshness. _age counts days since the record's last Git commit.
+Brackets quote hyphenated field names.
 Use --label with your acquisition label while the writer lock is held.
 The relation names needs, reach, tags, sections and sqlite_* are reserved.
 An SQL error can follow streamed rows: nonzero exit means discard that result.
@@ -88,7 +97,7 @@ FIELDLIKE = re.compile(r"^\s*[-*+][ \t]+[^\s:]+[ \t]*:(?!//)")
 NUMBER = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?=$|[\s(])")
 ENTRY = re.compile(r"^- (\d{4}-\d{2}-\d{2}) (" + FIELD +
                    r"): (.+?) — (.+?); authority: ([^;]+?)(?:; assent: (.+?))?$")
-EVENT = re.compile(r"^\s*[-*+]\s+(?:[^\s:]+\s+)?(" + FIELD + r")\s*:")
+EVENT = re.compile(r"^\s*[-*+]\s+(?:[^\s:]+\s+)?([*_`]*)(" + FIELD + r")[*_`]*\s*:")
 FENCE = re.compile(r"^ {0,3}(\x60{3,}|~{3,})(.*)$")
 ATX = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*)|$)")
 SYSTEM = {"needs": ("item", "need"), "reach": ("item", "need", "depth"),
@@ -162,10 +171,15 @@ def physical_lines(text):
 
 
 def structure(lines):
-    """Unfenced headings as (level, title, start, body start), plus fence state."""
+    """Headings as (level, title, start, body start), plus open fence/comment state."""
     headings, literal, fence = [], set(), ""
+    comment = False
     for i, raw in enumerate(lines):
         s = raw.rstrip("\r\n")
+        if not fence and (comment or re.match(r"^ {0,3}<!--", s)):
+            literal.add(i)
+            comment = "-->" not in (s if comment else s[s.index("<!--") + 4:])
+            continue
         mark = FENCE.match(s)
         if not fence and mark and mark[1][0] == "`" and "`" in mark[2]:
             mark = None  # A backtick fence cannot have a backtick in its info string.
@@ -185,15 +199,20 @@ def structure(lines):
             def paragraph_line(j):
                 value = lines[j].rstrip("\r\n")
                 return (j not in literal and value.strip() and not ATX.fullmatch(value)
-                        and not re.match(r"^(?: {4}|\t| {0,3}(?:[-*+]\s|\d+[.)]\s|>))", value)
+                        and not re.match(r"^ {0,3}(?:[-*+]\s|\d+[.)]\s|>)", value)
                         and not re.fullmatch(r" {0,3}(?:=+|-+)[ \t]*", value))
             if prev and paragraph_line(i - 1):
                 start = i - 1
                 while start and paragraph_line(start - 1):
                     start -= 1
+                # Setext paragraphs can have indented continuations after an unindented start.
+                while start < i and re.match(r"^(?: {4}|\t)", lines[start]):
+                    start += 1
+                if start == i:
+                    continue
                 title = " ".join(line.strip() for line in lines[start:i])
                 headings.append((1 if s.strip()[0] == "=" else 2, title, start, i + 1))
-    return headings, literal, fence
+    return headings, literal, fence or ("<!--" if comment else "")
 
 
 class Record:
@@ -253,15 +272,22 @@ class Record:
         seen, last = set(), ""
         for i, raw in enumerate(lines):
             s = raw.rstrip("\r\n")
+            if i in literal or i < self.header_end:
+                continue
+            match = ENTRY.fullmatch(s)
+            valid = (match and day(match[1])
+                     and all(v.strip() for v in match.groups()[2:] if v is not None))
+            # Retain canonical decisions independently of current governance.
+            if lo <= i < hi and valid:
+                self.events.append(s)
             event = EVENT.match(s)
-            if i in literal or not event or event[1].lower() not in governed or i < self.header_end:
+            if not event or event[2].rstrip(event[1]).lower() not in governed:
                 continue
             if not lo <= i < hi:
                 if re.match(r"^\s*[-*+]\s+\d", s):
                     self.error("governed entry outside ## History")
                 continue
-            match = ENTRY.fullmatch(s)
-            if not match or not day(match[1]) or not all(v.strip() for v in match.groups()[2:] if v is not None):
+            if not valid:
                 self.error(f"malformed governed entry: {s}")
                 continue
             if i + 1 < hi and lines[i + 1].strip() and not lines[i + 1].startswith("- "):
@@ -269,7 +295,6 @@ class Record:
             if last and last < match[1]:
                 self.error("governed history is not newest first")
             last = match[1]
-            self.events.append(s)
             key, value = match[2].lower(), match[3].strip()
             if key not in seen:
                 self.fields[key] = None if value.lower() == "cleared" else value
@@ -390,18 +415,17 @@ def check(staged_view, documents, problems, warnings, git, base="HEAD"):
 
     for rel in changed("D"):
         problems.append(f"committed record deleted: {rel} (archive by state)")
-    if GOVERNED_FIELDS:
-        for rel in changed("MT"):
-            r = records.get(ref_of(rel))
-            if r is None:
-                continue
-            previous = git("show", f"{base}:{rel}")
-            if previous.returncode:
-                problems.append(f"cannot read {base}:{rel}: {previous.stderr.strip()}")
-                continue
-            old = Record(rel, previous.stdout).events
-            if old and r.events[-len(old):] != old:
-                problems.append(f"earlier governed entry altered or removed in {rel}: prepend a new entry")
+    for rel in changed("MT"):
+        r = records.get(ref_of(rel))
+        if r is None:
+            continue
+        previous = git("show", f"{base}:{rel}")
+        if previous.returncode:
+            problems.append(f"cannot read {base}:{rel}: {previous.stderr.strip()}")
+            continue
+        old = Record(rel, previous.stdout).events
+        if old and r.events[-len(old):] != old:
+            problems.append(f"earlier governed entry altered or removed in {rel}: prepend a new entry")
 
 
 def tsv(columns, rows):
@@ -564,9 +588,12 @@ def fill(db, tables, records, dates):
         db.executemany("INSERT INTO needs VALUES (?,?)", ((ref, n) for n in r.needs))
         db.executemany("INSERT INTO tags VALUES (?,?)", ((ref, t) for t in sorted(set(r.tags))))
         db.executemany("INSERT INTO sections VALUES (?,?)", ((ref, h) for h in r.sections))
-    for name, cols in SYSTEM.items():
-        db.execute(f"CREATE INDEX {name}_item ON {name} ({cols[0]})")
-    db.execute("CREATE INDEX reach_need ON reach (need)")
+    public_names = {name.lower() for name in tables}
+    for name, col in [(name, cols[0]) for name, cols in SYSTEM.items()] + [("reach", "need")]:
+        index = name + "_" + col
+        while index.lower() in public_names:
+            index += "_"
+        db.execute(f"CREATE INDEX {quote(index)} ON {name} ({col})")
     db.commit()
 
 
@@ -583,9 +610,9 @@ def restrict(db, sqlite, tables, sql="", reads=None):
     def authorize(action, arg1, arg2, database, source):
         if action == sqlite.SQLITE_READ and reads is not None:
             reads.add(arg1)
-        # SQLite reports COUNT(*) on a CTE as a columnless read with no
-        # database. Permit its cardinality; reads inside the CTE are checked
-        # separately. Keep SQLite's own schema names denied, even for counts.
+        # Columnless reads with no database include CTE counts and some
+        # table-valued-function cardinalities. Column reads remain checked
+        # separately; SQLite's schema names are denied even for counts.
         cte_count = (database is None and arg2 == "" and bool(arg1)
                      and not arg1.lower().startswith("sqlite_"))
         ok = (action in (sqlite.SQLITE_SELECT, getattr(sqlite, "SQLITE_RECURSIVE", -1))
@@ -695,7 +722,7 @@ def splice(r, start, stop, payload):
 
 def appended(r, heading, body):
     if r.open_fence:
-        die("cannot append a heading inside an unclosed fence")
+        die("cannot append a heading inside an unclosed fence or comment")
     return splice(r, len(r.lines), len(r.lines), r.nl + "## " + heading + r.nl + body)
 
 
@@ -716,7 +743,7 @@ def edited(r, args):
             die(f"{r.rel} section {title!r}: invalid UTF-8: {error}")
         heads, _, fence = structure(physical_lines(body))
         if fence or any(level <= 2 for level, *_ in heads) or "\0" in body:
-            die("section payload contains an escaping heading, unclosed fence or NUL")
+            die("section payload contains an escaping heading, unclosed fence/comment or NUL")
         body = re.sub(r"\r\n|\r|\n", lambda _: r.nl, body)
         candidate = splice(r, *spans[0], body) if spans else appended(r, title, body)
         expected = [h[1] for h in r.heads if h[0] <= 2]
@@ -786,7 +813,6 @@ def edit(before, records, args):
     if args.expect is not None and args.expect != r.rev:
         die("expected revision does not match the full current SHA-256")
 
-    existing_network_errors = set(Network(records).errors)
     new = Record(r.rel, edited(r, args))
     if args.section is not None:
         if new.fields != r.fields or new.events != r.events:
@@ -803,7 +829,15 @@ def edit(before, records, args):
     if r.events and new.events[-len(r.events):] != r.events:
         die("edit would alter earlier governed history")
     records[r.ref] = new
-    errors = new.errors + [e for e in Network(records).errors if e not in existing_network_errors]
+    errors = list(new.errors)
+    added = set(new.needs) - set(r.needs)
+    if added:
+        edges = {ref: rec.needs for ref, rec in records.items()}
+        for target in sorted(added):
+            if target not in records:
+                errors.append(f"{r.ref} needs unknown record {target}")
+            elif target == r.ref or any(ref == r.ref for ref, _ in walk(edges, target)):
+                errors.append(f"needs cycle: added edge {r.ref} -> {target}")
     if errors:
         die("\n".join(errors))
     if new.text == r.text:
@@ -836,8 +870,9 @@ def main():
     e = sub.add_parser("edit", allow_abbrev=False)
     e.add_argument("ref")
     op = e.add_mutually_exclusive_group(required=True)
-    for flag, n in (("--set", 2), ("--unset", 1), ("--section", 1)):
-        op.add_argument(flag, nargs=n, action="append")
+    for flag, n, metavar in (("--set", 2, ("KEY", "VALUE")),
+                             ("--unset", 1, "KEY"), ("--section", 1, "HEADING")):
+        op.add_argument(flag, nargs=n, action="append", metavar=metavar)
     for flag in ("--expect", "--label", "--reason", "--authority", "--assent"):
         e.add_argument(flag)
     if len(sys.argv) == 1:

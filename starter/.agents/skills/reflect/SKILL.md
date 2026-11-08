@@ -30,6 +30,6 @@ Then check working-index follow-ups:
 - Priority changed? → Focus.
 - Notable outcome unacknowledged? → Awaiting acknowledgment.
 - Pointers/navigation stale or missing? → Fix them.
-- Collection entries repeatedly scanned whole, assessed by several agents, traced for prerequisites or governed? → Propose `tools/collection.py` (SETUP §2) to the user; never install or migrate unprompted.
+- Collection entries repeatedly scanned whole, assessed by several agents, traced for prerequisites or governed? → Propose `tools/collection.py` (upstream minibrain `SETUP.md` §2, from the source recorded in the brain's adoption record) to the user; never install or migrate unprompted.
 
 Update only what needs changing; destinations are not a checklist. Persist through the local checkpoint procedure; no reflection diary or duplicate records. If nothing durable changed, no checkpoint.

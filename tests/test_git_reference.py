@@ -888,7 +888,7 @@ class GitReferenceTests(unittest.TestCase):
         path = self.root / "tools/collection.py"
         content = path.read_bytes()
         marker = self.root / "executed.txt"
-        variants = ("deleted", "policy", "symlink", "mode", "unindexed")
+        variants = ("deleted", "policy", "symlink", "unindexed")
         for variant in variants:
             with self.subTest(variant=variant):
                 if variant == "deleted":
@@ -900,8 +900,6 @@ class GitReferenceTests(unittest.TestCase):
                     target.write_bytes(content)
                     path.unlink()
                     self.symlink(path, target)
-                elif variant == "mode":
-                    path.chmod(0o755)
                 else:
                     self.git("rm", "--cached", "-q", "--", "tools/collection.py")
                 self.assertIn("must match the index", self.tool("check", "--staged", expected=1))
@@ -911,6 +909,251 @@ class GitReferenceTests(unittest.TestCase):
                 path.write_bytes(content)
                 path.chmod(0o644)
                 self.git("add", "--", "tools/collection.py")
+
+    def test_unexpected_extension_exit_fails_checks_and_commit(self):
+        self.write("MEMORY.md", "# Invalid memory\n")
+        self.assertIn("no exact", self.tool("check", expected=1))
+        for code in (0, 7):
+            with self.subTest(code=code):
+                self.write("tools/collection.py", f"raise SystemExit({code})\n")
+                self.assertIn("PROBLEM:", self.tool("check", expected=1))
+                self.git("add", "--", "tools/collection.py")
+                self.assertIn("PROBLEM:", self.tool("check", "--staged", expected=1))
+                self.assertIn("REFUSED:", self.tool("commit", "-m", "Must fail", expected=1))
+                self.assertEqual(self.commits(), "1")
+
+    def test_extension_check_exit_is_also_a_problem(self):
+        self.install_collection(governed=False)
+        path = self.root / "tools/collection.py"
+        path.write_text(path.read_text() + "\ndef check(*args):\n    raise SystemExit(0)\n")
+        self.git("add", "--", "tools/collection.py")
+        for args in (("check",), ("check", "--staged")):
+            self.assertIn("cannot run tools/collection.py checks", self.tool(*args, expected=1))
+
+    def test_clean_crlf_extension_executes_indexed_source(self):
+        self.install_collection(governed=False)
+        path = self.root / "tools/collection.py"
+        indexed = path.read_bytes()
+        self.git("config", "core.autocrlf", "true")
+        path.unlink()
+        self.git("checkout", "--", "tools/collection.py")
+        self.assertIn(b"\r\n", path.read_bytes())
+        self.assertEqual(self.git("status", "--porcelain").stdout, "")
+        helper = self.load_helper()
+        with mock.patch("builtins.compile", wraps=compile) as compiler:
+            helper.extension(staged=True)
+        self.assertEqual(compiler.call_args.args[0], indexed)
+        self.write("work.txt", "save\n")
+        self.git("add", "--", "work.txt")
+        self.tool("check", "--staged")
+        self.tool("commit", "-m", "Save with CRLF checkout")
+        self.assertEqual(self.commits(), "3")
+
+    def test_regular_extension_executable_bit_is_not_policy(self):
+        self.install_collection(governed=False)
+        self.git("update-index", "--chmod=+x", "--", "tools/collection.py")
+        self.git("commit", "-qm", "Executable extension")
+        self.git("config", "core.fileMode", "false")
+        (self.root / "tools/collection.py").chmod(0o644)
+        self.assertEqual(self.git("status", "--porcelain").stdout, "")
+        self.write("work.txt", "save\n")
+        self.git("add", "--", "work.txt")
+        self.tool("check", "--staged")
+        self.tool("commit", "-m", "Save with ignored mode difference")
+
+    def test_lone_cr_or_substantive_extension_difference_still_refused(self):
+        self.install_collection(governed=False)
+        path = self.root / "tools/collection.py"
+        content = path.read_bytes()
+        for changed in (content.replace(b"\n", b"\r", 1), content + b"\n# Other policy\n"):
+            path.write_bytes(changed)
+            self.assertIn("must match the index", self.tool("check", "--staged", expected=1))
+
+    def test_hook_tree_change_reports_created_commit_without_receipt(self):
+        self.install_collection()
+        record = "collection.jobs/A.md"
+        self.write(record, "# A\n\n## History\n- 2026-01-01 priority: P2 — initial; authority: user\n")
+        self.git("add", "--", record)
+        self.git("commit", "-qm", "Record baseline")
+        label = self.acquire()
+        self.write("work.txt", "unrelated save\n")
+        self.git("add", "--", "work.txt")
+        path = self.root / record
+        path.write_text(path.read_text().replace("priority: P2", "priority: P1"))
+        self.write(".git/hooks/pre-commit", "#!/bin/sh\ngit add -- collection.jobs/A.md\n")
+        (self.root / ".git/hooks/pre-commit").chmod(0o755)
+        before = self.git("rev-parse", "HEAD").stdout.strip()
+        out = self.tool("commit", "--label", label, "-m", "Hook stages other work", expected=1)
+        after = self.git("rev-parse", "HEAD").stdout.strip()
+        self.assertNotEqual(before, after)  # detection, not prevention
+        self.assertIn("priority: P1", self.git("show", f"HEAD:{record}").stdout)
+        self.assertIn("PROBLEM after committing", out)
+        self.assertIn(after, out)
+        self.assertIn("tree", out)
+        self.assertNotIn("clean", out)
+        metadata = json.loads((self.root / ".git/kb-writer.lock/meta.json").read_text())
+        self.assertNotIn("commit", metadata)
+        self.assertIn("no matching gated-commit receipt",
+                      self.tool("commit", "--label", label, "--amend", expected=1))
+        self.assertTrue((self.root / ".git/kb-writer.lock").is_dir())
+
+    def test_lockless_hook_tree_change_is_not_clean_success(self):
+        self.write("work.txt", "staged\n")
+        self.git("add", "--", "work.txt")
+        self.write(".git/hooks/pre-commit", "#!/bin/sh\nprintf 'from hook\\n' > hook.txt\ngit add -- hook.txt\n")
+        (self.root / ".git/hooks/pre-commit").chmod(0o755)
+        out = self.tool("commit", "-m", "Hook changes tree", expected=1)
+        self.assertEqual(self.commits(), "2")
+        self.assertIn("a commit was already created", out)
+        self.assertIn(self.git("rev-parse", "HEAD").stdout.strip(), out)
+        self.assertNotIn("working-tree check follows", out)
+        self.assertNotIn("clean", out)
+
+    def test_tree_inspection_failures_never_grant_a_receipt(self):
+        label = self.acquire()
+        self.stage_change()
+        helper = self.load_helper()
+        original = helper.git
+        metadata = self.root / ".git/kb-writer.lock/meta.json"
+        for phase in ("before", "after"):
+            def fail_tree(*args, **kwargs):
+                if ((phase == "before" and args == ("write-tree",)) or
+                        (phase == "after" and args[0] == "rev-parse" and args[-1].endswith("^{tree}"))):
+                    return subprocess.CompletedProcess(args, 1, "", "synthetic tree inspection failure")
+                return original(*args, **kwargs)
+
+            with self.subTest(phase=phase), mock.patch.object(helper, "git", side_effect=fail_tree), \
+                    contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(helper.commit(["--label", label, "-m", "Tree inspection failure"]), 1)
+            self.assertEqual(self.commits(), "1" if phase == "before" else "2")
+            self.assertNotIn("commit", json.loads(metadata.read_text()))
+            self.assertIn("REFUSED: cannot snapshot" if phase == "before" else "PROBLEM after committing",
+                          output.getvalue())
+            self.assertNotIn("working-tree check follows", output.getvalue())
+
+    def test_hook_changed_amend_cannot_replace_the_receipt(self):
+        label = self.acquire()
+        self.stage_change()
+        self.tool("commit", "--label", label, "-m", "Owned baseline")
+        metadata = self.root / ".git/kb-writer.lock/meta.json"
+        previous = json.loads(metadata.read_text())["commit"]
+        self.stage_change("Amend this.")
+        self.write(".git/hooks/pre-commit", "#!/bin/sh\nprintf 'from hook\\n' > hook.txt\ngit add -- hook.txt\n")
+        (self.root / ".git/hooks/pre-commit").chmod(0o755)
+        out = self.tool("commit", "--label", label, "--amend", expected=1)
+        self.assertIn("a commit was already created", out)
+        self.assertNotEqual(self.git("rev-parse", "HEAD").stdout.strip(), previous)
+        self.assertEqual(json.loads(metadata.read_text())["commit"], previous)
+        self.assertIn("no matching gated-commit receipt",
+                      self.tool("commit", "--label", label, "--amend", expected=1))
+
+    def test_normal_presence_based_extension_adoption_still_works(self):
+        self.write("tools/collection.py", HELPER.with_name("collection.py").read_text())
+        self.write("collection.jobs/A.md", "# A\n")
+        self.assertNotIn("PROBLEM", self.tool("check"))
+        self.git("add", "--", "tools/collection.py", "collection.jobs/A.md")
+        self.tool("check", "--staged")
+        self.tool("commit", "-m", "Adopt optional extension")
+
+    def test_working_rename_source_cannot_commit_stale_stage(self):
+        self.write("plan.txt", "old plan\n")
+        self.git("add", "--", "plan.txt")
+        self.git("commit", "-qm", "Plan baseline")
+        self.write("plan.txt", "new plan\n")
+        self.git("add", "--", "plan.txt")
+        (self.root / "plan.txt").rename(self.root / "final.txt")
+        self.git("add", "-N", "--", "final.txt")
+        self.assertIn("R100", self.git("diff", "--name-status").stdout)
+        before = self.git("rev-parse", "HEAD").stdout
+        self.assertIn("staged paths edited after staging", self.tool("check", "--staged", expected=1))
+        self.assertIn("plan.txt", self.tool("commit", "-m", "Stale plan", expected=1))
+        self.assertEqual(self.git("rev-parse", "HEAD").stdout, before)
+
+    def test_staged_collection_root_symlink_refused_before_commit(self):
+        self.install_collection(governed=False)
+        target = Path(self.temp.name) / "outside"
+        target.mkdir()
+        self.symlink(self.root / "collection.jobs", target, is_directory=True)
+        self.git("add", "--", "collection.jobs")
+        before = self.git("rev-parse", "HEAD").stdout
+        self.assertIn("collection", self.tool("check", "--staged", expected=1))
+        self.tool("commit", "-m", "Must not commit symlink", expected=1)
+        self.assertEqual(self.git("rev-parse", "HEAD").stdout, before)
+
+    def test_outgoing_record_links_checked_without_registration_or_changelog(self):
+        self.install_collection(governed=False)
+        self.write("collection.jobs/A.md", "# A\nSee [[collection.jobs/B]] and [[spaces/Missing]].\n")
+        self.write("collection.jobs/B.md", "# B\nSee [[Project]].\n")
+        self.git("add", "--", "collection.jobs/A.md", "collection.jobs/B.md")
+        for args in (("check",), ("check", "--staged")):
+            out = self.tool(*args, expected=1)
+            self.assertIn("broken wikilink in collection.jobs/A.md: [[spaces/Missing]]", out)
+            self.assertNotIn("not registered", out)
+            self.assertNotIn("requires staged CHANGELOG", out)
+        self.write("collection.jobs/A.md", "# A\nSee [[collection.jobs/typo]].\n")
+        self.git("add", "--", "collection.jobs/A.md")
+        before = self.git("rev-parse", "HEAD").stdout
+        self.assertIn("broken wikilink", self.tool("commit", "-m", "Bad successor", expected=1))
+        self.assertEqual(self.git("rev-parse", "HEAD").stdout, before)
+        self.write("collection.jobs/A.md", "# A\nSee [[collection.jobs/B]].\n")
+        self.git("add", "--", "collection.jobs/A.md")
+        self.tool("commit", "-m", "Valid links, no Map or changelog")
+
+    def test_ignored_recreated_deletion_is_checked_without_ignored_tree_walk(self):
+        self.write("work.txt", "baseline\n")
+        self.git("add", "--", "work.txt")
+        self.git("commit", "-qm", "Work baseline")
+        self.git("rm", "-q", "--", "work.txt")
+        self.write("work.txt", "recreated\n")
+        self.write(".git/info/exclude", "work.txt\ncache/\n")
+        self.write("cache/irrelevant.txt", "ignored\n")
+        helper = self.load_helper()
+        original = helper.git
+
+        def no_ignored_walk(*args, **kwargs):
+            self.assertFalse(args[0] == "ls-files" and "--others" in args)
+            return original(*args, **kwargs)
+
+        with mock.patch.object(helper, "git", side_effect=no_ignored_walk), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(helper.check(staged_view=True), 1)
+        self.assertIn("staged paths edited after staging", output.getvalue())
+        self.assertIn("work.txt", output.getvalue())
+
+    def test_stale_inspection_failure_reports_the_failing_command(self):
+        self.stage_change()
+        helper = self.load_helper()
+        original = helper.git
+
+        def failed_diff(*args, **kwargs):
+            if args[:2] == ("diff", "--name-only"):
+                return subprocess.CompletedProcess(args, 1, "", "synthetic stale diff failure")
+            return original(*args, **kwargs)
+
+        with mock.patch.object(helper, "git", side_effect=failed_diff), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(helper.check(staged_view=True), 1)
+        self.assertIn("cannot compare staged paths with the working tree: synthetic stale diff failure",
+                      output.getvalue())
+        def failed_inventory(*args, **kwargs):
+            if args[:2] == ("ls-files", "--cached"):
+                return subprocess.CompletedProcess(args, 1, "", "synthetic tracked inventory failure")
+            return original(*args, **kwargs)
+
+        with mock.patch.object(helper, "git", side_effect=failed_inventory), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(helper.check(staged_view=True), 1)
+        self.assertIn("cannot compare staged paths with the working tree: synthetic tracked inventory failure",
+                      output.getvalue())
+        with mock.patch.object(helper, "staged_paths", wraps=helper.staged_paths) as inspect, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(helper.check(staged_view=True), 0)
+        self.assertEqual(inspect.call_count, 1)  # reuse the non-amend staged inspection
+        # An aggregate amend baseline needs a separate current-HEAD inspection.
+        with mock.patch.object(helper, "staged_paths", side_effect=[({"work.txt"}, None), (set(), "current staging failed")]), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(helper.check(staged_view=True, base="HEAD^"), 1)
+        self.assertIn("cannot compare staged paths with the working tree: current staging failed", output.getvalue())
 
     def test_collection_durability_and_ignore_ancestors_without_map_or_changelog(self):
         self.install_collection()

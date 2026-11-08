@@ -83,9 +83,10 @@ class CollectionSafety(unittest.TestCase):
         self.assertEqual(self.git("diff", "--cached", "--name-only"), "")
 
     def test_duplicate_atx_and_setext_heading_refuses_without_mutation(self):
-        original = "# A\n\n## Mine\none\nMine\n----\ntwo\n"
+        original = "# A\n\n## Mine\none\n\nMine\n----\ntwo\n"
         record = self.put("jobs/A", original)
-        self.cli("edit", "jobs/A", "--section", "Mine", data="replacement\n", ok=False)
+        self.assertIn("duplicate heading", self.cli(
+            "edit", "jobs/A", "--section", "Mine", data="replacement\n", ok=False)[1])
         self.assertEqual(record.read_bytes(), original.encode())
 
     @unittest.skipUnless(fixtures.sqlite3, "sqlite3 required")

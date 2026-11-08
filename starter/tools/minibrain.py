@@ -8,7 +8,8 @@ unlock --force requires user approval. No cross-clone coordination.
 commit [--label <label>] -m <message> [-m <paragraph>...] [--amend]: gated
 commit of the index. Refuses under a lock unless the label is its owner's, and
 on any check --staged PROBLEM; commits without -a; then runs check (a PROBLEM
-then exits non-zero and keeps the lock). --amend needs the label and recommits
+then exits non-zero and keeps the lock). A changed committed tree is reported
+after commit, without a success receipt. --amend needs the label and recommits
 only a commit recorded as made by this acquisition; it keeps
 the message unless -m is given and never opens an editor. Never releases the
 lock. Cooperative: raw Git bypasses it; a host grant for
@@ -29,8 +30,9 @@ Relevant .gitignore files must match the index, except CRLF/LF endings.
 
 With tools/collection.py installed, check also runs its collection checks and
 keeps record ids out of the bare-name link namespace. Staged checks require the
-extension to match its indexed bytes. Collection folders may not contain root
-control files, even before the extension is installed.
+extension to match the index except CRLF/LF endings and executable bits.
+Collection folders may not contain root control files, even before the extension
+is installed.
 
 Not checked: factual truth, complete capture, status/history order, section
 anchors, ordinary Markdown links, hidden skills or attachment retention/privacy.
@@ -141,6 +143,8 @@ def index_entries(problems, staged=False):
         if rel in MANAGED_DIRS or (Path(rel).parts[0] in MANAGED_DIRS and mode not in ("100644", "100755")):
             problems.append(f"managed path is not an ordinary directory or regular file in index: {rel}")
         if staged:
+            if "/" not in rel and rel.startswith("collection.") and rel != "collection." and mode == "120000":
+                problems.append(f"symlink collection path in index: {rel}")
             check_space_path(rel, problems)
             check_collection_control_path(rel, problems)
     return entries
@@ -496,17 +500,18 @@ def extension(staged=False):
         entries = list(filter(None, result.stdout.split("\0")))
         if not present and not entries:
             return None
-        mismatch = "tools/collection.py must match the index in presence, regular mode and bytes before staged checks"
+        mismatch = ("tools/collection.py must match the index as a regular file except CRLF/LF endings "
+                    "and executable bits before staged checks")
         if not present or len(entries) != 1 or not regular_working_file("tools/collection.py"):
             raise ValueError(mismatch)
         mode, oid, stage = entries[0].split("\t", 1)[0].split()
-        working_mode = "100755" if path.stat().st_mode & 0o111 else "100644"
-        if stage != "0" or mode != working_mode:
+        if stage != "0" or mode not in ("100644", "100755"):
             raise ValueError(mismatch)
         content = path.read_bytes()
         blob = git("cat-file", "blob", oid, binary=True)
-        if blob.returncode or blob.stdout != content:
+        if blob.returncode or blob.stdout.replace(b"\r\n", b"\n") != content.replace(b"\r\n", b"\n"):
             raise ValueError(mismatch)
+        content = blob.stdout
     if not present:
         return None
     if not regular_working_file("tools/collection.py"):
@@ -558,8 +563,8 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
         records = extension(staged_view)
         documents = load_markdown(staged_view, problems, records)
         record_paths = {rel for rel in (documents or {}) if records and records.is_record(rel)}
-    except Exception as error:
-        print(f"PROBLEM: cannot load Markdown or tools/collection.py: {error}")
+    except (Exception, SystemExit) as error:
+        print(f"PROBLEM: cannot load Markdown or tools/collection.py: {type(error).__name__}: {error}")
         return 1
     if documents is None:
         for item in problems:
@@ -619,8 +624,10 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
         legacy = [rel for rel in paths if not is_space_path(rel)]
         if len(legacy) > 1 and basename not in RESERVED:
             problems.append(f"duplicate Markdown basename {basename}.md: {', '.join(legacy)}")
-    # Check wikilinks even in fences; space assets and CHANGELOG history are excluded.
-    for rel, content in canonical.items():
+    # Records have outgoing links too, but no Map or routine-changelog obligations.
+    # Check even in fences; space assets and CHANGELOG history are excluded.
+    for rel in sorted(canonical.keys() | record_paths):
+        content = documents[rel]
         if Path(rel).name == "CHANGELOG.md":
             continue
         for match in WIKILINK.finditer(content):
@@ -634,8 +641,8 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
             # Amend's parent baseline is only for the aggregate changelog gate.
             # Already committed history, including this acquisition's event, is immutable.
             records.check(staged_view, documents, problems, warnings, git, "HEAD")
-        except Exception as error:
-            problems.append(f"cannot run tools/collection.py checks: {error}")
+        except (Exception, SystemExit) as error:
+            problems.append(f"cannot run tools/collection.py checks: {type(error).__name__}: {error}")
 
     for rel in canonical:
         if is_space_path(rel) and PurePosixPath(rel).name == "index.md":
@@ -710,14 +717,17 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
         if staged_view:
             # The index is what would be committed; a later working-tree edit to the same path is
             # a stale staged version (the slip behind re-staging instructions).
-            current_staged, current_error = staged_paths()
-            stale = git("diff", "--name-only", "-z")  # no pathspec: bulk changes exceed argument limits
-            recreated = git("ls-files", "--others", "-z")  # includes ignored recreations of staged deletions
-            if current_error or stale.returncode != 0 or recreated.returncode != 0:
-                problems.append(f"cannot compare staged paths with the working tree: {stale.stderr.strip()}")
+            current_staged, current_error = (staged, None) if base == "HEAD" else staged_paths()
+            stale = git("diff", "--name-only", "--no-renames", "-z")  # no bulk pathspec argument limit
+            tracked = git("ls-files", "--cached", "-z")
+            if current_error or stale.returncode or tracked.returncode:
+                detail = current_error or (stale.stderr.strip() if stale.returncode else tracked.stderr.strip())
+                problems.append(f"cannot compare staged paths with the working tree: {detail}")
             else:
-                edited = sorted(set(filter(None, (stale.stdout + recreated.stdout).split("\0")))
-                                & (staged | current_staged))
+                candidates = staged | current_staged
+                # Inspect only absent-index candidates, including ignored recreated deletions.
+                recreated = {p for p in candidates - set(tracked.stdout.split("\0")) if os.path.lexists(ROOT / p)}
+                edited = sorted((set(stale.stdout.split("\0")) | recreated) & candidates)
                 if edited:
                     problems.append("staged paths edited after staging (re-stage or restore them): "
                                     + ", ".join(edited))
@@ -885,6 +895,10 @@ def commit(args):
     if not staged:
         print("REFUSED: nothing is staged; stage the intended files by name")
         return 1
+    validated_tree = git("write-tree")
+    if validated_tree.returncode:
+        print(f"REFUSED: cannot snapshot the staged tree: {validated_tree.stderr.strip()}")
+        return 1
     if check(staged_view=True, allow_unborn=unborn, base=check_base) != 0:
         print("REFUSED: fix the PROBLEMs above, re-stage and run commit again")
         return 1
@@ -897,6 +911,12 @@ def commit(args):
         return 1
     created = git("rev-parse", "--verify", "HEAD")
     head = created.stdout.strip()
+    saved_tree = git("rev-parse", "--verify", f"{head}^{{tree}}")
+    if created.returncode or saved_tree.returncode or saved_tree.stdout.strip() != validated_tree.stdout.strip():
+        print(f"PROBLEM after committing {head or '(ID unreadable)'}: a commit was already created, but its tree "
+              "cannot be verified against the validated index tree (a hook may have changed it). "
+              "No success or amend receipt; preserve state and report; nothing was released")
+        return 1
     print(f"committed {head[:12]}{' (amended)' if amend else ''}; working-tree check follows")
     if label:
         try:
