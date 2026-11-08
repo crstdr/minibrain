@@ -4,7 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
-| [Unreleased](https://github.com/crstdr/minibrain/compare/v0.6.1...records) | `AGENTS.md`: Checkpoint steps 3–5. `tools/minibrain.py`: staged checks, gated commit, collection integration and shared writer guard. New `tools/collection.py`: query, graph, edit and collection checks. Take the contract and core together; the collection extension needs the matching core changes and local `CORE_HELPER` filename. `.agents/skills/reflect/SKILL.md`: Destinations |
+| [0.7.0-alpha.1](https://github.com/crstdr/minibrain/compare/v0.6.1...v0.7.0-alpha.1) | Core upgrade: `AGENTS.md` Checkpoint steps 3–5, `tools/minibrain.py` and `.agents/skills/reflect/SKILL.md` Destinations. Take the contract and core helper changes together, including in brains without collections. Optional: new `tools/collection.py`; use the matching core helper, setting `CORE_HELPER` to its local filename. |
 | [0.6.1](https://github.com/crstdr/minibrain/compare/v0.6.0...v0.6.1) | nothing |
 | [0.6.0](https://github.com/crstdr/minibrain/compare/v0.5.2...v0.6.0) | `AGENTS.md`: Checkpoint, Memory rules, Resume, `<rpce_tooling_guidance>`. `.agents/skills/reflect/SKILL.md`: Destinations |
 | [0.5.2](https://github.com/crstdr/minibrain/compare/v0.5.1...v0.5.2) | `AGENTS.md`: Authority and privacy, `<rpce_tooling_guidance>` |
@@ -14,7 +14,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
 
-## Unreleased
+## 0.7.0-alpha.1
 
 - Optional `tools/collection.py` supplies `query`, `graph` and one-operation `edit` for Markdown records. Read-only SQL uses an in-memory snapshot with configured numeric fields and prerequisite states, dependency relations and assessment-section presence. Query and graph emit LF-ended, headered TSV with CSV quoting for embedded CR, LF, tabs and quotes. Integral REAL results omit `.0`.
 - Collection checks preserve canonical decision History even after governance retirement, report malformed governed entries, reject committed-record deletion and check outgoing wikilinks without Map registration or routine collection-only changelog entries. Section edits preserve peer sections across indented Setext continuations and HTML comments. All section edits refuse records with unclosed code fences or recognized HTML comment blocks starting at the beginning of a line. Close them or edit manually. Unusual inline or reopened comment forms are not comprehensively tracked. Section replacements refuse old bodies containing possible raw ATX H1/H2 or Setext peer headings, including code/comment examples, even if repeated in the payload. Edit manually. Field edits are unchanged. Added-edge checks report cycles even when unrelated cycles already exist. Private SQL indexes no longer collide with collection names. CTE counts work without opening schema reads or writes.
