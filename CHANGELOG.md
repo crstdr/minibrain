@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [Unreleased](https://github.com/crstdr/minibrain/compare/v0.6.1...records) | `AGENTS.md`: Checkpoint steps 3–5. `tools/minibrain.py`: staged checks, gated commit, collection integration and shared writer guard. New `tools/collection.py`: query, graph, edit and collection checks. Take the contract and core together; the collection extension needs the matching core changes and local `CORE_HELPER` filename. `.agents/skills/reflect/SKILL.md`: Destinations |
 | [0.6.1](https://github.com/crstdr/minibrain/compare/v0.6.0...v0.6.1) | nothing |
 | [0.6.0](https://github.com/crstdr/minibrain/compare/v0.5.2...v0.6.0) | `AGENTS.md`: Checkpoint, Memory rules, Resume, `<rpce_tooling_guidance>`. `.agents/skills/reflect/SKILL.md`: Destinations |
 | [0.5.2](https://github.com/crstdr/minibrain/compare/v0.5.1...v0.5.2) | `AGENTS.md`: Authority and privacy, `<rpce_tooling_guidance>` |
@@ -16,14 +17,16 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 ## Unreleased
 
 - `check --staged` reports a PROBLEM for a staged path edited again after staging.
-- New `minibrain.py commit [--label <label>] -m <message>... [--amend]`: refuses under another writer's lock and on any `check --staged` PROBLEM, commits the index without `-a`, then runs `check`; `--amend` recommits only the acquisition's own commit (the lock now records the full HEAD hash) and never opens an editor. `AGENTS.md` Checkpoint steps 4–5 name it, with the unpiped `check --staged` + `&&` path for helpers without it; take the contract hunk and the helper together.
+- New `minibrain.py commit [--label <label>] -m <message>... [--amend]`: refuses under another writer's lock and on any `check --staged` PROBLEM, commits the index without `-a`, then runs `check`. `--amend` requires the same acquisition's recorded commit at HEAD and never opens an editor. Checkpoint preserves pre/post checks for legacy helpers and uses a further commit when amend is unavailable. Take the contract changes and helper together.
 - `SETUP.md`: a missing commit identity is set for the repository only, never globally.
-- `check` runs `tools/collection.py`'s checks when that file is installed and keeps record ids out of the bare-name link namespace; unchanged otherwise.
-- New optional `tools/collection.py`: one Markdown file per record (default `collection.<name>/<id>.md`), with governed fields as append-only history, source pointers and prose conditions; `check` validates the format, references and history rules, `graph` prints prerequisites and dependants, `view` lists a collection. The core leaves collection folders unmanaged: records need no Map entry, and a commit confined to collection folders needs no changelog line. Adoption test: `SETUP.md` §2.
-- Collection views support `--show`, `--sort field` or `--sort numerator/denominator`, `--desc` and `--top`. Governed values come from history; ratios show their inputs and result. Rankings are proposals, not authority; missing/invalid values and zero denominators sort last. No arbitrary expressions or stored scores.
-- Collection `view` and `graph` use TSV with a header line as their sole data-output format; standard tab-delimited CSV quoting preserves cell contents. Diagnostics, counts and proposal notices go to stderr. No format flag or JSON output.
-- Collection checks reject wrapped governed entries, accept comma-separated prerequisites and match governed field names case-insensitively. History comparisons read only staged-changed records; extension failures report a PROBLEM instead of a traceback.
-- `reflect` Destinations question 2 says a standing user preference *about agent behaviour* goes to `<principles>`, so subject preferences stay in their topics.
+- Shorten the README installation prompt and add the optional collections feature. Adaptation and preservation guidance remains in `SETUP.md`.
+- `check` runs the optional collection checks, keeps record ids out of the bare-name link namespace and reports extension failures as PROBLEMs. Core commits and collection edits share the writer-label guard, so adopt the helper changes together.
+- New optional `tools/collection.py`: one Markdown file per record (default `collection.<name>/<id>.md`), with governed history, source pointers and prose conditions. Records need no Map entry. Collection-only edits are exempt from the staged-changelog check, while Checkpoint still records durable outcomes. Adoption and configuration: `SETUP.md` §2.
+- `query` replaces the unreleased `view` flags with read-only SQL over an in-memory snapshot. Local fields become columns; numeric types and satisfying prerequisite states are explicitly configured. Dependency relations, assessment-section presence and effective governed values support filters, comparisons and aggregates. Markdown remains canonical; no database file or source fetching.
+- `graph` retains prerequisite/dependant traversal. `edit` changes one field or section under the existing writer rules, with an optional expected revision. Governed changes prepend History entries. Staging, committing and lock release remain the caller's responsibilities.
+- Headered TSV is the sole output format for query and graph, with tab-delimited CSV quoting and diagnostics on stderr. Rankings remain proposals. Downstream sums report totals of recorded estimates. Agents assess causal unlock value.
+- Collection checks accept one optional blank below the title, reject malformed/duplicate headers and wrapped governed entries, accept comma-separated prerequisites and match governed fields case-insensitively. Staged checks preserve the ordered History suffix and reject deletion, including renames or moves out of collections. Failed Git inspection reports a PROBLEM.
+- `reflect` Destinations question 2 keeps subject preferences out of `<principles>`. A new cue offers the collection extension when repeated scans, assessments, dependency tracing or governance warrant it. Installation and migration still need approval.
 
 ## 0.6.1
 

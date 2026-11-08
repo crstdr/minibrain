@@ -32,7 +32,7 @@ Existing minibrain? Start with [Upgrading](#upgrading).
 | `.gitignore` | Default local exclusions; review them and preserve existing policy. |
 | `licenses/minibrain.txt` | Retain this notice for copied minibrain material; never replace the destination's own license. |
 
-Keep a table or marked lines while they suffice. Consider `tools/collection.py` for a collection of entries that several agents must assess separately, whose decisions need a checked history, or whose prerequisite chains you repeatedly trace by hand. At setup, if the stated purpose names such a collection, ask once whether to add it; otherwise omit it and say it can be added later. On adoption, install the file, create each collection folder and list it under `AGENTS.md` → This brain, e.g. "- `collection.tasks/` — one file per task; format in the `tools/collection.py` docstring." Adoption does not authorise migrating existing content.
+Keep a table or marked lines while they suffice. Consider `tools/collection.py` for a collection of entries that several agents must assess separately, whose decisions need a checked history, or whose prerequisite chains you repeatedly trace by hand. At setup, if the stated purpose names such a collection, ask once whether to add it; otherwise omit it and say it can be added later. Adopt the extension and matching core changes together, preserving local helper names and configuration. Set `GOVERNED_FIELDS` for fields requiring recorded authority across all collections, and `NUMERIC_FIELDS` / `SATISFIED_STATES` for each collection's confirmed numeric fields and prerequisite rules. If retaining `kb.py`, set the extension's `CORE_HELPER` to that filename. Create each collection folder and list it under `AGENTS.md` → This brain, e.g. "- `collection.tasks/` — one file per task; format and commands in the `tools/collection.py` docstring." Adoption does not authorise migrating existing content.
 
 Fill `[square-bracket placeholders]` below the XML blocks and in memory files from established facts; record honest unknowns and remove unused rows/entries. Clarify missing delegation before acting; placeholders grant no authority. Keep usable path defaults or preserve compatible existing paths, updating references together. Seed only explicit user principles or confirmed generalisations; an empty block does not revoke existing rules. Preserve their scope and record where any unmigrated rules remain. Record the source URL, inspected ref/commit/date and local adaptations in the existing canonical record; unknown provenance stays unknown.
 
@@ -47,6 +47,8 @@ The starter uses Git and Markdown, not a mandatory storage scheme. Other mechani
 ## 3. Save and verify
 
 Requires Git and Python 3.8+. Install the helper at `<brain>/tools/minibrain.py`; it locates the brain from that path. If Git has no commit identity, set one for this repository only, never globally.
+
+For collection SQL queries, verify the installed Python provides `sqlite3`. Collection checks, `graph` and `edit` work independently of that module. Dependency installation requires approval.
 
 Before `git init`, check for an enclosing repository with `git rev-parse --show-toplevel`; distinguish “not a repository” from inspection failure. Resolve integration rather than nesting accidentally. The helper supports a normal dedicated Git working copy, not linked worktrees or distributed sync. Never adopt a public code remote for private memory.
 

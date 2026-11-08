@@ -784,6 +784,194 @@ class GitReferenceTests(unittest.TestCase):
         self.assertEqual(self.commits(), "2")
         self.tool("unlock", label)
 
+    def test_amend_requires_created_commit_receipt_not_matching_parent(self):
+        label = self.acquire()
+        self.stage_change("Raw commit.")
+        self.git("commit", "-qm", "Raw commit under the acquisition")
+        self.stage_change("Not ours to rewrite.")
+        self.assertIn("no matching gated-commit receipt",
+                      self.tool("commit", "--label", label, "--amend", expected=1))
+        self.assertEqual(self.git("log", "-1", "--format=%s").stdout.strip(),
+                         "Raw commit under the acquisition")
+        self.tool("commit", "--label", label, "-m", "Additive correction")
+        metadata = self.root / ".git/kb-writer.lock/meta.json"
+        self.assertEqual(json.loads(metadata.read_text())["commit"], self.git("rev-parse", "HEAD").stdout.strip())
+        self.git("commit", "--amend", "--no-edit", "--reset-author", "-qm", "Raw replacement")
+        self.stage_change("Another change.")
+        self.assertIn("no matching gated-commit receipt",
+                      self.tool("commit", "--label", label, "--amend", expected=1))
+
+    def test_commit_receipt_precedes_postcheck_and_failure_is_reported(self):
+        label = self.acquire()
+        self.stage_change()
+        helper = self.load_helper()
+        observations = []
+        real_check = helper.check
+
+        def check(*args, **kwargs):
+            if not kwargs.get("staged_view"):
+                metadata = json.loads((self.root / ".git/kb-writer.lock/meta.json").read_text())
+                observations.append(metadata["commit"])
+                self.assertEqual(metadata["commit"], self.git("rev-parse", "HEAD").stdout.strip())
+                return 1
+            return real_check(*args, **kwargs)
+
+        with mock.patch.object(helper, "check", side_effect=check), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(helper.commit(["--label", label, "-m", "Created before postcheck"]), 1)
+        self.assertEqual(len(observations), 1)
+        self.stage_change("Amended after postcheck failure.")
+        self.tool("commit", "--label", label, "--amend")
+        self.assertNotEqual(json.loads((self.root / ".git/kb-writer.lock/meta.json").read_text())["commit"],
+                            observations[0])
+        self.stage_change("Metadata failure.")
+        with mock.patch.object(Path, "write_text", side_effect=OSError("receipt write fails")), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(helper.commit(["--label", label, "-m", "Receipt failure"]), 1)
+        self.assertIn("PROBLEM after committing", output.getvalue())
+        self.assertIn("lock remains held", output.getvalue())
+        self.assertEqual(self.git("log", "-1", "--format=%s").stdout.strip(), "Receipt failure")
+
+    def test_own_initial_commit_can_amend_without_a_parent(self):
+        self.root = Path(self.temp.name) / "fresh-owned"
+        self.stage_fixture()
+        self.git("read-tree", "--empty")
+        label = self.acquire()
+        self.git("add", "--", "AGENTS.md", "MEMORY.md", "MAP.md", "CHANGELOG.md", "topics", "tools")
+        self.tool("commit", "--label", label, "-m", "Initial owned commit")
+        self.stage_change("Initial amended.")
+        self.tool("commit", "--label", label, "--amend")
+        self.assertEqual(self.commits(), "1")
+
+    def test_malformed_lock_head_does_not_crash_or_establish_amend_ownership(self):
+        label = self.acquire()
+        metadata = self.root / ".git/kb-writer.lock/meta.json"
+        meta = json.loads(metadata.read_text())
+        for bad in (123, ["not a hash"], {"head": "not a hash"}):
+            with self.subTest(head=bad):
+                meta["head"] = bad
+                metadata.write_text(json.dumps(meta))
+                self.assertIn("HEAD ?", self.tool("check"))
+                self.tool("lock", "Other", expected=1)
+                self.assertIn("no matching gated-commit receipt",
+                              self.tool("commit", "--label", label, "--amend", expected=1))
+
+    def test_repository_redirects_never_lock_commit_or_unlock(self):
+        label = self.acquire()
+        self.stage_change()
+        head = self.git("rev-parse", "HEAD").stdout
+        alternate = Path(self.temp.name) / "alternate-index"
+        shutil.copyfile(self.root / ".git/index", alternate)
+        metadata = (self.root / ".git/kb-writer.lock/meta.json").read_bytes()
+        for key, value in (("GIT_INDEX_FILE", str(alternate)), ("GIT_DIR", str(self.root / ".git")),
+                           ("GIT_WORK_TREE", str(self.root)), ("GIT_COMMON_DIR", str(self.root / ".git"))):
+            with self.subTest(override=key), mock.patch.dict(self.env, {key: value}):
+                for args in (("lock", "Other"), ("unlock", label), ("commit", "--label", label, "-m", "Wrong index")):
+                    self.assertIn("overrides are unsupported", self.tool(*args, expected=1))
+        self.assertEqual(self.git("rev-parse", "HEAD").stdout, head)
+        self.assertEqual((self.root / ".git/kb-writer.lock/meta.json").read_bytes(), metadata)
+        self.assertEqual(alternate.read_bytes(), (self.root / ".git/index").read_bytes())
+        (self.root / ".git/index").unlink()
+        self.symlink(self.root / ".git/index", alternate)
+        for args in (("lock", "Other"), ("unlock", label), ("commit", "--label", label, "-m", "Linked index")):
+            self.assertIn("Git index is not an ordinary file", self.tool(*args, expected=1))
+
+    def install_collection(self, governed=True):
+        source = HELPER.with_name("collection.py").read_text()
+        source = re.sub(r"^GOVERNED_FIELDS = .*", "GOVERNED_FIELDS = {'priority'}" if governed else
+                        "GOVERNED_FIELDS = set()", source, flags=re.M)
+        self.write("tools/collection.py", source)
+        self.git("add", "--", "tools/collection.py")
+        self.git("commit", "-qm", "Install collection helper")
+
+    def test_staged_extension_must_match_index_before_any_import(self):
+        self.install_collection()
+        path = self.root / "tools/collection.py"
+        content = path.read_bytes()
+        marker = self.root / "executed.txt"
+        variants = ("deleted", "policy", "symlink", "mode", "unindexed")
+        for variant in variants:
+            with self.subTest(variant=variant):
+                if variant == "deleted":
+                    path.unlink()
+                elif variant == "policy":
+                    path.write_bytes(content + b"\nfrom pathlib import Path\nPath(__file__).parents[1].joinpath('executed.txt').touch()\n")
+                elif variant == "symlink":
+                    target = Path(self.temp.name) / "outside-extension.py"
+                    target.write_bytes(content)
+                    path.unlink()
+                    self.symlink(path, target)
+                elif variant == "mode":
+                    path.chmod(0o755)
+                else:
+                    self.git("rm", "--cached", "-q", "--", "tools/collection.py")
+                self.assertIn("must match the index", self.tool("check", "--staged", expected=1))
+                self.assertFalse(marker.exists())
+                if path.is_symlink():
+                    path.unlink()
+                path.write_bytes(content)
+                path.chmod(0o644)
+                self.git("add", "--", "tools/collection.py")
+
+    def test_collection_durability_and_ignore_ancestors_without_map_or_changelog(self):
+        self.install_collection()
+        self.write("collection.jobs/A.md", "# A\n")
+        self.git("add", "--", "collection.jobs/A.md")
+        self.assertNotIn("PROBLEM", self.tool("check", "--staged"))  # no Map/changelog obligations
+        self.git("commit", "-qm", "Add record")
+        self.write("collection.jobs/.gitignore", "*.md\n")
+        self.assertIn("ignored and may disappear", self.tool("check", expected=1))
+        self.assertIn("cannot validate staged ignore rules: collection.jobs/.gitignore",
+                      self.tool("check", "--staged", expected=1))
+        self.git("add", "--", "collection.jobs/.gitignore")
+        self.assertIn("ignored and may disappear", self.tool("check", "--staged", expected=1))
+        self.write("collection.jobs/ignored.md", "# Ignored record\n")
+        self.assertIn("collection.jobs/ignored.md", self.tool("check", expected=1))
+
+    def test_collection_control_names_checked_before_extension_filtering(self):
+        self.install_collection()
+        for name in ("AGENTS.md", "CLAUDE.MD", "nested/MEMORY.MD", "nested/map.md"):
+            with self.subTest(name=name):
+                rel = "collection.jobs/" + name
+                self.write(rel, "# Control\n")
+                self.assertIn("root-only control file inside a collection", self.tool("check", expected=1))
+                self.git("add", "--", rel)
+                self.assertIn("root-only control file inside a collection", self.tool("check", "--staged", expected=1))
+                self.git("rm", "--cached", "-q", "--", rel)
+                (self.root / rel).unlink()
+
+    def test_amend_uses_current_history_not_the_acquisition_parent(self):
+        self.install_collection()
+        record = "collection.jobs/A.md"
+        self.write(record, "# A\n")
+        self.git("add", "--", record)
+        self.git("commit", "-qm", "Record baseline")
+        label = self.acquire()
+        event = "- 2026-01-01 priority: P2 — chosen; authority: user\n"
+        self.write(record, "# A\n\n## History\n" + event)
+        self.git("add", "--", record)
+        self.tool("commit", "--label", label, "-m", "Record governed choice")
+        self.write(record, "# A\n\n## History\n" + event.replace("P2", "P3"))
+        self.git("add", "--", record)
+        self.assertIn("earlier governed entry altered", self.tool("commit", "--label", label, "--amend", expected=1))
+        self.git("rm", "-fq", "--", record)
+        self.assertIn("committed record deleted", self.tool("commit", "--label", label, "--amend", expected=1))
+
+    def test_stale_staging_catches_recreated_deletion_and_revert_to_parent(self):
+        self.write("work.txt", "base\n")
+        self.git("add", "--", "work.txt")
+        self.git("commit", "-qm", "Work baseline")
+        label = self.acquire()
+        self.write("work.txt", "own commit\n")
+        self.git("add", "--", "work.txt")
+        self.tool("commit", "--label", label, "-m", "Own work")
+        self.write("work.txt", "base\n")
+        self.git("add", "--", "work.txt")
+        self.write("work.txt", "edited after reverting to parent\n")
+        self.assertIn("staged paths edited after staging", self.tool("commit", "--label", label, "--amend", expected=1))
+        self.git("rm", "-fq", "--", "work.txt")
+        self.write("work.txt", "recreated but untracked\n")
+        self.assertIn("staged paths edited after staging", self.tool("check", "--staged", expected=1))
+
     def test_commit_makes_the_first_commit_on_an_unborn_branch(self):
         self.root = Path(self.temp.name) / "fresh"
         self.stage_fixture()
@@ -794,7 +982,7 @@ class GitReferenceTests(unittest.TestCase):
         label = self.acquire()
         self.stage_change("Second.")
         out = self.tool("commit", "--label", label, "--amend", "-m", "x", expected=1)
-        self.assertIn("HEAD^ is none", out)  # the acquisition's commit does not exist yet
+        self.assertIn("no matching gated-commit receipt", out)  # the acquisition's commit does not exist yet
         self.tool("unlock", label)
 
     def test_lock_metadata_symlink_is_not_read_or_deleted(self):

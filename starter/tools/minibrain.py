@@ -9,7 +9,7 @@ commit [--label <label>] -m <message> [-m <paragraph>...] [--amend]: gated
 commit of the index. Refuses under a lock unless the label is its owner's, and
 on any check --staged PROBLEM; commits without -a; then runs check (a PROBLEM
 then exits non-zero and keeps the lock). --amend needs the label and recommits
-only this acquisition's own commit (HEAD^ equals the acquisition HEAD); it keeps
+only a commit recorded as made by this acquisition; it keeps
 the message unless -m is given and never opens an editor. Never releases the
 lock. Cooperative: raw Git bypasses it; a host grant for
 "python3 tools/minibrain.py *" also permits commits.
@@ -28,7 +28,9 @@ A staged path edited again after staging is a PROBLEM in check --staged.
 Relevant .gitignore files must match the index, except CRLF/LF endings.
 
 With tools/collection.py installed, check also runs its collection checks and
-keeps record ids out of the bare-name link namespace; unchanged otherwise.
+keeps record ids out of the bare-name link namespace. Staged checks require the
+extension to match its indexed bytes. Collection folders may not contain root
+control files, even before the extension is installed.
 
 Not checked: factual truth, complete capture, status/history order, section
 anchors, ordinary Markdown links, hidden skills or attachment retention/privacy.
@@ -77,6 +79,11 @@ def git(*args, input=None, binary=False):
 
 def repository_error():
     """Fail explicitly instead of checking or locking a parent repository."""
+    redirected = sorted(name for name in ("GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+                                          "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE")
+                        if name in os.environ)
+    if redirected:
+        return "Git repository/index overrides are unsupported: " + ", ".join(redirected)
     if not (ROOT / ".git").is_dir() or (ROOT / ".git").is_symlink():
         return "requires a normal dedicated Git working copy (.git directory); worktrees are unsupported"
     top = git("rev-parse", "--show-toplevel")
@@ -84,6 +91,12 @@ def repository_error():
         return f"cannot inspect Git root: {top.stderr.strip()}"
     if Path(top.stdout.strip()).resolve() != ROOT.resolve():
         return "Git working-copy root does not match the installed helper's root"
+    directory = git("rev-parse", "--absolute-git-dir")
+    if directory.returncode or Path(directory.stdout.strip()).resolve() != (ROOT / ".git").resolve():
+        return "Git directory does not match the installed helper's dedicated working copy"
+    index = ROOT / ".git" / "index"
+    if index.is_symlink() or (index.exists() and not index.is_file()):
+        return "Git index is not an ordinary file in the dedicated working copy"
     if LOCK.is_symlink() or (LOCK.exists() and not LOCK.is_dir()):
         return "writer lock path is not an ordinary directory; preserve it and report"
     return None
@@ -129,6 +142,7 @@ def index_entries(problems, staged=False):
             problems.append(f"managed path is not an ordinary directory or regular file in index: {rel}")
         if staged:
             check_space_path(rel, problems)
+            check_collection_control_path(rel, problems)
     return entries
 
 
@@ -136,6 +150,13 @@ def working_markdown(problems):
     files = {relative(p) for p in ROOT.glob("*.md")}
     def walk_error(error):
         problems.append(f"cannot inspect managed directory: {error}")
+    # Check all names, not only records: host entrypoints are case-insensitive
+    # and nested controls remain dangerous even outside the queried layout.
+    for folder in ROOT.glob("collection.*"):
+        if folder.is_dir() and not folder.is_symlink():
+            for current, dirs, names in os.walk(folder, followlinks=False, onerror=walk_error):
+                for name in dirs + names:
+                    check_collection_control_path(relative(Path(current) / name), problems)
     for dirname in sorted(MANAGED_DIRS):
         folder = ROOT / dirname
         if folder.is_symlink() or (folder.exists() and not folder.is_dir()):
@@ -214,12 +235,15 @@ def staged_ignore_rules_match(paths, entries, problems):
     return matches
 
 
-def load_markdown(staged, problems):
+def load_markdown(staged, problems, records=None):
     entries = index_entries(problems, staged)
     indexed_markdown = {rel for rel in entries if rel.endswith(".md") and
-                        (is_managed_path(rel) or not any(part.startswith(".") for part in Path(rel).parts))}
+                        (is_managed_path(rel) or (records and records.is_record(rel))
+                         or not any(part.startswith(".") for part in Path(rel).parts))}
     paths = indexed_markdown if staged else working_markdown(problems)
     if not staged:
+        if records:
+            paths.update(records.inventory()[1])
         # Supporting targets are tracked, present Markdown outside hidden folders.
         paths.update(rel for rel in indexed_markdown if os.path.lexists(ROOT / rel))
     documents = {}
@@ -243,12 +267,12 @@ def load_markdown(staged, problems):
             documents[rel] = content
         except (OSError, UnicodeError) as error:
             problems.append(f"cannot read Markdown {rel}: {error}")
-    managed = {rel for rel in paths if is_managed_path(rel)}
-    if managed and staged and not staged_ignore_rules_match(managed, entries, problems):
+    durable = {rel for rel in paths if is_managed_path(rel) or (records and records.is_record(rel))}
+    if durable and staged and not staged_ignore_rules_match(durable, entries, problems):
         return None  # Later Git operations could reopen a rejected special file.
-    if managed:
+    if durable:
         ignored = git("check-ignore", "--no-index", "-z", "--stdin",
-                      input="\0".join(sorted(managed)) + "\0")
+                      input="\0".join(sorted(durable)) + "\0")
         if ignored.returncode not in (0, 1):
             problems.append(f"cannot verify ignore rules: {ignored.stderr.strip()}")
         else:
@@ -317,6 +341,13 @@ def is_space_path(rel):
 
 def is_space_asset(rel):
     return is_space_path(rel) and "assets" in PurePosixPath(rel).parts[1:-1]
+
+
+def check_collection_control_path(rel, problems):
+    path = PurePosixPath(rel)
+    if (len(path.parts) > 1 and path.parts[0].startswith("collection.")
+            and path.name.casefold() in {name.casefold() for name in ROOT_ONLY}):
+        problems.append(f"root-only control file inside a collection: {rel}; use a non-entrypoint name")
 
 
 def check_space_path(rel, problems):
@@ -435,7 +466,7 @@ def lock_meta():
 def shown_head(meta):
     """The acquisition HEAD for messages: abbreviated, since the lock stores the full hash."""
     head = meta.get("head") or ""
-    return head[:12] if head else "?"
+    return head[:12] if isinstance(head, str) and head else "?"
 
 
 def release_lock():
@@ -453,14 +484,42 @@ def release_lock():
         return False
 
 
-def extension():
+def extension(staged=False):
     """tools/collection.py when installed: an optional extension whose checks run only then."""
     path = ROOT / "tools" / "collection.py"
-    if not path.is_file():
+    present = os.path.lexists(path)
+    content = None
+    if staged:
+        result = git("ls-files", "--stage", "-z", "--", "tools/collection.py")
+        if result.returncode:
+            raise ValueError(f"cannot inspect tools/collection.py in index: {result.stderr.strip()}")
+        entries = list(filter(None, result.stdout.split("\0")))
+        if not present and not entries:
+            return None
+        mismatch = "tools/collection.py must match the index in presence, regular mode and bytes before staged checks"
+        if not present or len(entries) != 1 or not regular_working_file("tools/collection.py"):
+            raise ValueError(mismatch)
+        mode, oid, stage = entries[0].split("\t", 1)[0].split()
+        working_mode = "100755" if path.stat().st_mode & 0o111 else "100644"
+        if stage != "0" or mode != working_mode:
+            raise ValueError(mismatch)
+        content = path.read_bytes()
+        blob = git("cat-file", "blob", oid, binary=True)
+        if blob.returncode or blob.stdout != content:
+            raise ValueError(mismatch)
+    if not present:
         return None
+    if not regular_working_file("tools/collection.py"):
+        raise ValueError("tools/collection.py must be a regular file, with no linked parents")
     spec = importlib.util.spec_from_file_location("collection", path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    previous = sys.dont_write_bytecode
+    try:
+        sys.dont_write_bytecode = True
+        # Execute precisely the checked bytes, not a possibly stale bytecode cache.
+        exec(compile(content if content is not None else path.read_bytes(), str(path), "exec"), module.__dict__)
+    finally:
+        sys.dont_write_bytecode = previous
     return module
 
 
@@ -495,7 +554,13 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
             warnings.append("writer lock held but its owner is unreadable — treat it as held and "
                             "report it to the person")
 
-    documents = load_markdown(staged_view, problems)
+    try:
+        records = extension(staged_view)
+        documents = load_markdown(staged_view, problems, records)
+        record_paths = {rel for rel in (documents or {}) if records and records.is_record(rel)}
+    except Exception as error:
+        print(f"PROBLEM: cannot load Markdown or tools/collection.py: {error}")
+        return 1
     if documents is None:
         for item in problems:
             print("PROBLEM:", item)
@@ -544,14 +609,6 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
 
     managed = {rel: content for rel, content in documents.items() if is_managed_path(rel)}
     canonical = {rel: content for rel, content in managed.items() if not is_space_asset(rel)}
-    records, record_paths = None, set()
-    try:
-        records = extension()
-        if records:
-            record_paths = {rel for rel in documents if records.is_record(rel)}
-    except Exception as error:
-        problems.append(f"cannot load tools/collection.py: {error}")
-        records = None
     by_basename = {}
     for rel in documents:
         if rel in record_paths:
@@ -574,7 +631,9 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
 
     if records:
         try:
-            records.check(staged_view, documents, problems, warnings, git, base)
+            # Amend's parent baseline is only for the aggregate changelog gate.
+            # Already committed history, including this acquisition's event, is immutable.
+            records.check(staged_view, documents, problems, warnings, git, "HEAD")
         except Exception as error:
             problems.append(f"cannot run tools/collection.py checks: {error}")
 
@@ -648,14 +707,17 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
             shown = ", ".join(sorted(staged)[:8]) + (" …" if len(staged) > 8 else "")
             warnings.append(f"{len(staged)} staged paths while the writer lock is held: {shown} "
                             "— only the lock holder stages; anyone else stop and report")
-        if staged and staged_view:
+        if staged_view:
             # The index is what would be committed; a later working-tree edit to the same path is
             # a stale staged version (the slip behind re-staging instructions).
+            current_staged, current_error = staged_paths()
             stale = git("diff", "--name-only", "-z")  # no pathspec: bulk changes exceed argument limits
-            if stale.returncode != 0:
+            recreated = git("ls-files", "--others", "-z")  # includes ignored recreations of staged deletions
+            if current_error or stale.returncode != 0 or recreated.returncode != 0:
                 problems.append(f"cannot compare staged paths with the working tree: {stale.stderr.strip()}")
             else:
-                edited = sorted(set(path for path in stale.stdout.split("\0") if path) & staged)
+                edited = sorted(set(filter(None, (stale.stdout + recreated.stdout).split("\0")))
+                                & (staged | current_staged))
                 if edited:
                     problems.append("staged paths edited after staging (re-stage or restore them): "
                                     + ", ".join(edited))
@@ -712,7 +774,7 @@ def lock(args):
         return 1
     owner = f"{name}/{secrets.token_hex(16)}"
     meta = {"owner": owner, "at": datetime.datetime.now().isoformat(timespec="seconds"),
-            "head": git("rev-parse", "--verify", "HEAD").stdout.strip()}  # full hash: commit --amend compares it
+            "head": git("rev-parse", "--verify", "HEAD").stdout.strip()}
     try:
         (LOCK / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
     except OSError as error:
@@ -753,6 +815,23 @@ def unlock(args):
     return 0
 
 
+def writer_guard(label):
+    """Return (lock metadata, refusal). A lockless single writer passes without a label."""
+    error = repository_error()
+    if error:
+        return {}, error
+    if not LOCK.is_dir():
+        return {}, (f"no lock is held, so {label} proves nothing; acquire the lock first or omit --label"
+                    if label else None)
+    meta = lock_meta()
+    if not meta:
+        return {}, "a writer lock is held but its owner is unreadable; treat it as held and report it to the person"
+    if meta["owner"] != label:
+        detail = f", not {label}" if label else "; pass --label with the label this session received"
+        return {}, f"the lock belongs to {meta['owner']} (since {meta.get('at', '?')}){detail}"
+    return meta, None
+
+
 def commit(args):
     """Gated commit of the index: the staged check, git commit without -a, then the working-tree check."""
     usage = ("usage: python3 tools/minibrain.py commit [--label <label>] -m <message> [-m <paragraph>]... [--amend]\n"
@@ -773,34 +852,32 @@ def commit(args):
     if not messages and not amend:
         print(usage)
         return 2
-    error = repository_error()
+    meta, error = writer_guard(label)
     if error:
         print(f"REFUSED: {error}")
         return 1
-    meta = lock_meta() if LOCK.is_dir() else {}
-    if LOCK.is_dir() and not meta:
-        print("REFUSED: a writer lock is held but its owner is unreadable; treat it as held and report it to the person")
-        return 1
-    if meta and meta["owner"] != label:
-        print(f"REFUSED: the lock belongs to {meta['owner']} (since {meta.get('at', '?')})"
-              + (f", not {label}" if label else "; pass --label with the label this session received")
-              + ".\nOnly the lock holder commits; if that is another session, stop and report.")
-        return 1
-    if label and not meta:
-        print(f"REFUSED: no lock is held, so {label} proves nothing; acquire the lock first or omit --label")
-        return 1
-    unborn = git("rev-parse", "--verify", "HEAD").returncode != 0
+    current = git("rev-parse", "--verify", "HEAD")
+    unborn = current.returncode != 0
+    check_base = "HEAD"
     if amend:
         if not label:
             print("REFUSED: --amend needs --label; only this acquisition's own commit is amended")
             return 1
-        parent = git("rev-parse", "--verify", "HEAD^").stdout.strip() if not unborn else ""
-        base = meta.get("head") or ""
-        # An older helper stored the abbreviated hash; a prefix match of 7+ characters is the same commit.
-        if not parent or len(base) < 7 or not parent.startswith(base):
-            print(f"REFUSED: HEAD is not this acquisition's own commit (acquired at {base[:12] or 'no commit'}, "
-                  f"HEAD^ is {parent[:12] or 'none'}); amend only the commit made under this lock, never an earlier one")
+        if unborn or meta.get("commit") != current.stdout.strip():
+            print("REFUSED: HEAD is not this acquisition's own commit; no matching gated-commit receipt "
+                  "under this lock. Use an additive commit, never infer ownership from ancestry")
             return 1
+        parent = git("rev-parse", "--verify", "HEAD^")
+        if parent.returncode == 0:
+            check_base = parent.stdout.strip()
+        else:
+            # An owned initial commit has no parent. The empty tree works with
+            # the repository's object format and does not write an object.
+            empty = git("hash-object", "-t", "tree", "--stdin", input="")
+            if empty.returncode:
+                print(f"REFUSED: cannot inspect initial commit baseline: {empty.stderr.strip()}")
+                return 1
+            check_base = empty.stdout.strip()
     staged, staged_error = staged_paths()
     if staged_error:
         print(f"REFUSED: cannot inspect the staging area ({staged_error})")
@@ -808,7 +885,7 @@ def commit(args):
     if not staged:
         print("REFUSED: nothing is staged; stage the intended files by name")
         return 1
-    if check(staged_view=True, allow_unborn=unborn, base="HEAD^" if amend else "HEAD") != 0:
+    if check(staged_view=True, allow_unborn=unborn, base=check_base) != 0:
         print("REFUSED: fix the PROBLEMs above, re-stage and run commit again")
         return 1
     command = ["commit"] + (["--amend"] if amend else []) + (["--no-edit"] if amend and not messages else [])
@@ -818,8 +895,19 @@ def commit(args):
     if result.returncode != 0:
         print(f"REFUSED by git: {(result.stderr or result.stdout).strip()}")
         return 1
-    head = git("rev-parse", "--short", "HEAD").stdout.strip()
-    print(f"committed {head}{' (amended)' if amend else ''}; working-tree check follows")
+    created = git("rev-parse", "--verify", "HEAD")
+    head = created.stdout.strip()
+    print(f"committed {head[:12]}{' (amended)' if amend else ''}; working-tree check follows")
+    if label:
+        try:
+            if created.returncode or not head:
+                raise OSError("cannot read the created commit ID")
+            meta["commit"] = head
+            (LOCK / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        except OSError as error:
+            print(f"PROBLEM after committing: cannot record this acquisition's commit ({error}); "
+                  "lock remains held, do not amend without its receipt; preserve state and report")
+            return 1
     code = check()
     if code:
         print(f"PROBLEM after committing {head}: fix it, re-stage and recommit (--amend with the same label under "
