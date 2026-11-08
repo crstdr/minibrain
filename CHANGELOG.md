@@ -16,6 +16,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 ## Unreleased
 
+- TSV uses LF record endings for shell tools while retaining CSV quoting for embedded CR, LF, tabs and quotes.
 - Allow `count(*)` over SQL CTEs without opening schema reads or writes. Schema output uses bracket/backtick identifiers; integral REAL results omit `.0` without changing stored types.
 - `check --staged` reports a PROBLEM for a staged path edited again after staging.
 - New `minibrain.py commit [--label <label>] -m <message>... [--amend]`: refuses under another writer's lock and on any `check --staged` PROBLEM, commits the index without `-a`, then runs `check`. `--amend` requires the same acquisition's recorded commit at HEAD and never opens an editor. Checkpoint preserves pre/post checks for legacy helpers and uses a further commit when amend is unavailable. Take the contract changes and helper together.

@@ -23,7 +23,7 @@ Downstream sums do not measure causal unlock value.
 
 needs(item,need), reach(item,need,depth), tags(item,tag), sections(item,heading)
 use qualified refs. reach excludes self and gives shortest distances. graph
-NAME/ID traverses both directions. Results are CSV-quoted TSV with headers.
+NAME/ID traverses both directions. Results are LF-ended, CSV-quoted TSV with headers.
 SQL NULL prints an empty cell. SQL runs against memory with an instruction
 budget. No extension loading, SQL writes, or source access.
 The budget excludes snapshot setup; reach is built only when queried and can
@@ -66,6 +66,7 @@ import csv
 from datetime import date
 import hashlib
 import importlib.util
+import io
 import math
 import os
 from pathlib import Path
@@ -410,9 +411,20 @@ def tsv(columns, rows):
             return text[:-2] if text.endswith(".0") else text
         return value
 
-    writer = csv.writer(sys.stdout, delimiter="\t", lineterminator="\r\n")
-    writer.writerow(columns)
-    writer.writerows([cell(value) for value in row] for row in rows)
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer, delimiter="\t", lineterminator="\r\n")
+
+    def output(values):
+        # Let CSV quote both CR and LF inside cells; normalise only the record
+        # ending, so ordinary TSV lines also work with shell text tools.
+        writer.writerow(values)
+        sys.stdout.write(buffer.getvalue()[:-2] + "\n")
+        buffer.seek(0)
+        buffer.truncate(0)
+
+    output(columns)
+    for row in rows:
+        output([cell(value) for value in row])
 
 
 def graph(records, ref):

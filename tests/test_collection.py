@@ -113,6 +113,35 @@ class Collections(unittest.TestCase):
         self.assertIn("collision", self.cli("query", "jobs", ok=False)[1])
 
     @unittest.skipUnless(sqlite3, "sqlite3 required for SQL tests")
+    def test_query_tsv_uses_lf_row_terminators(self):
+        self.put("jobs/A", "# A\n")
+        out, _ = self.cli("query", "jobs", "SELECT _id,_title FROM jobs")
+        self.assertEqual(out, "_id\t_title\nA\tA\n")
+
+    def test_graph_tsv_uses_lf_and_quotes_tabs_and_quotes(self):
+        self.put("jobs/A", "# A\n- state: open\n")
+        out, _ = self.cli("graph", "jobs/A")
+        self.assertEqual(out, "direction\tdepth\tid\tstate\ttitle\n"
+                             "origin\t0\tjobs/A\topen\tA\n")
+        self.put("jobs/A", '# A\t"quoted"\n- state: open\n')
+        rows, _ = self.rows("graph", "jobs/A")
+        self.assertEqual(rows[1], ["origin", "0", "jobs/A", "open", 'A\t"quoted"'])
+
+    @unittest.skipUnless(sqlite3, "sqlite3 required for SQL tests")
+    def test_query_tsv_round_trips_control_characters_in_cells_and_aliases(self):
+        self.put("jobs/A")
+        aliases = ["cr\rheader", "lf\nheader", "tab\theader", 'quote"header',
+                   "pair\r\nheader", "last-cr\r"]
+        values = ["carriage\rreturn", "line\nfeed", "tab\tvalue", 'double"quote',
+                  "pair\r\nvalue", "ending\r"]
+        sql = "SELECT " + ", ".join("'" + value + "' AS [" + alias + "]"
+                                    for alias, value in zip(aliases, values))
+        out, _ = self.cli("query", "jobs", sql)
+        self.assertTrue(out.endswith("\n"))
+        rows = list(csv.reader(io.StringIO(out, newline=""), delimiter="\t"))
+        self.assertEqual(rows, [aliases, values])
+
+    @unittest.skipUnless(sqlite3, "sqlite3 required for SQL tests")
     def test_graph_readiness_and_distinct_downstream_coverage(self):
         for ref, state, needs in (("jobs/A", "open", "B, B other/X"), ("jobs/B", "done", "other/X"),
                                   ("other/X", "ok", ""), ("jobs/C", "open", "A"),
