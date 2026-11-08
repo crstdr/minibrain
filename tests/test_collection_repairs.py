@@ -18,6 +18,30 @@ class CollectionRepairs(unittest.TestCase):
     put = fixtures.Collections.put
     rows = fixtures.Collections.rows
 
+    def test_section_edits_refuse_existing_unclosed_fence_or_comment(self):
+        for opener in ("```", "<!--"):
+            for heading in ("Reviewer A", "Earlier", "New review"):
+                with self.subTest(opener=opener, heading=heading):
+                    original = ("# A\n- cost: 1\n\n## Earlier\nsafe\n\n"
+                                "## Reviewer A\nold\n" + opener +
+                                "\n## Reviewer B\nKeep exact.  \r\n")
+                    record = self.put("jobs/A", original)
+                    _, err = self.cli("edit", "jobs/A", "--section", heading,
+                                      data="replacement\n", ok=False)
+                    self.assertIn("close it or edit manually", err)
+                    self.assertEqual(record.read_bytes(), original.encode())
+                    self.cli("edit", "jobs/A", "--set", "cost", "2")
+                    self.assertEqual(record.read_bytes(), original.replace("cost: 1", "cost: 2").encode())
+
+    def test_section_edits_allow_existing_closed_fence_or_comment(self):
+        for opener, closer in (("```", "```"), ("<!--", "-->")):
+            with self.subTest(opener=opener):
+                peer = "## Reviewer B\nKeep exact.  \r\n"
+                record = self.put("jobs/A", "# A\n\n## Reviewer A\nold\n" +
+                                  opener + "\nliteral\n" + closer + "\n" + peer)
+                self.cli("edit", "jobs/A", "--section", "Reviewer A", data="replacement\n")
+                self.assertEqual(record.read_bytes(), ("# A\n\n## Reviewer A\nreplacement\n" + peer).encode())
+
     def test_section_edit_preserves_indented_setext_peer(self):
         for continuation in ("    from Sam", "\tfrom Sam"):
             with self.subTest(continuation=continuation):

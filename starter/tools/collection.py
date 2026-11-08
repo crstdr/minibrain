@@ -33,6 +33,8 @@ grow quadratically. This is not a memory sandbox for adversarial SQL.
 
 edit NAME/ID (--set KEY VALUE | --unset KEY | --section HEADING) [--expect REV]
 [--label LABEL] changes one existing regular file. Section bodies use stdin.
+Section edits refuse records with any unclosed code fence or HTML comment;
+close it or edit manually. Field edits are unaffected.
 Governed changes require --reason and --authority. Supply locally required
 assent with --assent. History entries are newest first under '## History'.
 - YYYY-MM-DD field: value — reason; authority: ref[; assent: names]
@@ -729,6 +731,8 @@ def appended(r, heading, body):
 def edited(r, args):
     metadata = (args.reason, args.authority, args.assent)
     if args.section is not None:
+        if r.open_fence:
+            die("cannot edit sections with an unclosed fence or comment; close it or edit manually")
         if any(x is not None for x in metadata):
             die("governance metadata applies only to governed fields")
         title = scalar(args.section, "heading")
