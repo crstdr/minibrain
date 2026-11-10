@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [0.7.0-alpha.2](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.1...v0.7.0-alpha.2) | Core upgrade: `AGENTS.md` Authority and privacy, Memory rules (new Watch rule), Resume steps 2–3 and Checkpoint; `MEMORY.md` (new `## Watch`); `tools/minibrain.py` and `.agents/skills/reflect/SKILL.md` Destinations. Take the contract and core helper together. Then add `## Watch` to your `MEMORY.md` with a line for each open obligation: dated promise, decision owed, "when X, do Y" rule. Wording-only fixes in `tools/collection.py`. |
 | [0.7.0-alpha.1](https://github.com/crstdr/minibrain/compare/v0.6.1...v0.7.0-alpha.1) | Core upgrade: `AGENTS.md` Checkpoint steps 3–5, `tools/minibrain.py` and `.agents/skills/reflect/SKILL.md` Destinations. Take the contract and core helper changes together, including in brains without collections. Optional: new `tools/collection.py`; use the matching core helper, setting `CORE_HELPER` to its local filename. |
 | [0.6.1](https://github.com/crstdr/minibrain/compare/v0.6.0...v0.6.1) | nothing |
 | [0.6.0](https://github.com/crstdr/minibrain/compare/v0.5.2...v0.6.0) | `AGENTS.md`: Checkpoint, Memory rules, Resume, `<rpce_tooling_guidance>`. `.agents/skills/reflect/SKILL.md`: Destinations |
@@ -14,9 +15,11 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
 
-## Unreleased
+## 0.7.0-alpha.2
 
-- Clarify setup, section editing and recovery messages; commands and validation are unchanged.
+- Attention at startup, independent of collections. `MEMORY.md` gains a `## Watch` index: one line per obligation the agent must later raise, inspect or perform, with its date or condition, next action, where to look and a link to the canonical rule. Plain `python3 tools/minibrain.py check` prints an attention block: dated lines (`due YYYY-MM-DD: …`) that are overdue or within `WATCH_LEAD_WORKING_DAYS` (2) working days, with a count of the rest and of condition lines. It never changes the exit status; `check --staged` and the checks run by `commit` stay quiet. `check --today YYYY-MM-DD` sets the date when the clock is wrong. Warnings for unreadable dates, long lines and more than 25 lines; none hides work.
+- Resume triages that block and Watch in the first reply, alongside the request, retrieves what a Watch line points to and acts only within recorded authority after rechecking the source. A one-off line closes when done or expired; a standing rule stays while it applies. Authority: check recorded delegation before asking permission or deferring. The Work rule no longer reads as "ignore deadlines". Checkpoint counts corrections and lessons as durable state and grooms Watch. Reflect's Destinations routes later obligations to Watch.
+- Collections are unchanged. Clarify setup, section editing and recovery messages; commands and validation are unchanged.
 
 ## 0.7.0-alpha.1
 

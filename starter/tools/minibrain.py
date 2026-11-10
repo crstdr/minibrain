@@ -3,6 +3,10 @@
 
 check / check --staged: validate working tree / prospective commit; read-only.
 PROBLEMs fail; warnings don't. A pass proves structure, not completeness.
+Plain check (not --staged, not commit's own checks) then prints an attention
+block from MEMORY.md ## Watch and never changes the exit status. Lines
+"due YYYY-MM-DD: ..." are shown when overdue or within WATCH_LEAD_WORKING_DAYS;
+other lines are counted. check --today YYYY-MM-DD sets the date when the clock is wrong.
 lock <name> / unlock <label>: acquisition-specific ownership, not enforcement.
 unlock --force requires user approval. No cross-clone coordination.
 commit [--label <label>] -m <message> [-m <paragraph>...] [--amend]: gated
@@ -59,12 +63,17 @@ ROOT_ONLY = {"AGENTS.md", "CLAUDE.md", "MEMORY.md", "CHANGELOG.md", MAP_FILE}
 MEMORY_REVIEW_LINES = 150  # advisory reflection threshold, not a cap
 THREADS_MAX = 12
 THREAD_SOFT_CHARS = 400     # warning only: line count alone hides long bullets' reading cost
+WATCH_LEAD_WORKING_DAYS = 2  # a dated Watch line this close is shown as due
+WATCH_SHOWN_MAX = 8          # attention lines printed; the rest are counted, never dropped silently
+WATCH_SOFT_MAX = 25          # warning only: a long Watch list stops being read
+WATCH_LINE_SOFT_CHARS = 300  # warning only, like THREAD_SOFT_CHARS
 REQUIRE_LOCAL_REMOTES = False  # True: every Git remote must be an absolute filesystem path
 LOCK = ROOT / ".git" / "kb-writer.lock"  # Keep compatible with older installed helpers.
 NAME = re.compile(r"[A-Za-z][A-Za-z0-9_-]*\Z")  # lock takes a bare writer name; the tool issues the label
 
 # Validate file targets, not section anchors or ordinary Markdown/asset links.
 WIKILINK = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
+WATCH_DUE = re.compile(r"(?:\*\*)?due\s+(\d[\d./-]*)", re.IGNORECASE)  # "due" then something date-like
 
 
 def git(*args, input=None, binary=False):
@@ -530,7 +539,85 @@ def extension(staged=False):
     return module
 
 
-def check(staged_view=False, allow_unborn=False, base="HEAD"):
+def section_bullets(text, headings, title):
+    """List items under the first `## title`; an item runs to the next bullet, heading or blank line."""
+    start = next((pos for pos, name in headings if name == title), None)
+    if start is None:
+        return None
+    later = [pos for pos, _ in headings if pos > start]
+    block = text[start:min(later) if later else len(text)]
+    return re.findall(r"^[-*+] .*(?:\n(?![-*+] |## |\s*$).*)*", block, re.MULTILINE)
+
+
+def watch_items(bullets, warnings):
+    """(due date or None, text) for each Watch line; an unreplaced template placeholder is skipped."""
+    items = []
+    for bullet in bullets:
+        text = re.sub(r"^[-*+]\s+", "", " ".join(bullet.split()))
+        if text.startswith("[due YYYY-MM-DD"):
+            continue
+        due = None
+        match = WATCH_DUE.match(text)
+        if match:
+            try:
+                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", match[1]):
+                    raise ValueError(match[1])
+                due = datetime.date.fromisoformat(match[1])
+            except ValueError:
+                warnings.append("Watch line has an unreadable date (use due YYYY-MM-DD) "
+                                f"and counts as a condition: {text[:60]}…")
+        if len(text) > WATCH_LINE_SOFT_CHARS:
+            warnings.append(f"Watch line over {WATCH_LINE_SOFT_CHARS} characters "
+                            f"(an index line cites, it does not store): {text[:60]}…")
+        items.append((due, text))
+    if len(items) > WATCH_SOFT_MAX:
+        warnings.append(f"MEMORY.md has {len(items)} Watch lines (soft limit {WATCH_SOFT_MAX}); "
+                        "close done or expired lines — none are hidden")
+    return items
+
+
+def working_days_until(today, due):
+    """Weekdays after `today` up to and including `due`."""
+    days, day = 0, today
+    while day < due:
+        day += datetime.timedelta(days=1)
+        days += day.weekday() < 5
+    return days
+
+
+def attention(items, today, source):
+    """Lines for plain check: overdue and near dated Watch lines, then counts of the rest."""
+    overdue, near, later, conditions = [], [], 0, 0
+    for due, text in items:
+        if due is None:
+            conditions += 1
+        elif due < today:
+            overdue.append((due, f"OVERDUE {(today - due).days} day{'s' * ((today - due).days != 1)}", text))
+        elif (due - today).days > 7 * WATCH_LEAD_WORKING_DAYS + 7:
+            later += 1
+        else:
+            wait = working_days_until(today, due)
+            if wait > WATCH_LEAD_WORKING_DAYS:
+                later += 1
+            else:
+                label = "DUE TODAY" if due == today else f"DUE in {wait} working day{'s' * (wait != 1)}"
+                near.append((due, label, text))
+    lines = [f"== attention == (today {today}, {source})"]
+    shown = sorted(overdue, key=lambda row: row[0]) + sorted(near, key=lambda row: row[0])
+    lines += [f"  {label}: {text}" for _, label, text in shown[:WATCH_SHOWN_MAX]]
+    if len(shown) > WATCH_SHOWN_MAX:
+        lines.append(f"  … {len(shown) - WATCH_SHOWN_MAX} more overdue or due lines: read MEMORY.md ## Watch")
+    if not shown:
+        lines.append(f"  No dated Watch line is overdue or due within {WATCH_LEAD_WORKING_DAYS} working days.")
+    if later:
+        lines.append(f"  {later} dated line{'s' * (later != 1)} further out, in MEMORY.md ## Watch.")
+    if conditions:
+        lines.append(f"  {conditions} condition line{'s' * (conditions != 1)} in MEMORY.md ## Watch: "
+                     "look where each says.")
+    return lines
+
+
+def check(staged_view=False, allow_unborn=False, base="HEAD", show_attention=False, today=None):
     error = repository_error()
     if error:
         print(f"PROBLEM: {error}")
@@ -579,6 +666,7 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
         if name not in documents:
             problems.append(f"{name} missing")
 
+    watch = None
     if "MEMORY.md" in documents:
         memory = documents["MEMORY.md"]
         line_count = len(memory.splitlines())
@@ -603,9 +691,7 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
             focus_at, threads_at = seen["Focus"][0], seen["Open threads"][0]
             if not focus_at < threads_at:
                 problems.append("MEMORY.md headings must be ordered: Focus, then Open threads")
-            later = [pos for pos, _ in headings if pos > threads_at]
-            block = memory[threads_at:min(later) if later else len(memory)]
-            bullets = re.findall(r"^[-*+] .*(?:\n(?![-*+] |## |\s*$).*)*", block, re.MULTILINE)  # an item runs to the next bullet, heading or blank line
+            bullets = section_bullets(memory, headings, "Open threads")
             if len(bullets) > THREADS_MAX:
                 problems.append(f"MEMORY.md has {len(bullets)} open threads; maximum is {THREADS_MAX}")
             for bullet in bullets:
@@ -614,6 +700,9 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
                         f"thread over {THREAD_SOFT_CHARS} characters (an index line cites, it does not store): "
                         f"{bullet[:60]}…"
                     )
+        watch_bullets = section_bullets(memory, headings, "Watch")
+        if watch_bullets is not None:
+            watch = watch_items(watch_bullets, warnings)
 
     managed = {rel: content for rel, content in documents.items() if is_managed_path(rel)}
     canonical = {rel: content for rel, content in managed.items() if not is_space_asset(rel)}
@@ -748,6 +837,9 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
         print("warning:", item)
     if not problems and not warnings:
         print("clean")
+    if show_attention and watch is not None:
+        print("\n".join(attention(watch, today or datetime.date.today(),
+                                   "machine clock" if today is None else "from --today")))
     return 1 if problems else 0
 
 
@@ -951,13 +1043,21 @@ if __name__ == "__main__":
     argv = sys.argv[1:]
     cmd = argv[0] if argv else "check"
     if cmd == "check":
-        if argv[1:] not in ([], ["--staged"]):
-            print("usage: python3 tools/minibrain.py check [--staged]")
+        rest = argv[1:]
+        day = None
+        if len(rest) == 2 and rest[0] == "--today" and re.fullmatch(r"\d{4}-\d{2}-\d{2}", rest[1]):
+            try:
+                day = datetime.date.fromisoformat(rest[1])
+            except ValueError:
+                pass
+        if rest not in ([], ["--staged"]) and day is None:
+            print("usage: python3 tools/minibrain.py check [--staged | --today YYYY-MM-DD]")
             sys.exit(2)
-        sys.exit(check(staged_view=argv[1:] == ["--staged"]))
+        # Only the plain command prints attention: commit's own checks and --staged stay quiet.
+        sys.exit(check(staged_view=rest == ["--staged"], show_attention=rest != ["--staged"], today=day))
     handler = {"lock": lock, "unlock": unlock, "commit": commit}.get(cmd)
     if handler is None:
-        print("usage: python3 tools/minibrain.py [check [--staged] | lock <name> | unlock <label> | unlock --force\n"
+        print("usage: python3 tools/minibrain.py [check [--staged | --today YYYY-MM-DD] | lock <name> | unlock <label> | unlock --force\n"
               "        | commit [--label <label>] -m <message> [-m <paragraph>]... [--amend]]")
         sys.exit(2)
     sys.exit(handler(argv[1:]))

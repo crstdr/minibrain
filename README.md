@@ -19,6 +19,7 @@ Open the folder you want to equip with minibrain in your preferred coding-agent 
 - **Principles over rigid templates.** Defines what memory must preserve and provides concrete starting points, while leaving organisation and adaptation to the agent’s judgment.
 - **Continuity beyond facts.** Carries goals, decisions, permission conditions and unfinished work across sessions.
 - **Agent-maintained.** Guides the agent to keep memory current and useful as its responsibilities grow.
+- **Nothing slips.** A short Watch list holds dated promises and "when X, do Y" rules; the health check shows what is due or overdue.
 - **Human judgment where it matters.** Tracks decisions waiting on you and notable outcomes awaiting your acknowledgment.
 - **Collections primitive.** Scales a brain to support large sets of related items: dependencies, shared assessments, governed priorities. Optional; still plain local files.
 - **[RepoPrompt CE](https://github.com/repoprompt/repoprompt-ce) bonus.** Optional overseer guidance helps coordinate multiple agent lanes while preserving responsibilities, progress and pending decisions across sessions.

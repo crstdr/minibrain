@@ -79,7 +79,8 @@ compaction is not a fresh-session test.
   Check that incomplete staged saves, broken links, duplicate registrations
   and thread overflow are detected.
 - Continuity: after restart, apply relevant lessons and revised permissions
-  with their conditions; retain decision owners and reopening conditions.
+  with their conditions; retain decision owners and reopening conditions;
+  raise due, overdue or triggered Watch lines.
 - Reflection: retain explicit principles with scope; confirm inferred ones.
   Make the smallest authorised improvement—or no change.
 - Spaces, if used: create, find, promote and extend one without losing

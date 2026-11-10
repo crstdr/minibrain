@@ -125,6 +125,8 @@ class CopiedTemplateSmokeTests(unittest.TestCase):
                 "owner": "TestWriter",
                 "next action": "obtain the task choice",
                 "hold and reopening condition, or none": "await user choice; reopen on response",
+                "due YYYY-MM-DD, or when <condition>": "when the user chooses a task",
+                "where": "the user's reply",
                 "date": "2026-01-01",
                 "durable outcome": "Established synthetic memory; task choice awaits the user",
                 "current state, decisions and constraints": "The synthetic user has not chosen a task; no implementation is authorised",
