@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [0.7.0-alpha.6](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.5...v0.7.0-alpha.6) | `AGENTS.md` Checkpoint: express the reflection cue as explicit When/Do conditions and action. |
 | [0.7.0-alpha.5](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.4...v0.7.0-alpha.5) | `AGENTS.md` Checkpoint: reflection invitation after a completed corrective save, unless timing is already agreed. |
 | [0.7.0-alpha.4](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.3...v0.7.0-alpha.4) | `AGENTS.md` opening orientation and Resume step 3; `CLAUDE.md` mirrors the updated opening block. Helpers, memory layout and skills unchanged. |
 | [0.7.0-alpha.3](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.2...v0.7.0-alpha.3) | `AGENTS.md` Authority and privacy, Memory rules, Resume and Checkpoint; `MEMORY.md`; `tools/minibrain.py`; `.agents/skills/reflect/SKILL.md` Destinations. Removes Watch and automatic attention output; retains instruction-only attention to commitments and clarifies delegation versus uncertainty. Collections unchanged. |
@@ -17,6 +18,11 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.4.2](https://github.com/crstdr/minibrain/compare/v0.3.1...v0.4.2) | nothing |
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
+
+## 0.7.0-alpha.6
+
+- Express the post-checkpoint reflection cue as `When:` conditions and a `Do:` action. Completion, recurring-mistake scope and already-agreed timing remain the conditions.
+- Helpers, skills, memory layout and the opening gate are unchanged. We have not tested whether this formatting improves agent behaviour.
 
 ## 0.7.0-alpha.5
 

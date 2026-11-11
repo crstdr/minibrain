@@ -122,7 +122,8 @@ Run unprompted when durable state changes, and before ending, compacting or rese
 5. After a post-commit working-tree check PROBLEM, retain any held lock, fix and re-stage. For other post-commit failures, preserve state and report. Use `commit --amend` only with the same acquisition's label when the helper verifies its recorded commit is still HEAD; otherwise make a further gated commit (legacy helper: repeat step 4). Verify saved content, navigation, pending work and unrelated state. Checks establish structure, not truth or completeness. Verify required assets and hidden skills separately. Correct your own unfinished omissions; completed history stays additive.
 6. Only after successful verification, release this session's lock. On failure/interruption, preserve and report unfinished work and held protection; do not claim a clean handoff or release by assumption.
 
-After completing a checkpoint that records a correction to a mistake that could recur, ask whether to `reflect` now unless timing is already agreed.
+When: Checkpoint complete; it recorded a correction to a mistake that could recur; reflection timing not already agreed.
+Do: Ask whether to `reflect` now.
 
 Commands assume the installed `tools/minibrain.py`, Python and a normal dedicated Git working copy—not linked worktrees or distributed sync. Failed checks stop dependent operations; interpret warnings rather than treating them as approval. Helper conventions and limits: top of `tools/minibrain.py`.
 
