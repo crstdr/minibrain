@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [0.7.0-alpha.3](#070-alpha3) (unreleased) | `AGENTS.md` Authority and privacy, Memory rules, Resume and Checkpoint; `MEMORY.md`; `tools/minibrain.py`; `.agents/skills/reflect/SKILL.md` Destinations. Removes Watch and automatic attention output; retains instruction-only attention to commitments and clarifies delegation versus uncertainty. Collections unchanged. |
 | [0.7.0-alpha.2](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.1...v0.7.0-alpha.2) | Core upgrade: `AGENTS.md` Authority and privacy, Memory rules (new Watch rule), Resume steps 2–3 and Checkpoint; `MEMORY.md` (new `## Watch`); `tools/minibrain.py` and `.agents/skills/reflect/SKILL.md` Destinations. Take the contract and core helper together. Then add `## Watch` to your `MEMORY.md` with a line for each open obligation: dated promise, decision owed, "when X, do Y" rule. Wording-only fixes in `tools/collection.py`. |
 | [0.7.0-alpha.1](https://github.com/crstdr/minibrain/compare/v0.6.1...v0.7.0-alpha.1) | Core upgrade: `AGENTS.md` Checkpoint steps 3–5, `tools/minibrain.py` and `.agents/skills/reflect/SKILL.md` Destinations. Take the contract and core helper changes together, including in brains without collections. Optional: new `tools/collection.py`; use the matching core helper, setting `CORE_HELPER` to its local filename. |
 | [0.6.1](https://github.com/crstdr/minibrain/compare/v0.6.0...v0.6.1) | nothing |
@@ -14,6 +15,14 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.4.2](https://github.com/crstdr/minibrain/compare/v0.3.1...v0.4.2) | nothing |
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
+
+## 0.7.0-alpha.3
+
+Unreleased.
+
+- Remove the Watch index template, its maintenance instructions and automatic attention output, including `check --today`. Restore the pre-alpha-2 core helper. Validation, writer locking, gated commits and collections integration are unchanged.
+- Keep startup attention to due or overdue commitments and triggered standing rules alongside the current request, within recorded authority. Use recorded delegation when it clearly covers the action. Clarify consequential uncertainty about intent, scope or authority. Corrections and lessons remain durable state.
+- Remove the README's "Nothing slips" claim. Performance improvements from this revision have not been established. Collections are unchanged.
 
 ## 0.7.0-alpha.2
 

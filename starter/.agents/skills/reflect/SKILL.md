@@ -27,7 +27,6 @@ Reuse appropriate existing homes; create only if absent (`<spaces>`). Update or 
 
 Then check working-index follow-ups:
 - Pending action or decision? → `MEMORY.md` Open threads pointer; apply Work and Threads.
-- Date or trigger you must act on later? → `MEMORY.md` Watch line citing its canonical rule; apply Watch.
 - Priority changed? → Focus.
 - Notable outcome unacknowledged? → Awaiting acknowledgment.
 - Pointers/navigation stale or missing? → Fix them.
