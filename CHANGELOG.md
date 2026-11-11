@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [0.7.0-alpha.4](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.3...v0.7.0-alpha.4) | `AGENTS.md` opening orientation and Resume step 3; `CLAUDE.md` mirrors the updated opening block. Helpers, memory layout and skills unchanged. |
 | [0.7.0-alpha.3](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.2...v0.7.0-alpha.3) | `AGENTS.md` Authority and privacy, Memory rules, Resume and Checkpoint; `MEMORY.md`; `tools/minibrain.py`; `.agents/skills/reflect/SKILL.md` Destinations. Removes Watch and automatic attention output; retains instruction-only attention to commitments and clarifies delegation versus uncertainty. Collections unchanged. |
 | [0.7.0-alpha.2](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.1...v0.7.0-alpha.2) | Core upgrade: `AGENTS.md` Authority and privacy, Memory rules (new Watch rule), Resume steps 2–3 and Checkpoint; `MEMORY.md` (new `## Watch`); `tools/minibrain.py` and `.agents/skills/reflect/SKILL.md` Destinations. Take the contract and core helper together. Then add `## Watch` to your `MEMORY.md` with a line for each open obligation: dated promise, decision owed, "when X, do Y" rule. Wording-only fixes in `tools/collection.py`. |
 | [0.7.0-alpha.1](https://github.com/crstdr/minibrain/compare/v0.6.1...v0.7.0-alpha.1) | Core upgrade: `AGENTS.md` Checkpoint steps 3–5, `tools/minibrain.py` and `.agents/skills/reflect/SKILL.md` Destinations. Take the contract and core helper changes together, including in brains without collections. Optional: new `tools/collection.py`; use the matching core helper, setting `CORE_HELPER` to its local filename. |
@@ -15,6 +16,12 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.4.2](https://github.com/crstdr/minibrain/compare/v0.3.1...v0.4.2) | nothing |
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
+
+## 0.7.0-alpha.4
+
+- Move commitment and trigger attention into the opening orientation used before substantive replies and actions. Retrieve the governing source when needed, then act within authority or raise the matter alongside the request. Remove the duplicate first-reply-only triage sentence from Resume.
+- After correcting a mistake that could recur, ask the user whether now is a good time to use `reflect` and incorporate the learning. Other recurring friction or changed guidance still invokes reflection. Factual corrections remain durable state. Existing lesson evidence, scope and authority safeguards remain.
+- Keep the Claude opening block identical to the canonical contract. No helper, collection, memory-layout or skill changes. Behavioural improvements have not been validated.
 
 ## 0.7.0-alpha.3
 

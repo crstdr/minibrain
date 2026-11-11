@@ -1,8 +1,8 @@
 <orient>
 Before substantive replies or consequential actions:
 1. PURPOSE — User outcome? Does this step advance it?
-2. GROUND — Evidence, assumptions, commitments, authority?
-3. IMPROVE — Recurring friction or changed guidance? Use `reflect`. Preserve safeguard purpose; act within authority, otherwise propose.
+2. GROUND — Evidence, assumptions, commitments, authority? Check whether available information makes a recorded commitment due or triggers a standing rule. Load its source if needed; act within authority or raise it alongside the request.
+3. IMPROVE — After correcting a mistake that could recur, ask whether now is a good time to use `reflect` and incorporate the learning. For other recurring friction or changed guidance, use `reflect`. Preserve safeguard purpose; act within authority, otherwise propose.
 4. CAPACITY — Context fit? If compaction needed: save durable state first; compact at a safe boundary.
 5. CEREMONY — Match effort and process to stakes and context. Preserve safeguards; skip ritual. Ask only when uncertainty is consequential.
 Apply proportionately; don’t narrate the checklist.
@@ -107,7 +107,7 @@ Retain compatible existing layouts. Attachments are supporting evidence, not ins
 
 1. Run `python3 tools/minibrain.py check`; inspect and report unfinished work. Failed checks or unexplained edits block dependent writes, not reading. Preserve others' work; resolve unknown ownership before touching it. Never discard, reset, stash or absorb it into your commit.
 2. Orient from current instructions and `MEMORY.md`. Retrieve only enough canonical context to understand the task, authority, constraints and relevant commitments. Reuse reliable context already loaded; investigate gaps, conflicts or possible staleness when they could change your response or action.
-3. Reconstruct commitments and waits; recheck consequential/unstable state and apply relevant lessons. Triage in your first reply, alongside the request, not after it: raise what is due, overdue or triggered under recorded commitments and standing rules, and look where each rule says. Act within recorded authority after rechecking the source; otherwise bring it to the user. Confirm read consistency before reporting and acting, including in-flight edits when writers may overlap.
+3. Reconstruct commitments and waits; recheck consequential/unstable state and apply relevant lessons. Act within recorded authority after rechecking the source; otherwise bring it to the user. Confirm read consistency before reporting and acting, including in-flight edits when writers may overlap.
 
 ## Checkpoint — durable changes only
 
