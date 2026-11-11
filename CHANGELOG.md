@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [0.7.0-alpha.5](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.4...v0.7.0-alpha.5) | `AGENTS.md` Checkpoint: reflection invitation after a completed corrective save, unless timing is already agreed. |
 | [0.7.0-alpha.4](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.3...v0.7.0-alpha.4) | `AGENTS.md` opening orientation and Resume step 3; `CLAUDE.md` mirrors the updated opening block. Helpers, memory layout and skills unchanged. |
 | [0.7.0-alpha.3](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.2...v0.7.0-alpha.3) | `AGENTS.md` Authority and privacy, Memory rules, Resume and Checkpoint; `MEMORY.md`; `tools/minibrain.py`; `.agents/skills/reflect/SKILL.md` Destinations. Removes Watch and automatic attention output; retains instruction-only attention to commitments and clarifies delegation versus uncertainty. Collections unchanged. |
 | [0.7.0-alpha.2](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.1...v0.7.0-alpha.2) | Core upgrade: `AGENTS.md` Authority and privacy, Memory rules (new Watch rule), Resume steps 2–3 and Checkpoint; `MEMORY.md` (new `## Watch`); `tools/minibrain.py` and `.agents/skills/reflect/SKILL.md` Destinations. Take the contract and core helper together. Then add `## Watch` to your `MEMORY.md` with a line for each open obligation: dated promise, decision owed, "when X, do Y" rule. Wording-only fixes in `tools/collection.py`. |
@@ -16,6 +17,11 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.4.2](https://github.com/crstdr/minibrain/compare/v0.3.1...v0.4.2) | nothing |
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
+
+## 0.7.0-alpha.5
+
+- Add one post-checkpoint cue: after saving a correction to a mistake that could recur, ask whether to use `reflect` now unless timing is already agreed. Checkpoint verification and lock release precede the invitation.
+- Keep the broader reflection trigger outside checkpoints. No helper, skill, memory-layout or test changes. We have not tested whether agents follow the new cue.
 
 ## 0.7.0-alpha.4
 
