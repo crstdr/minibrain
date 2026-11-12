@@ -23,10 +23,10 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 ## 0.7.0-alpha.7
 
 - Collections: remove the `edit` command; change records by editing their files. Remove the `tags` and `sections` relations, `day()`, `_age` and `_rev`. `graph`, `needs`, `reach` and `_unmet` stay.
-- In SQL, characters other than letters, digits and underscores in collection and field names become underscores; bracket quoting is gone.
+- In SQL, characters other than letters, digits and underscores in collection and field names become underscores, and a collection name starting with a digit gains a leading underscore; queries use these mapped names.
 - Governed fields keep their save-time check; its refusals now state the entry format.
 - Instructions: the opening block's reflection line, the delegation sentence and Resume step 3 return to their 0.6.1 wording. The post-checkpoint reflection cue stays. Failed-commit recovery is shorter; the note for helpers without `commit` moves to SETUP → Upgrading.
-- SETUP: the suggested instruction line for a collection now shows how to read all its field lines with one `grep`. Untested hint.
+- SETUP: the suggested instruction line for a collection now shows how to preview its field lines with one `grep`. Untested hint.
 - The removals follow observed non-use in recorded agent runs. No behavioural gain is claimed.
 
 ## 0.7.0-alpha.6
