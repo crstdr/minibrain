@@ -332,7 +332,7 @@ def forbidden(*args):
     raise AssertionError('ordinary query built reach')
 c.walk = forbidden
 before, records = c.snapshot()
-c.query(before[0], records, 'jobs', 'SELECT _id,_unmet FROM jobs ORDER BY _id', c.head())
+c.query(before[0], records, 'jobs', 'SELECT _id,_unmet FROM jobs ORDER BY _id')
 """
         out, _ = self.call(sys.executable, "-B", "-c", script)
         self.assertEqual(list(csv.reader(io.StringIO(out), delimiter="\t"))[1:], [["A", "0"], ["B", "0"]])
@@ -346,6 +346,7 @@ c.query(before[0], records, 'jobs', 'SELECT _id,_unmet FROM jobs ORDER BY _id', 
             out, _ = self.call(sys.executable, "-I", "tools/collection.py", "query", "jobs", "SELECT state FROM jobs")
             self.assertEqual(list(csv.reader(io.StringIO(out), delimiter="\t")), [["state"], ["open"]])
 
+    @unittest.skipUnless(sqlite3, "sqlite3 required for SQL tests")
     def test_sql_name_mapping_and_refusals(self):
         self.put('sprint-tasks/A', '# A\n- assessed-on: 2020-01-01\n')
         self.assertEqual(self.rows('query', 'sprint-tasks', 'SELECT assessed_on FROM sprint_tasks')[0][1:], [['2020-01-01']])
@@ -377,13 +378,29 @@ c.query(before[0], records, 'jobs', 'SELECT _id,_unmet FROM jobs ORDER BY _id', 
         self.assertEqual(self.rows('query', 'sprint-tasks', 'SELECT needs,tags,source,reach,sqlite_reserved FROM sprint_tasks')[0][1:], [['', '#tag', 'unknown', 'x', 'y']])
         _, err = self.cli('edit', 'sprint-tasks/A', ok=False)
         self.assertIn('invalid choice', err)
+        self.put('jobs/A', '# A\n- ak: ordinary\n')
+        self.put('jobs/B', '# B\n- aK: intended\n')
+        self.assertEqual(self.rows('query', 'jobs', "SELECT ak FROM jobs WHERE _id='B'")[0][1:], [['intended']])
+        self.put('jobs/B', '# B\n- a\u212a: intended\n- a_: unrelated\n')
+        err = self.cli('query', 'jobs', "SELECT a_ FROM jobs WHERE _id='B'", ok=False)[1]
+        self.assertIn('SQL field name collision', err)
+        self.assertIn('ak', err)
+        self.assertIn('a\u212a', err)
+
 
     def test_governed_refusals_include_format(self):
         self.put('jobs/A', '# A\n- priority: P1\n')
         self.assertIn("priority is governed: remove it from the header and prepend under ## History: - YYYY-MM-DD priority: VALUE — REASON; authority: REF[; assent: NAMES] (VALUE 'cleared' clears it)", self.core('check', ok=False))
         self.put('jobs/A', '# A\n\n## History\n- priority: P1\n')
         self.assertIn('malformed governed entry: - priority: P1 — expected: - YYYY-MM-DD field: value — reason; authority: ref[; assent: names]', self.core('check', ok=False))
+        if sqlite3:
+            self.put('jobs/A', '# A\n\n## History\n'
+                     '- 2026-11-08 priority: cleared — paused; authority: D9\n'
+                     '- 2026-11-07 priority: P1 — approved; authority: D8\n')
+            self.assertEqual(self.rows('query', 'jobs', 'SELECT priority IS NULL FROM jobs')[0][1:], [['1']])
 
+
+    @unittest.skipUnless(sqlite3, "sqlite3 required for SQL tests")
     def test_docstring_examples(self):
         import shlex
         helper = self.root / 'tools/collection.py'

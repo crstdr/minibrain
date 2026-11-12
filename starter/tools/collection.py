@@ -207,7 +207,7 @@ def structure(lines):
 
 class Record:
     def __init__(self, rel, text):
-        self.rel, self.text = rel, text
+        self.rel = rel
         self.ref = ref_of(rel)
         self.name, self.id = self.ref.split("/", 1)
         self.lines = lines = physical_lines(text)
@@ -243,7 +243,7 @@ class Record:
             i += 1
         self.header_end = i
 
-        self.heads, literal, self.open_fence = structure(lines)
+        self.heads, literal, _ = structure(lines)
         self.sections = defaultdict(list)
         end = len(lines)
         for level, title, start, body in reversed(self.heads):
@@ -489,7 +489,7 @@ def head():
 
 
 def quote(name):
-    return "[" + name + "]" if "]" not in name else "`" + name.replace("`", "``") + "`"
+    return "[" + name + "]"
 
 
 def natural(left, right):
@@ -532,6 +532,10 @@ def schema(names, records):
             if not re.fullmatch(FIELD, k):
                 die(f"invalid configured field name {k!r} in {name!r}")
             if k.lower() in spellings:
+                previous = spellings[k.lower()]
+                mapped = mapped_name(k)
+                if sql_name(mapped_name(previous)) != sql_name(mapped):
+                    die(f"SQL field name collision: {k!r} and {previous!r} map to {mapped!r} in {name!r}")
                 continue
             mapped = mapped_name(k)
             folded = sql_name(mapped)
@@ -631,7 +635,7 @@ def restrict(db, sqlite, tables, sql="", reads=None):
     return lambda: ticks > 10000
 
 
-def query(names, records, name, sql, revision):
+def query(names, records, name, sql):
     try:
         import sqlite3
     except ImportError:
@@ -711,7 +715,7 @@ def main():
     else:
         if head() != revision:
             die("HEAD changed during snapshot")
-        query(before[0], records, args.name, args.sql, revision)
+        query(before[0], records, args.name, args.sql)
 
 
 if __name__ == "__main__":

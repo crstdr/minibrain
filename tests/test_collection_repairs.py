@@ -2,7 +2,6 @@
 import re
 import shlex
 import shutil
-import sys
 import unittest
 
 import test_collection as fixtures
