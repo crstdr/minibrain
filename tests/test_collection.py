@@ -1,12 +1,10 @@
 """Integration tests against disposable installed brains."""
 import csv
-import hashlib
 import io
 import os
 from pathlib import Path
 import re
 import shutil
-import stat
 import subprocess
 import sys
 import tempfile
@@ -84,24 +82,19 @@ class Collections(unittest.TestCase):
                  '- code: 0012\n- review-a: P10\n- tags: #go\n\n## Reviewer\n\n## History\n' + EVENT + "\n")
         self.put("jobs/B", "# B\n- cost: 3oops\n- review-a: P2\n")
         rows, err = self.rows("query", "jobs", "-", data="""SELECT _id,_title,typeof(cost),cost,
-            typeof(benefit),benefit/nullif(cost,0),code,[never-used],priority FROM jobs ORDER BY _id""")
+            typeof(benefit),benefit/nullif(cost,0),code,never_used,priority FROM jobs ORDER BY _id""")
         self.assertEqual(rows[1], ["001", 'One\t"quoted"', "real", "2.5", "real", "0", "0012", "", "P2"])
         self.assertEqual(rows[2][2:4], ["null", ""])
         self.assertIn("invalid numeric", err)
-        rows, _ = self.rows("query", "jobs", """SELECT _id FROM jobs ORDER BY "review-a" COLLATE natural_id""")
+        rows, _ = self.rows("query", "jobs", """SELECT _id FROM jobs ORDER BY review_a COLLATE natural_id""")
         self.assertEqual(rows[1:], [["B"], ["001"]])
-        rows, _ = self.rows("query", "jobs", """SELECT j._ref FROM jobs j JOIN tags t ON t.item=j._ref
-            WHERE t.tag='#go' AND EXISTS (SELECT 1 FROM sections s WHERE s.item=j._ref AND heading='Reviewer')
-            AND day('2024-02-29')='2024-02-29' AND day('2026-02-29') IS NULL AND day('20260101') IS NULL""")
-        self.assertEqual(rows[1:], [["jobs/001"]])
         self.git("add", "--", "collection.jobs")
         self.git("commit", "-qm", "records")
         rows, err = self.rows("query", "jobs")
-        self.assertEqual(rows[0], ["_id", "state", "_age", "_title"])
-        self.assertEqual(rows[1][2], "0")
-        self.assertIn("[jobs] (", err)
-        self.assertIn("[never-used] REAL", err)
-        for name, identifier in (('a"b', '[a"b]'), ('a]b`c', '`a]b``c`')):
+        self.assertEqual(rows[0], ["_id", "state", "_title"])
+        self.assertIn("jobs (", err)
+        self.assertIn("never_used REAL", err)
+        for name, identifier in (('a"b', 'a_b'), ('a]b`c', 'a_b_c')):
             with self.subTest(name=name):
                 (self.root / ("collection." + name)).mkdir()
                 rows, _ = self.rows("query", name, "SELECT _id FROM " + identifier)
@@ -280,60 +273,9 @@ db.close()"""
         self.assertIn("committed record deleted", self.core("commit", "--label", label, "--amend", ok=False))
         self.core("unlock", label)
 
-    def test_edit_bytes_lock_expect_and_governance(self):
-        original = "# A\r\n\r\n- Cost: 1\r\n\r\n## Mine\r\nold\r\n## Peer\r\nkeep  \n\n## History\r\n" + EVENT
-        path = self.put("jobs/A", original)
-        path.chmod(0o640)
-        mode = stat.S_IMODE(path.stat().st_mode)
-        self.git("add", "--", "collection.jobs")
-        self.git("commit", "-qm", "record")
-        rev = hashlib.sha256(path.read_bytes()).hexdigest()
-        label = self.core("lock", "Writer").split("lock acquired: ")[1].split()[0]
-
-        def edit(*args, **kw):
-            return self.cli("edit", "jobs/A", *args, **kw)
-
-        for options in ([], ["--label", "wrong"], ["--label", label, "--expect", rev[:12]]):
-            edit("--set", "cost", "2", *options, ok=False)
-            self.assertEqual(path.read_bytes(), original.encode())
-        edit("--set", "cost", "2", "--label", label, "--expect", rev)
-        new = original.replace("Cost: 1", "Cost: 2")
-        self.assertEqual(path.read_bytes(), new.encode())
-        self.core("unlock", label)
-        edit("--unset", "cost", "--label", label, ok=False)
-        for body in ("# Escape\n", "## Peer\n", "~~~\n", "Escape\n====\n"):
-            edit("--section", "Mine", data=body, ok=False)
-            self.assertEqual(path.read_bytes(), new.encode())
-        edit("--section", "Mine", data="new\n")
-        new = new.replace("old\r\n", "new\r\n")
-        self.assertEqual(path.read_bytes(), new.encode())
-        for args in (("--section", "History"), ("--set", "priority", "P1"),
-                     ("--set", "cost", "2\n- b: x"), ("--set", "needs", "missing"),
-                     ("--set", "needs", "A"), ("--unset", "cost", "--unset", "cost"),
-                     ("--set", "priority", "P1", "--reason", "x", "--authority", "D; assent: forged")):
-            edit(*args, ok=False)
-            self.assertEqual(path.read_bytes(), new.encode())
-        edit("--set", "priority", "P1", "--reason", "go", "--authority", "D8", "--assent", "reviewer")
-        edit("--unset", "priority", "--reason", "pause", "--authority", "D9")
-        self.assertTrue(path.read_bytes().endswith(EVENT.encode()))
-        self.assertIn(b"priority: P1 ", path.read_bytes())
-        self.assertIn(b"; assent: reviewer\r\n", path.read_bytes())
-        if sqlite3:
-            rows, _ = self.rows("query", "jobs", "SELECT priority IS NULL FROM jobs")
-            self.assertEqual(rows[1:], [["1"]])
-        edit("--section", "New review", data="independent")
-        edit("--unset", "cost")
-        self.assertNotIn(b"- Cost:", path.read_bytes())
-        self.assertEqual(stat.S_IMODE(path.stat().st_mode), mode)
-        self.assertEqual(self.git("diff", "--cached", "--name-only"), "")
-        self.assertEqual(self.git("show", "HEAD:collection.jobs/A.md"), original)
 
     def test_duplicate_section_symlink_and_optional_install(self):
         path = self.put("jobs/A", "# A\n\n## Mine\none\n## Mine\ntwo\n")
-        self.assertIn("duplicate heading", self.cli("edit", "jobs/A", "--section", "Mine", ok=False)[1])
-        self.put("jobs/A", "# A\n\n~~~md\n## Mine\n~~~\n")
-        self.cli("edit", "jobs/A", "--section", "Mine", data="real\n")
-        self.assertIn(b"~~~\n\n## Mine\nreal", path.read_bytes())
         if hasattr(os, "symlink"):
             link = path.parent / "link.md"
             try:
@@ -341,7 +283,7 @@ db.close()"""
             except OSError:
                 pass
             else:
-                self.assertIn("regular file", self.cli("edit", "jobs/link", "--unset", "x", ok=False)[1])
+                self.assertIn("regular file", self.cli("graph", "jobs/link", ok=False)[1])
                 link.unlink()
         self.put("jobs/A", "# A\n- priority: forbidden\n")
         (self.root / "tools/collection.py").unlink()
@@ -354,7 +296,6 @@ sys.path.insert(0, 'tools')
 sys.modules['sqlite3'] = None
 runpy.run_path(sys.argv[0], run_name='__main__')"""
         for script, args, ok in (("collection", ["graph", "jobs/A"], True),
-                                 ("collection", ["edit", "jobs/A", "--set", "x", "v"], True),
                                  ("minibrain", ["check"], True), ("collection", ["query", "jobs"], False)):
             code = "import sys; sys.argv=sys.argv[1:]\n" + boot
             _, err = self.call(sys.executable, "-c", code, "tools/" + script + ".py", *args, ok=ok)
@@ -401,8 +342,66 @@ c.query(before[0], records, 'jobs', 'SELECT _id,_unmet FROM jobs ORDER BY _id', 
         (self.root / "tools/minibrain.py").rename(self.root / "tools/kb.py")
         path = self.root / "tools/collection.py"
         path.write_text(path.read_text().replace('CORE_HELPER = "minibrain.py"', 'CORE_HELPER = "kb.py"'))
-        self.call(sys.executable, "-I", "tools/collection.py", "edit", "jobs/A", "--set", "state", "done")
-        self.assertIn("- state: done", (self.root / "collection.jobs/A.md").read_text())
         if sqlite3:
             out, _ = self.call(sys.executable, "-I", "tools/collection.py", "query", "jobs", "SELECT state FROM jobs")
-            self.assertEqual(list(csv.reader(io.StringIO(out), delimiter="\t")), [["state"], ["done"]])
+            self.assertEqual(list(csv.reader(io.StringIO(out), delimiter="\t")), [["state"], ["open"]])
+
+    def test_sql_name_mapping_and_refusals(self):
+        self.put('sprint-tasks/A', '# A\n- assessed-on: 2020-01-01\n')
+        self.assertEqual(self.rows('query', 'sprint-tasks', 'SELECT assessed_on FROM sprint_tasks')[0][1:], [['2020-01-01']])
+        self.assertIn('sprint_tasks (', self.cli('query', 'sprint-tasks')[1])
+        self.put('2026-plan/A', '# Plan\n')
+        self.assertIn('_2026_plan (', self.cli('query', '2026-plan')[1])
+        self.assertEqual(self.rows('query', '2026-plan', 'SELECT _id FROM _2026_plan')[0][1:], [['A']])
+        folder = self.root / 'collection._2026_plan'
+        folder.mkdir()
+        err = self.cli('query', 'sprint-tasks', ok=False)[1]
+        self.assertIn('2026-plan', err)
+        self.assertIn('_2026_plan', err)
+        folder.rmdir()
+        for name in ('sprint_tasks', 'needs', 'reach', 'sqlite_reserved'):
+            folder = self.root / ('collection.' + name)
+            folder.mkdir()
+            err = self.cli('query', 'sprint-tasks', ok=False)[1]
+            self.assertIn(name, err)
+            if name == 'sprint_tasks':
+                self.assertIn('sprint-tasks', err)
+            folder.rmdir()
+        for fields in ('- assessed-on: x\n- assessed_on: y\n', '- assessed-on: x\n- ASSESSED_ON: y\n'):
+            self.put('sprint-tasks/A', '# A\n' + fields)
+            err = self.cli('query', 'sprint-tasks', ok=False)[1]
+            self.assertIn('collision', err)
+            self.assertIn('assessed-on', err)
+            self.assertIn('assessed_on' if 'assessed_on' in fields else 'ASSESSED_ON', err)
+        self.put('sprint-tasks/A', '# A\n- needs: \n- tags: #tag\n- source: unknown\n- reach: x\n- sqlite_reserved: y\n')
+        self.assertEqual(self.rows('query', 'sprint-tasks', 'SELECT needs,tags,source,reach,sqlite_reserved FROM sprint_tasks')[0][1:], [['', '#tag', 'unknown', 'x', 'y']])
+        _, err = self.cli('edit', 'sprint-tasks/A', ok=False)
+        self.assertIn('invalid choice', err)
+
+    def test_governed_refusals_include_format(self):
+        self.put('jobs/A', '# A\n- priority: P1\n')
+        self.assertIn("priority is governed: remove it from the header and prepend under ## History: - YYYY-MM-DD priority: VALUE — REASON; authority: REF[; assent: NAMES] (VALUE 'cleared' clears it)", self.core('check', ok=False))
+        self.put('jobs/A', '# A\n\n## History\n- priority: P1\n')
+        self.assertIn('malformed governed entry: - priority: P1 — expected: - YYYY-MM-DD field: value — reason; authority: ref[; assent: names]', self.core('check', ok=False))
+
+    def test_docstring_examples(self):
+        import shlex
+        helper = self.root / 'tools/collection.py'
+        helper.write_text(re.sub(r'^NUMERIC_FIELDS = .*$', "NUMERIC_FIELDS = {'tasks': {'benefit', 'cost'}}", helper.read_text(), flags=re.M))
+        self.put('tasks/T-1', '# First\n- state: open\n- benefit: 6\n- cost: 2\n')
+        self.put('tasks/T-2', '# Second\n- state: open\n- needs: T-1\n')
+        help_text, _ = self.cli('--help')
+        examples = [shlex.split(line.strip()) for line in help_text.splitlines() if line.startswith(('  query tasks ', '  graph tasks/'))]
+        self.assertEqual(len(examples), 3)
+        self.assertEqual(self.rows(*examples[0])[0][1:], [['T-1', '6', '2', '3']])
+        self.assertEqual(self.rows(*examples[1])[0][1:], [['tasks/T-2', '1']])
+        self.assertEqual(len(self.rows(*examples[2])[0]), 3)
+
+    @unittest.skipUnless(sqlite3, "sqlite3 required")
+    def test_removed_query_extras_are_unavailable(self):
+        self.put("jobs/A", "# A\n- tags: #kept\n\n## Review\nBody.\n")
+        for sql in ("SELECT _rev FROM jobs", "SELECT _age FROM jobs",
+                    "SELECT day('2020-01-01')", "SELECT * FROM tags", "SELECT * FROM sections"):
+            with self.subTest(sql=sql):
+                self.cli("query", "jobs", sql, ok=False)
+        self.assertEqual(self.rows("query", "jobs", "SELECT tags FROM jobs")[0][1:], [["#kept"]])

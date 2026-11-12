@@ -34,7 +34,7 @@ Existing minibrain? Start with [Upgrading](#upgrading).
 
 Keep a table or marked lines while they suffice. Consider `tools/collection.py` for a collection of entries that several agents must assess separately, whose decisions need a checked history, or whose prerequisite chains you repeatedly trace by hand. At setup, if the stated purpose names such a collection, ask once whether to add it; otherwise omit it and say it can be added later. Adopt the extension and matching core changes together, preserving local helper names and configuration. Set `GOVERNED_FIELDS` for fields requiring recorded authority across all collections, and `NUMERIC_FIELDS` / `SATISFIED_STATES` for each collection's confirmed numeric fields and prerequisite rules. If retaining `kb.py`, set the extension's `CORE_HELPER` to that filename. Create each collection folder and list it under `AGENTS.md` → This brain, e.g. "- `collection.tasks/` — one file per task; `python3 tools/collection.py` shows format and commands." Adoption does not authorise migrating existing content.
 
-When an authorised governance change makes an existing header field governed, manually move its value into a dated `## History` entry with reason and authority, removing the header assignment in the same save. Preserve prior History entries and record the approved instruction change. `edit` refuses records that are invalid under the new configuration.
+When an authorised governance change makes an existing header field governed, manually move its value into a dated `## History` entry with reason and authority, removing the header assignment in the same save. Preserve prior History entries and record the approved instruction change.
 
 Fill `[square-bracket placeholders]` below the XML blocks and in memory files from established facts; record honest unknowns and remove unused rows/entries. Clarify missing delegation before acting; placeholders grant no authority. Keep usable path defaults or preserve compatible existing paths, updating references together. Seed only explicit user principles or confirmed generalisations; an empty block does not revoke existing rules. Preserve their scope and record where any unmigrated rules remain. Record the source URL, inspected ref/commit/date and local adaptations in the existing canonical record; unknown provenance stays unknown.
 
@@ -50,7 +50,7 @@ The starter uses Git and Markdown, not a mandatory storage scheme. Other mechani
 
 Requires Git and Python 3.8+. Install the helper at `<brain>/tools/minibrain.py`; it locates the brain from that path. If Git has no commit identity, set one for this repository only, never globally.
 
-For collection SQL queries, verify the installed Python provides `sqlite3`. Collection checks, `graph` and `edit` work independently of that module. Dependency installation requires approval.
+For collection SQL queries, verify the installed Python provides `sqlite3`. Collection checks and `graph` work independently of that module. Dependency installation requires approval.
 
 Before `git init`, check for an enclosing repository with `git rev-parse --show-toplevel`; distinguish “not a repository” from inspection failure. Resolve integration rather than nesting accidentally. The helper supports a normal dedicated Git working copy, not linked worktrees or distributed sync. Never adopt a public code remote for private memory.
 
@@ -105,7 +105,7 @@ or comparative benefit.
 4. Check references to changed sections, commands and skills. Verify each recorded local adaptation against the merged files; changes or removals require approval. Verify helper configuration and coverage match the installed layout.
 5. Run applicable [acceptance checks](#verify-the-installation), using the installed helper or verified equivalent. Verify before recording the adopted target ref, local adaptations and unapplied upstream changes; disclose remaining verification gaps. All writers reload before overlap resumes.
 
-Legacy root notes and `topics/` remain supported; folder-space features apply only under `spaces/`. Retain `Map.md` with a matching `MAP_FILE` setting, or agree a file/link migration; case-only renames may need an intermediate name. Existing installations may retain `kb.py`; rename only during an authorised upgrade and update command references together.
+Legacy root notes and `topics/` remain supported; folder-space features apply only under `spaces/`. Retain `Map.md` with a matching `MAP_FILE` setting, or agree a file/link migration; case-only renames may need an intermediate name. Existing installations may retain `kb.py`; rename only during an authorised upgrade and update command references together. Retained helper lacks `commit`? Keep the earlier Checkpoint steps 4–5: `check --staged` unpiped, the commit chained with `&&`, then `check` unpiped.
 
 ## Implementation limits
 
