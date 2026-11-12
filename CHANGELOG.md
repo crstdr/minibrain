@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [0.7.0-alpha.7](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.6...v0.7.0-alpha.7) | `AGENTS.md` opening block, Authority and privacy, Resume step 3 and Checkpoint steps 4–5; `CLAUDE.md` mirrors the opening block; `tools/collection.py`: take the helper whole. |
 | [0.7.0-alpha.6](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.5...v0.7.0-alpha.6) | `AGENTS.md` Checkpoint: express the reflection cue as explicit When/Do conditions and action. |
 | [0.7.0-alpha.5](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.4...v0.7.0-alpha.5) | `AGENTS.md` Checkpoint: reflection invitation after a completed corrective save, unless timing is already agreed. |
 | [0.7.0-alpha.4](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.3...v0.7.0-alpha.4) | `AGENTS.md` opening orientation and Resume step 3; `CLAUDE.md` mirrors the updated opening block. Helpers, memory layout and skills unchanged. |
@@ -18,6 +19,15 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.4.2](https://github.com/crstdr/minibrain/compare/v0.3.1...v0.4.2) | nothing |
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
+
+## 0.7.0-alpha.7
+
+- Collections: remove the `edit` command; change records by editing their files. Remove the `tags` and `sections` relations, `day()`, `_age` and `_rev`. `graph`, `needs`, `reach` and `_unmet` stay.
+- In SQL, characters other than letters, digits and underscores in collection and field names become underscores, and a collection name starting with a digit gains a leading underscore; queries use these mapped names.
+- Governed fields keep their save-time check; its refusals now state the entry format.
+- Instructions: the opening block's reflection line, the delegation sentence and Resume step 3 return to their 0.6.1 wording. The post-checkpoint reflection cue stays. Failed-commit recovery is shorter; the note for helpers without `commit` moves to SETUP → Upgrading.
+- SETUP: the suggested instruction line for a collection now shows how to preview its field lines with one `grep`. Untested hint.
+- The removals follow observed non-use in recorded agent runs. No behavioural gain is claimed.
 
 ## 0.7.0-alpha.6
 

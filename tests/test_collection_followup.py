@@ -39,10 +39,10 @@ sys.path.insert(0, 'tools')
 import collection as c
 tables = c.schema({'K', 'K'}, {})
 db = sqlite3.connect(':memory:')
-c.fill(db, tables, {}, {})
+c.fill(db, tables, {})
 c.restrict(db, sqlite3, tables)
 for name in tables:
-    assert db.execute('SELECT count(*) FROM ' + c.quote(name)).fetchone() == (0,)
+    assert db.execute('SELECT count(*) FROM ' + c.quote(c.mapped_name(name))).fetchone() == (0,)
 """)
         for relation in ("sqlite_master", "SQLITE_MASTER", "sqlite_schema", "SQLITE_SCHEMA",
                          "main.sqlite_schema", "MAIN.SQLITE_SCHEMA"):
@@ -51,50 +51,8 @@ for name in tables:
                     self.cli("query", "jobs", "SELECT " + expression + " FROM " + relation, ok=False)
         self.cli("query", "jobs", "WITH c AS (SELECT name FROM MAIN.SQLITE_SCHEMA) SELECT count(*) FROM c", ok=False)
 
-    def test_short_closed_comments_do_not_swallow_peer(self):
-        peer = "## Peer\nPeer assessment, keep exact.  \r\n"
-        for marker in ("<!-->", "<!--->"):
-            for tail in ("", "<!-- reviewer note -->\n"):
-                with self.subTest(marker=marker, tail=tail):
-                    record = self.put("jobs/A", "# A\n\n## Mine\nold\n" + marker + "\n" + peer + tail)
-                    self.cli("edit", "jobs/A", "--section", "Mine", data="replacement\n")
-                    self.assertEqual(record.read_bytes(), ("# A\n\n## Mine\nreplacement\n" + peer + tail).encode())
 
-    def test_replacement_cannot_drop_raw_peer_heading_bytes(self):
-        peer = "## Peer\nPeer assessment, keep exact.  \r\n"
-        bodies = ("\n- ~~~\n  mine code\n  ~~~\n\n" + peer + "\n- ~~~\n  peer code\n  ~~~\n",
-                  "draft <!--\n```\n" + peer + "```\n## Later\nlater\n",
-                  "<!-- closed --> <!--\n```\n" + peer + "```\n## Later\nlater\n")
-        for body in bodies:
-            with self.subTest(body=body):
-                original = "# A\n\n## Mine\nold\n" + body
-                record = self.put("jobs/A", original)
-                _, err = self.cli("edit", "jobs/A", "--section", "Mine", data="replacement\n", ok=False)
-                self.assertIn("heading", err)
-                self.assertEqual(record.read_bytes(), original.encode())
 
-    def test_normal_code_and_comment_payloads_remain_usable(self):
-        peer = "## Peer\nKeep exact.  \r\n"
-        for payload in ("```py\nprint('hello')\n```\n", "<!-- ordinary note -->\n",
-                        "<!-- note\n```\n-->\n", "draft <!-- closed -->\n", "`<!--`\n"):
-            with self.subTest(payload=payload):
-                record = self.put("jobs/A", "# A\n\n## Mine\nold\n" + peer)
-                self.cli("edit", "jobs/A", "--section", "Mine", data=payload)
-                self.assertEqual(record.read_bytes(), ("# A\n\n## Mine\n" + payload + peer).encode())
-                self.cli("edit", "jobs/A", "--section", "Mine", data="replacement\n")
-                self.assertEqual(record.read_bytes(), ("# A\n\n## Mine\nreplacement\n" + peer).encode())
-        # Heading examples remain valid payloads, but then require manual editing.
-        payload = "```md\n## Example\n## Example\n```\n"
-        record = self.put("jobs/A", "# A\n\n## Mine\nold\n" + peer)
-        self.cli("edit", "jobs/A", "--section", "Mine", data=payload)
-        original = record.read_bytes()
-        self.cli("edit", "jobs/A", "--section", "Mine", data=payload.replace("## Example\n", "", 1), ok=False)
-        self.assertEqual(record.read_bytes(), original)
-        self.cli("edit", "jobs/A", "--section", "Mine", data=payload, ok=False)
-        self.assertEqual(record.read_bytes(), original)
-        record = self.put("jobs/A", "# A")
-        self.cli("edit", "jobs/A", "--section", "Mine", data="ordinary body\n")
-        self.assertEqual(record.read_bytes(), b"# A\n\n## Mine\nordinary body\n")
 
     def test_malformed_history_candidates_fail_instead_of_returning_stale_values(self):
         for candidate in ("- 2026-11-08: priority:", "- 2026-11-08 — priority:",
@@ -142,6 +100,30 @@ for name in tables:
                     if fixtures.sqlite3:
                         self.assertIn("governed entry outside", self.cli(
                             "query", "jobs", "SELECT priority FROM jobs", ok=False)[1])
+
+
+    def test_malformed_new_governed_entries_cannot_hide_behind_old_value(self):
+        original = "# A\n\n## History\n" + fixtures.EVENT + "\n"
+        self.put("jobs/A", original)
+        self.git("add", "--", "collection.jobs/A.md")
+        self.git("commit", "-qm", "record")
+        event = "2026-11-07 priority: P1 — changed; authority: D8"
+        for prefix in ("  - ", "-  "):
+            with self.subTest(prefix=prefix):
+                self.put("jobs/A", original.replace("## History\n", "## History\n" + prefix + event + "\n"))
+                self.git("add", "--", "collection.jobs/A.md")
+                self.assertIn("PROBLEM", self.core("check", "--staged", ok=False))
+                if fixtures.sqlite3:
+                    self.cli("query", "jobs", "SELECT priority FROM jobs", ok=False)
+
+
+    def test_url_prose_bullet_after_title_is_not_a_malformed_header(self):
+        for gap in ("", "\n"):
+            with self.subTest(gap=gap):
+                self.put("jobs/A", "# A\n" + gap + "- https://example.invalid/reference — prose\n")
+                self.core("check")
+                rows, _ = self.rows("graph", "jobs/A")
+                self.assertEqual(len(rows), 2)  # header and origin only
 
 
 if __name__ == "__main__":

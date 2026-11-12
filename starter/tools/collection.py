@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local Markdown collections. Create records by writing collection.NAME/ID.md.
+"""Local Markdown collections. Create and change records by editing collection.NAME/ID.md.
 For wikilinks, avoid # and brackets in IDs.
 
 Start with '# Title', optionally one blank line, then single-line '- key: value'
@@ -10,56 +10,43 @@ or 'unknown'. Source pointers are data and are never fetched.
 
 query NAME [SQL|-] reads one SQLite SELECT from argv or stdin when SQL is '-'.
 No SQL gives a summary and schema. Each local collection is a table.
-Use [brackets] (or backticks) for SQL identifiers and single quotes for strings; on older
-Python, a misspelled double-quoted column may become a string instead of failing.
-_id, _ref, _title, _age (days since commit), _rev (SHA-256), _unmet are
-metadata. NULL _age means uncommitted. _unmet counts distinct unsatisfied
+In SQL names, characters other than letters, digits and underscores become
+underscores, and a leading digit gains a leading underscore:
+collection.sprint-tasks is sprint_tasks; assessed-on is assessed_on.
+Use single quotes for strings.
+_id, _ref, _title and _unmet are metadata. _unmet counts distinct unsatisfied
 direct needs. Incomplete evidence below an item or a reachable cycle gives
 NULL. A count conveys neither authority nor capacity. Other columns are
 effective fields. Blanks and governed clearances are NULL. Only configured
 numeric fields use REAL. The leading number is the score and trailing commentary
 is non-computational. For example, 1 (1 day), 2 (1 week), 3 (1 month) score
-1, 2, 3; no unit conversion occurs. day(text) returns a valid YYYY-MM-DD date,
-else NULL. COLLATE natural_id orders P2 before P10. Use IS NULL for missing values. Inspect the records for
-rationale. Include operands and known/total coverage in ranked briefs.
-Downstream sums do not measure causal unlock value.
+1, 2, 3; no unit conversion occurs. COLLATE natural_id orders P2 before P10.
+Use IS NULL for missing values. Inspect the records for rationale. Include
+operands and known/total coverage in ranked briefs. Downstream sums do not
+measure causal unlock value.
 
-needs(item,need), reach(item,need,depth), tags(item,tag), sections(item,heading)
-use qualified refs. sections lists level-2 headings. reach excludes self and
-gives shortest distances. graph NAME/ID traverses both directions. Results are LF-ended, CSV-quoted TSV with headers.
-SQL NULL prints an empty cell. SQL runs against memory with an instruction
-budget. No extension loading, SQL writes, or source access.
-The budget excludes snapshot setup; reach is built only when queried and can
-grow quadratically. This is not a memory sandbox for adversarial SQL.
+needs(item,need) and reach(item,need,depth) use qualified refs. reach excludes
+self and gives shortest distances. graph NAME/ID lists one record's
+prerequisites and dependants at every depth, with state and title.
+Results are LF-ended, CSV-quoted TSV with headers. SQL NULL prints an empty
+cell. SQL runs against memory with an instruction budget. No extension
+loading, SQL writes, or source access. The budget excludes snapshot setup;
+reach is built only when queried and can grow quadratically. This is not a
+memory sandbox for adversarial SQL.
 
-edit NAME/ID (--set KEY VALUE | --unset KEY | --section HEADING) [--expect REV]
-[--label LABEL] changes one existing regular file. With --section, stdin replaces
-the entire level-2 section body, including subsections; match the title exactly.
-A missing section is appended.
-Section edits refuse an unclosed code fence or an unclosed HTML comment opened
-at line start (up to three spaces). Close it or edit manually. Inline or reopened comment
-forms are not comprehensively tracked. Replacements refuse old bodies containing
-raw ATX H1/H2 or Setext heading examples, even in code/comments and even if
-repeated in the payload. Edit manually. Ordinary field edits remain available;
-creating ## History refuses the same unclosed fence/comment state.
-Governed changes require --reason and --authority. Supply locally required
-assent with --assent. History entries are newest first under '## History'.
-- YYYY-MM-DD field: value — reason; authority: ref[; assent: names]
-Clearance records 'cleared'. Corrections prepend. Promote within a collection
-by changing its locally defined state. Across collections, create the destination
-record and archive the source with a root-relative successor wikilink,
-e.g. [[collection.tasks/T-1]] for the ref tasks/T-1. Retain the
-committed source. Keep one canonical home. Records require neither map
-registration nor a routine collection-only changelog entry. Follow the brain's
-Checkpoint procedure for durable outcomes.
+Promote within a collection by changing its locally defined state. Across
+collections, create the destination record and archive the source with a
+root-relative successor wikilink, e.g. [[collection.tasks/T-1]] for the ref
+tasks/T-1. Retain the committed source. Keep one canonical home. Records
+require neither map registration nor a routine collection-only changelog
+entry. Follow the brain's Checkpoint procedure for durable outcomes.
 
 Follow the brain's writer/delegation rules, edit only your own assessments,
 and recheck waiting conditions at their approved sources before acting.
-The helper checks syntax, checks a held lock label, and detects changes
-during a snapshot. Cooperating writers provide isolation. A label does not
-authenticate authority. An edit never stages, commits, or releases a lock.
 
 Set GOVERNED_FIELDS for authority-controlled fields across all collections.
+Their values live only as dated entries under '## History', newest first;
+check states the entry format when one is misplaced or malformed.
 Configure numeric fields and satisfying prerequisite states per collection.
 State values match exactly, including case. Changing governance or delegation
 requires the brain's instruction authority.
@@ -67,15 +54,10 @@ Source-owned facts stay at their source. A waiting record describes the trigger,
 where to check, its dated observation and the next permitted action in prose.
 
 For example, with benefit/cost numeric and 'open' the local candidate state:
-  query tasks "SELECT _id,benefit,cost,benefit/cost AS score FROM [tasks] WHERE state='open' AND _unmet=0 AND benefit IS NOT NULL AND cost>0 ORDER BY score DESC LIMIT 5"
-  edit tasks/T-1 --section 'My review' <<'EOF'
-Evidence and rationale for this assessment.
-EOF
-Use explicit assessment dates, e.g. day([assessed-on]), to check assessment
-freshness. _age counts days since the record's last Git commit.
-Brackets quote hyphenated field names.
-Use --label with your acquisition label while the writer lock is held.
-The relation names needs, reach, tags, sections and sqlite_* are reserved.
+  query tasks "SELECT _id,benefit,cost,benefit/cost AS score FROM tasks WHERE state='open' AND _unmet=0 AND benefit IS NOT NULL AND cost>0 ORDER BY score DESC LIMIT 5"
+  query tasks "SELECT item,depth FROM reach WHERE need='tasks/T-1' ORDER BY depth"
+  graph tasks/T-1
+The relation names needs, reach and sqlite_* are reserved.
 An SQL error can follow streamed rows: nonzero exit means discard that result.
 """
 
@@ -83,7 +65,6 @@ import argparse
 from collections import defaultdict, deque
 import csv
 from datetime import date
-import hashlib
 import importlib.util
 import io
 import math
@@ -92,7 +73,6 @@ from pathlib import Path
 import re
 import stat
 import sys
-import tempfile
 
 COLLECTION_PREFIX = "collection."
 GOVERNED_FIELDS = set()
@@ -111,10 +91,9 @@ EVENT = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+(?:\d{4}-\d{2}-\d{2}\s*[:—-]\s*|[
                    r"([*_`]*)(" + FIELD + r")[*_`]*\s*:")
 FENCE = re.compile(r"^ {0,3}(\x60{3,}|~{3,})(.*)$")
 ATX = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*)|$)")
-SYSTEM = {"needs": ("item", "need"), "reach": ("item", "need", "depth"),
-          "tags": ("item", "tag"), "sections": ("item", "heading")}
+SYSTEM = {"needs": ("item", "need"), "reach": ("item", "need", "depth")}
 META = {"_id": "TEXT PRIMARY KEY", "_ref": "TEXT", "_title": "TEXT",
-        "_age": "INTEGER", "_rev": "TEXT", "_unmet": "INTEGER"}
+        "_unmet": "INTEGER"}
 
 
 def die(message):
@@ -228,13 +207,10 @@ def structure(lines):
 
 class Record:
     def __init__(self, rel, text):
-        self.rel, self.text = rel, text
+        self.rel = rel
         self.ref = ref_of(rel)
         self.name, self.id = self.ref.split("/", 1)
-        self.rev = hashlib.sha256(text.encode("utf-8")).hexdigest()
         self.lines = lines = physical_lines(text)
-        ending = re.search(r"\r\n|\r|\n", text)
-        self.nl = ending[0] if ending else "\n"
         self.title = lines[0][2:].strip() if lines and lines[0].startswith("# ") else ""
         self.errors, self.fields, self.at, self.events = [], {}, {}, []
         if not self.id or re.search(r"[\s,]", self.id):
@@ -255,7 +231,7 @@ class Record:
                     self.error(f"duplicate header field {key}")
                 self.at[key] = i
                 if key in governed:
-                    self.error(f"{key} is governed: record it under ## History")
+                    self.error(f"{key} is governed: remove it from the header and prepend under ## History: - YYYY-MM-DD {key}: VALUE — REASON; authority: REF[; assent: NAMES] (VALUE 'cleared' clears it)")
                 else:
                     self.fields[key] = (match[2] or "").strip() or None
             elif FIELDLIKE.match(s):
@@ -267,7 +243,7 @@ class Record:
             i += 1
         self.header_end = i
 
-        self.heads, literal, self.open_fence = structure(lines)
+        self.heads, literal, _ = structure(lines)
         self.sections = defaultdict(list)
         end = len(lines)
         for level, title, start, body in reversed(self.heads):
@@ -299,7 +275,7 @@ class Record:
                     self.error("governed entry outside ## History")
                 continue
             if not valid:
-                self.error(f"malformed governed entry: {s}")
+                self.error(f"malformed governed entry: {s} — expected: - YYYY-MM-DD field: value — reason; authority: ref[; assent: names]")
                 continue
             if i + 1 < hi and lines[i + 1].strip() and not lines[i + 1].startswith("- "):
                 self.error("governed entries must use one line each")
@@ -512,24 +488,8 @@ def head():
     return result.stdout.strip()
 
 
-def ages(revision):
-    if not revision:
-        return {}
-    result = core().git("log", "--format=%cs", "--name-only", "-z", revision,
-                        "--", ":(top,glob)" + COLLECTION_PREFIX + "*/*.md")
-    if result.returncode:
-        die(f"cannot read commit dates: {result.stderr.strip()}")
-    ages_by_path, age, today = {}, None, date.today()
-    for token in result.stdout.split("\0"):
-        if day(token):
-            age = (today - date.fromisoformat(token)).days
-        elif token:
-            ages_by_path.setdefault(token.lstrip("\n"), age)
-    return ages_by_path
-
-
 def quote(name):
-    return "[" + name + "]" if "]" not in name else "`" + name.replace("`", "``") + "`"
+    return "[" + name + "]"
 
 
 def natural(left, right):
@@ -547,25 +507,42 @@ def sql_name(value):
     return value.translate(str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"))
 
 
+def mapped_name(value, collection=False):
+    mapped = re.sub(r"[^A-Za-z0-9_]", "_", value)
+    return "_" + mapped if collection and mapped[:1].isdigit() else mapped
+
+
 def schema(names, records):
-    tables, reserved = {}, set(SYSTEM)
+    tables, relations = {}, {n: n for n in SYSTEM}
     for name in sorted(names):
-        if sql_name(name) in reserved or sql_name(name).startswith("sqlite_"):
-            die(f"SQL relation name collision: {name!r}")
-        reserved.add(sql_name(name))
+        mapped = mapped_name(name, collection=True)
+        folded = sql_name(mapped)
+        if folded in relations or folded.startswith("sqlite_"):
+            other = relations.get(folded, "sqlite_*")
+            die(f"SQL relation name collision: {name!r} maps to {mapped!r}, reserved or used by {other!r}")
+        relations[folded] = name
         numeric = {k.lower() for k in NUMERIC_FIELDS.get(name, ())}
         keys = ["state"] + sorted(GOVERNED_FIELDS) + sorted(NUMERIC_FIELDS.get(name, ()))
         for r in records.values():
             if r.name == name:
                 keys.extend(r.lines[i][2:].split(":", 1)[0] for i in r.at.values())
-        spellings = {}
+        spellings, columns = {}, {}
+        tables[name] = dict(META)
         for k in keys:
             if not re.fullmatch(FIELD, k):
                 die(f"invalid configured field name {k!r} in {name!r}")
-            first = spellings.setdefault(k.lower(), k)
-            if sql_name(first) != sql_name(k):
-                die(f"ambiguous SQL field spellings {first!r} and {k!r} in {name!r}")
-        tables[name] = dict(META)
+            if k.lower() in spellings:
+                previous = spellings[k.lower()]
+                mapped = mapped_name(k)
+                if sql_name(mapped_name(previous)) != sql_name(mapped):
+                    die(f"SQL field name collision: {k!r} and {previous!r} map to {mapped!r} in {name!r}")
+                continue
+            mapped = mapped_name(k)
+            folded = sql_name(mapped)
+            if folded in columns:
+                die(f"SQL field name collision: {k!r} and {columns[folded]!r} map to {mapped!r} in {name!r}")
+            spellings[k.lower()] = k
+            columns[folded] = k
         for key, spelling in sorted(spellings.items()):
             tables[name][spelling] = "REAL" if key in numeric else "TEXT"
     return tables
@@ -584,26 +561,24 @@ def sql_value(r, key, typ):
     return None
 
 
-def fill(db, tables, records, dates):
+def fill(db, tables, records):
     net = Network(records)
     for error in net.errors:
         note(error)
     unmet = net.unmet(records)
     for name, cols in tables.items():
-        definition = ", ".join(quote(k) + " " + t for k, t in cols.items())
-        db.execute(f"CREATE TABLE {quote(name)} ({definition}) WITHOUT ROWID")
+        definition = ", ".join(quote(mapped_name(k)) + " " + t for k, t in cols.items())
+        db.execute(f"CREATE TABLE {quote(mapped_name(name, collection=True))} ({definition}) WITHOUT ROWID")
     for name, cols in SYSTEM.items():
         definition = ", ".join(k + (" INTEGER" if k == "depth" else " TEXT") for k in cols)
         db.execute(f"CREATE TABLE {name} ({definition})")
     for ref, r in records.items():
         cols = tables[r.name]
-        values = [r.id, ref, r.title, dates.get(r.rel), r.rev, unmet[ref]]
+        values = [r.id, ref, r.title, unmet[ref]]
         values.extend(sql_value(r, k, t) for k, t in cols.items() if k not in META)
-        db.execute(f"INSERT INTO {quote(r.name)} VALUES ({','.join('?' for _ in values)})", values)
+        db.execute(f"INSERT INTO {quote(mapped_name(r.name, collection=True))} VALUES ({','.join('?' for _ in values)})", values)
         db.executemany("INSERT INTO needs VALUES (?,?)", ((ref, n) for n in r.needs))
-        db.executemany("INSERT INTO tags VALUES (?,?)", ((ref, t) for t in sorted(set(r.tags))))
-        db.executemany("INSERT INTO sections VALUES (?,?)", ((ref, h) for h in r.sections))
-    public_names = {sql_name(name) for name in tables}
+    public_names = {sql_name(mapped_name(name, collection=True)) for name in tables}
     for name, col in [(name, cols[0]) for name, cols in SYSTEM.items()] + [("reach", "need")]:
         index = name + "_" + col
         while sql_name(index) in public_names:
@@ -615,8 +590,8 @@ def fill(db, tables, records, dates):
 def restrict(db, sqlite, tables, sql="", reads=None):
     if not all(callable(getattr(db, method, None)) for method in ("set_authorizer", "set_progress_handler")):
         die("query requires SQLite authorizer and progress-handler support")
-    allowed = {sql_name(name) for name in tables} | set(SYSTEM)
-    functions = set("""abs avg ceil ceiling coalesce count cume_dist date datetime day
+    allowed = {sql_name(mapped_name(name, collection=True)) for name in tables} | set(SYSTEM)
+    functions = set("""abs avg ceil ceiling coalesce count cume_dist date datetime
         dense_rank first_value floor glob group_concat hex ifnull iif instr julianday
         lag last_value lead length like likelihood likely lower ltrim max min nth_value
         ntile nullif percent_rank rank replace round row_number rtrim sign strftime
@@ -660,7 +635,7 @@ def restrict(db, sqlite, tables, sql="", reads=None):
     return lambda: ticks > 10000
 
 
-def query(names, records, name, sql, revision):
+def query(names, records, name, sql):
     try:
         import sqlite3
     except ImportError:
@@ -675,18 +650,17 @@ def query(names, records, name, sql, revision):
     supplied_sql = sql or ""
     if sql is None or not sql.strip():
         for n, cols in tables.items():
-            note(quote(n) + " (" + ", ".join(quote(k) + " " + t for k, t in cols.items()) + ")")
+            note(mapped_name(n, collection=True) + " (" + ", ".join(mapped_name(k) + " " + t for k, t in cols.items()) + ")")
         for n, cols in SYSTEM.items():
             note(n + "(" + ", ".join(cols) + ")")
-        note("Use query NAME 'SELECT ...', day(value), COLLATE natural_id; NULL prints empty.")
-        sql = f"SELECT _id, state, _age, _title FROM {quote(name)} ORDER BY _id"
+        note("Use query NAME 'SELECT ...', COLLATE natural_id; NULL prints empty.")
+        sql = f"SELECT _id, state, _title FROM {quote(mapped_name(name, collection=True))} ORDER BY _id"
 
     db = sqlite3.connect(":memory:")
     try:
         db.execute("PRAGMA temp_store=MEMORY")
-        db.create_function("day", 1, day)
         db.create_collation("natural_id", natural)
-        fill(db, tables, records, ages(revision))
+        fill(db, tables, records)
         reads = set()
         exhausted = restrict(db, sqlite3, tables, supplied_sql, reads)
         try:
@@ -719,172 +693,6 @@ def query(names, records, name, sql, revision):
         db.close()
 
 
-def scalar(value, label):
-    if (not value or not value.strip() or "\0" in value or
-            any(c in value for c in "\r\n\v\f\x1c\x1d\x1e\x85\u2028\u2029")):
-        die(f"{label} must be one nonempty logical line")
-    return value.strip()
-
-
-def splice(r, start, stop, payload):
-    """Replace a whole-line interval, adding a boundary newline only when needed."""
-    before, after = "".join(r.lines[:start]), "".join(r.lines[stop:])
-    if before and payload and not before.endswith(("\r", "\n")):
-        before += r.nl
-    if payload and after and not payload.endswith(("\r", "\n")):
-        payload += r.nl
-    return before + payload + after
-
-
-def appended(r, heading, body):
-    if r.open_fence:
-        die("cannot append a heading inside an unclosed fence or comment")
-    return splice(r, len(r.lines), len(r.lines), r.nl + "## " + heading + r.nl + body)
-
-
-def edited(r, args):
-    metadata = (args.reason, args.authority, args.assent)
-    if args.section is not None:
-        if r.open_fence:
-            die("cannot edit sections with an unclosed fence or comment; close it or edit manually")
-        if any(x is not None for x in metadata):
-            die("governance metadata applies only to governed fields")
-        title = scalar(args.section, "heading")
-        if title.casefold() == "history":
-            die("cannot replace History")
-        spans = r.sections.get(title, [])
-        if len(spans) > 1:
-            die(f"duplicate heading: {title}")
-        try:
-            body = sys.stdin.buffer.read().decode("utf-8")
-        except UnicodeDecodeError as error:
-            die(f"{r.rel} section {title!r}: invalid UTF-8: {error}")
-        heads, _, fence = structure(physical_lines(body))
-        if fence or any(level <= 2 for level, *_ in heads) or "\0" in body:
-            die("section payload contains an escaping heading, unclosed fence/comment or NUL")
-        body = re.sub(r"\r\n|\r|\n", lambda _: r.nl, body)
-        candidate = splice(r, *spans[0], body) if spans else appended(r, title, body)
-        # Raw checks deliberately include heading examples in code and comments.
-        if spans:
-            old_body = r.lines[slice(*spans[0])]
-            if any(re.match(r"^ {0,3}#{1,2}(?:[ \t]|[\r\n]|$)", line)
-                   or (i and old_body[i - 1].strip()
-                       and re.fullmatch(r" {0,3}(?:=+|-+)[ \t]*", line.rstrip("\r\n")))
-                   for i, line in enumerate(old_body)):
-                die("section body contains a possible peer heading; edit manually")
-        expected = [h[1] for h in r.heads if h[0] <= 2]
-        if not spans:
-            expected.append(title)
-        if [h[1] for h in structure(physical_lines(candidate))[0] if h[0] <= 2] != expected:
-            die("section edit would change another heading")
-        return candidate
-
-    spelling = args.set[0] if args.set is not None else args.unset
-    if not re.fullmatch(FIELD, spelling):
-        die("invalid field name")
-    key = spelling.lower()
-    value = scalar(args.set[1], "value") if args.set is not None else None
-    if key in {k.lower() for k in GOVERNED_FIELDS}:
-        reason, authority = scalar(args.reason, "reason"), scalar(args.authority, "authority")
-        assent = scalar(args.assent, "assent") if args.assent is not None else None
-        if value is not None and value.lower() == "cleared":
-            die("use --unset to clear a governed field")
-        event = (date.today().isoformat(), key, value or "cleared", reason, authority, assent)
-        line = "- {} {}: {} — {}; authority: {}".format(*event)
-        if assent:
-            line += "; assent: " + assent
-        parsed = ENTRY.fullmatch(line)
-        if not parsed or parsed.groups() != event:
-            die("ambiguous History delimiters in value or metadata")
-        spans = r.sections.get("History", [])
-        return (splice(r, spans[0][0], spans[0][0], line + r.nl) if spans
-                else appended(r, "History", line + r.nl))
-
-    if any(x is not None for x in metadata):
-        die("governance metadata applies only to governed fields")
-    if key in r.at:
-        i = r.at[key]
-        if value is None:
-            candidate = splice(r, i, i + 1, "")
-            if len(r.at) == 1:
-                # Keep a former body field from becoming the optional initial header.
-                lines = physical_lines(candidate)
-                if len(lines) > 2 and not lines[1].strip() and lines[2].strip():
-                    lines.insert(1, r.nl)
-                    candidate = "".join(lines)
-            return candidate
-        old = r.lines[i]
-        eol = old[len(old.rstrip("\r\n")):]
-        return splice(r, i, i + 1, old.split(":", 1)[0] + ": " + value + eol)
-    if value is None:
-        return r.text
-    i = r.header_end
-    extra = r.nl if i < len(r.lines) and r.lines[i].strip() else ""
-    return splice(r, i, i, "- " + spelling + ": " + value + r.nl + extra)
-
-
-def guard(label):
-    writer_guard = getattr(core(), "writer_guard", None)
-    if writer_guard is None:
-        die("the collection extension needs the matching core helper's writer_guard")
-    _, error = writer_guard(label)
-    if error:
-        die(error)
-
-
-def edit(before, records, args):
-    r = records.get(args.ref)
-    if r is None:
-        die(f"unknown record: {args.ref}")
-    if args.expect is not None and args.expect != r.rev:
-        die("expected revision does not match the full current SHA-256")
-
-    new = Record(r.rel, edited(r, args))
-    if args.section is not None:
-        if new.fields != r.fields or new.events != r.events:
-            die("section edit would change fields or governed history")
-    else:
-        key = (args.set[0] if args.set is not None else args.unset).lower()
-        intended = args.set[1].strip() if args.set is not None else None
-        if new.fields.get(key) != intended or (args.unset is not None and key in new.at):
-            die("edit did not produce the requested field value")
-        others = (set(new.fields) | set(r.fields)) - {key}
-        if (any(new.fields.get(k) != r.fields.get(k) for k in others)
-                or new.sections.keys() - {"History"} != r.sections.keys() - {"History"}):
-            die("field edit would reinterpret unrelated Markdown")
-    if r.events and new.events[-len(r.events):] != r.events:
-        die("edit would alter earlier governed history")
-    records[r.ref] = new
-    errors = list(new.errors)
-    added = set(new.needs) - set(r.needs)
-    if added:
-        edges = {ref: rec.needs for ref, rec in records.items()}
-        for target in sorted(added):
-            if target not in records:
-                errors.append(f"{r.ref} needs unknown record {target}")
-            elif target == r.ref or any(ref == r.ref for ref, _ in walk(edges, target)):
-                errors.append(f"needs cycle: added edge {r.ref} -> {target}")
-    if errors:
-        die("\n".join(errors))
-    if new.text == r.text:
-        return
-
-    path = ROOT / r.rel
-    tmp = None
-    try:
-        with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".collection-", delete=False) as out:
-            tmp = Path(out.name)
-            out.write(new.text.encode("utf-8"))
-        os.chmod(tmp, stat.S_IMODE(before[1][r.rel][2]))
-        guard(args.label)
-        if inventory() != before or read_bytes(r.rel, before[1][r.rel]) != r.text.encode("utf-8"):
-            die("collections changed before replacement")
-        os.replace(tmp, path)
-    finally:
-        if tmp is not None and tmp.exists():
-            tmp.unlink()
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
                                      allow_abbrev=False)
@@ -893,43 +701,21 @@ def main():
     q.add_argument("name")
     q.add_argument("sql", nargs="?")
     sub.add_parser("graph").add_argument("ref")
-    e = sub.add_parser("edit", allow_abbrev=False)
-    e.add_argument("ref")
-    op = e.add_mutually_exclusive_group(required=True)
-    for flag, n, metavar in (("--set", 2, ("KEY", "VALUE")),
-                             ("--unset", 1, "KEY"), ("--section", 1, "HEADING")):
-        op.add_argument(flag, nargs=n, action="append", metavar=metavar)
-    for flag in ("--expect", "--label", "--reason", "--authority", "--assent"):
-        e.add_argument(flag)
     if len(sys.argv) == 1:
         parser.print_help()
         return
     args = parser.parse_args()
-    if args.command == "edit":
-        if args.label is not None:
-            scalar(args.label, "label")
-        for key in ("set", "unset", "section"):
-            values = getattr(args, key)
-            if values:
-                if len(values) != 1:
-                    die("edit accepts exactly one operation")
-                setattr(args, key, values[0] if key == "set" else values[0][0])
-        guard(args.label)
-
     revision = head() if args.command == "query" else None
     before, records = snapshot()
-    checked = ([records[args.ref]] if args.ref in records else []) if args.command == "edit" else records.values()
-    errors = [err for r in checked for err in r.errors]
+    errors = [err for r in records.values() for err in r.errors]
     if errors:
         die("\n".join(errors))
-    if args.command == "edit":
-        edit(before, records, args)
-    elif args.command == "graph":
+    if args.command == "graph":
         graph(records, args.ref)
     else:
         if head() != revision:
             die("HEAD changed during snapshot")
-        query(before[0], records, args.name, args.sql, revision)
+        query(before[0], records, args.name, args.sql)
 
 
 if __name__ == "__main__":
