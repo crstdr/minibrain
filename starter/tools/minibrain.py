@@ -25,7 +25,7 @@ Register spaces once: top-level in MAP_FILE, children under parent ## Spaces,
 using leading "- [[path]]" bullets. Assets aren't registered spaces.
 
 Staged managed Markdown or space paths require staged CHANGELOG.md.
-Collection records alone do not trigger this gate.
+Collection records and archives alone do not trigger this gate.
 A staged path edited again after staging is a PROBLEM in check --staged.
 Relevant .gitignore files must match the index, except CRLF/LF endings.
 
@@ -144,7 +144,7 @@ def index_entries(problems, staged=False):
         if rel in MANAGED_DIRS or (Path(rel).parts[0] in MANAGED_DIRS and mode not in ("100644", "100755")):
             problems.append(f"managed path is not an ordinary directory or regular file in index: {rel}")
         if staged:
-            if "/" not in rel and rel.startswith("collection.") and rel != "collection." and mode in ("120000", "160000"):
+            if is_collection_entry(rel) and mode in ("120000", "160000"):
                 problems.append(f"symlink or gitlink collection path in index: {rel}")
             check_space_path(rel, problems)
             check_collection_control_path(rel, problems)
@@ -157,11 +157,14 @@ def working_markdown(problems):
         problems.append(f"cannot inspect managed directory: {error}")
     # Check all names, not only records: host entrypoints are case-insensitive
     # and nested controls remain dangerous even outside the queried layout.
-    for folder in ROOT.glob("collection.*"):
-        if folder.is_dir() and not folder.is_symlink():
-            for current, dirs, names in os.walk(folder, followlinks=False, onerror=walk_error):
-                for name in dirs + names:
-                    check_collection_control_path(relative(Path(current) / name), problems)
+    for current, dirs, _ in os.walk(ROOT, followlinks=False, onerror=walk_error):
+        dirs[:] = [name for name in dirs if not name.startswith(".")]
+        for folder in [name for name in dirs if name.startswith("collection.")]:
+            dirs.remove(folder)
+            if not (Path(current) / folder).is_symlink():
+                for inner, subdirs, names in os.walk(Path(current) / folder, followlinks=False, onerror=walk_error):
+                    for name in subdirs + names:
+                        check_collection_control_path(relative(Path(inner) / name), problems)
     for dirname in sorted(MANAGED_DIRS):
         folder = ROOT / dirname
         if folder.is_symlink() or (folder.exists() and not folder.is_dir()):
@@ -273,7 +276,8 @@ def load_markdown(staged, problems, records=None, entries=None):
             documents[rel] = content
         except (OSError, UnicodeError) as error:
             problems.append(f"cannot read Markdown {rel}: {error}")
-    durable = {rel for rel in paths if is_managed_path(rel) or (records and records.is_record(rel))}
+    durable = {rel for rel in paths if is_managed_path(rel) or is_collection_archive(rel)
+               or (records and records.is_record(rel))}
     if durable and staged and not staged_ignore_rules_match(durable, entries, problems):
         return None  # Later Git operations could reopen a rejected special file.
     if durable:
@@ -336,9 +340,32 @@ def staged_paths(base="HEAD"):
 
 def is_managed_path(path):
     candidate = Path(path)
-    if candidate.suffix != ".md":
+    if candidate.suffix != ".md" or in_collection(path) or is_collection_archive(path):
         return False
     return len(candidate.parts) == 1 or candidate.parts[0] in MANAGED_DIRS
+
+
+def in_collection(rel):
+    """Inside a collection.* folder at any depth, outside hidden folders."""
+    for part in PurePosixPath(rel).parts[:-1]:
+        if part.startswith("."):
+            return False
+        if part.startswith("collection."):
+            return True
+    return False
+
+
+def is_collection_entry(rel):
+    """A collection.* folder or archive at any depth, outside hidden and collection folders."""
+    parts = PurePosixPath(rel).parts
+    return (parts[-1].startswith("collection.") and parts[-1] != "collection."
+            and not any(part.startswith(".") for part in parts[:-1]) and not in_collection(rel))
+
+
+def is_collection_archive(rel):
+    name = PurePosixPath(rel).name
+    return (is_collection_entry(rel) and name.endswith(".archive.md")
+            and len(name) > len("collection..archive.md"))
 
 
 def is_space_path(rel):
@@ -351,8 +378,7 @@ def is_space_asset(rel):
 
 def check_collection_control_path(rel, problems):
     path = PurePosixPath(rel)
-    if (len(path.parts) > 1 and path.parts[0].startswith("collection.")
-            and path.name.casefold() in {name.casefold() for name in ROOT_ONLY}):
+    if in_collection(rel) and path.name.casefold() in {name.casefold() for name in ROOT_ONLY}:
         problems.append(f"root-only control file inside a collection: {rel}; use a non-entrypoint name")
 
 
@@ -629,13 +655,15 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
             problems.append(f"duplicate Markdown basename {basename}.md: {', '.join(legacy)}")
     # Records have outgoing links too, but no Map or routine-changelog obligations.
     # Check even in fences; space assets and CHANGELOG history are excluded.
+    # Archived records stay valid targets at their former paths.
+    targets = documents.keys() | (records.archived_paths(documents) if records else set())
     for rel in sorted(canonical.keys() | record_paths):
         content = documents[rel]
         if Path(rel).name == "CHANGELOG.md":
             continue
         for match in WIKILINK.finditer(content):
             target = match.group(1).strip()
-            _, error = resolve_link(target, documents, by_basename)
+            _, error = resolve_link(target, targets, by_basename)
             if error:
                 problems.append(f"{error} wikilink in {rel}: [[{target}]]")
 
@@ -708,8 +736,8 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
         problems.append(f"cannot inspect staged changes: {staged_error}")
     else:
         # All space changes; only managed Markdown elsewhere. Presence does not prove a meaningful outcome.
-        staged_managed = {p for p in staged
-                          if (is_managed_path(p) or is_space_path(p)) and p != "CHANGELOG.md"}
+        staged_managed = {p for p in staged if (is_managed_path(p) or is_space_path(p))
+                          and p != "CHANGELOG.md" and not in_collection(p) and not is_collection_archive(p)}
         if staged_managed and "CHANGELOG.md" not in staged:
             problems.append("staged memory requires staged CHANGELOG.md: "
                             + ", ".join(sorted(staged_managed))
