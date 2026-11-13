@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Local Markdown collections. Create and change records by editing collection.NAME/ID.md.
-For wikilinks, avoid # and brackets in IDs.
+For wikilinks, avoid # and brackets in IDs. Put collection.NAME/ where its
+records belong: usually inside the space that owns them, or at the root when it
+spans spaces. NAME is unique across the brain; hidden folders are skipped.
 
 Start with '# Title', optionally one blank line, then single-line '- key: value'
 fields. Separate the body with a blank line. An ordinary prose list is body.
@@ -35,11 +37,12 @@ reach is built only when queried and can grow quadratically. This is not a
 memory sandbox for adversarial SQL.
 
 Promote within a collection by changing its locally defined state. Across
-collections, create the destination record and archive the source with a
-root-relative successor wikilink, e.g. [[collection.tasks/T-1]] for the ref
-tasks/T-1. Retain the committed source. Keep one canonical home. Records
-require neither map registration nor a routine collection-only changelog
-entry. Follow the brain's Checkpoint procedure for durable outcomes.
+collections, create the destination record and close the source with a
+wikilink to the destination's root-relative path, e.g.
+[[spaces/Sorrel/collection.tasks/T-1]] for the ref tasks/T-1. Retain the
+committed source. Keep one canonical home. Records require neither map
+registration nor a routine collection-only changelog entry. Follow the brain's
+Checkpoint procedure for durable outcomes.
 
 Follow the brain's writer/delegation rules, edit only your own assessments,
 and recheck waiting conditions at their approved sources before acting.
@@ -59,6 +62,11 @@ For example, with benefit/cost numeric and 'open' the local candidate state:
   graph tasks/T-1
 The relation names needs, reach and sqlite_* are reserved.
 An SQL error can follow streamed rows: nonzero exit means discard that result.
+
+archive NAME ID... moves committed records whole into collection.NAME.archive.md
+beside the folder; restore NAME ID moves one back. Neither commits. Archived
+records stay in needs, reach, _unmet and graph, are not table rows, and their
+IDs stay taken. Do not edit the archive.
 """
 
 import argparse
@@ -75,6 +83,7 @@ import stat
 import sys
 
 COLLECTION_PREFIX = "collection."
+ARCHIVE_SUFFIX = ".archive.md"
 GOVERNED_FIELDS = set()
 NUMERIC_FIELDS = {}       # collection name -> set of numeric field names
 SATISFIED_STATES = {}     # target collection name -> set of satisfying state values
@@ -91,6 +100,10 @@ EVENT = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+(?:\d{4}-\d{2}-\d{2}\s*[:—-]\s*|[
                    r"([*_`]*)(" + FIELD + r")[*_`]*\s*:")
 FENCE = re.compile(r"^ {0,3}(\x60{3,}|~{3,})(.*)$")
 ATX = re.compile(r"^ {0,3}(#{1,6})(?:[ \t]+(.*)|$)")
+ARCHIVED = re.compile(r"<!-- archived: (\S+) (\d{4}-\d{2}-\d{2}) -->(\r?\n)")
+MARKER = re.compile(r"<!--\s*(?:end\s+)?archived:", re.I)
+ARCHIVE_HEADER = ("# Archived collection.{0} records\n\nWritten by tools/collection.py archive; "
+                  "restore one with: python3 tools/collection.py restore {0} ID. Do not edit.\n\n")
 SYSTEM = {"needs": ("item", "need"), "reach": ("item", "need", "depth")}
 META = {"_id": "TEXT PRIMARY KEY", "_ref": "TEXT", "_title": "TEXT",
         "_unmet": "INTEGER"}
@@ -115,12 +128,30 @@ def day(value):
 
 def is_record(rel):
     parts = rel.split("/")
-    return (len(parts) == 2 and parts[0].startswith(COLLECTION_PREFIX)
-            and len(parts[0]) > len(COLLECTION_PREFIX) and parts[1].endswith(".md"))
+    return (len(parts) >= 2 and parts[-2].startswith(COLLECTION_PREFIX)
+            and len(parts[-2]) > len(COLLECTION_PREFIX) and parts[-1].endswith(".md")
+            and not any(p.startswith((".", COLLECTION_PREFIX)) for p in parts[:-2]))
+
+
+def is_archive(rel):
+    parts = rel.split("/")
+    return (parts[-1].startswith(COLLECTION_PREFIX) and parts[-1].endswith(ARCHIVE_SUFFIX)
+            and len(parts[-1]) > len(COLLECTION_PREFIX + ARCHIVE_SUFFIX)
+            and not any(p.startswith((".", COLLECTION_PREFIX)) for p in parts[:-1]))
+
+
+def folder_of(rel):
+    """The collection.NAME folder of a record or archive path."""
+    return rel[:-len(ARCHIVE_SUFFIX)] if is_archive(rel) else rel.rpartition("/")[0]
+
+
+def name_of(folder):
+    return folder.rpartition("/")[2][len(COLLECTION_PREFIX):]
 
 
 def ref_of(rel):
-    return rel[len(COLLECTION_PREFIX):-3]
+    folder, _, item = rel.rpartition("/")
+    return name_of(folder) + "/" + item[:-3]
 
 
 def stamp(st):
@@ -128,24 +159,92 @@ def stamp(st):
 
 
 def inventory():
-    names, files = set(), {}
-    for folder in ROOT.iterdir():
-        if not folder.name.startswith(COLLECTION_PREFIX) or folder.name == COLLECTION_PREFIX:
-            continue
-        mode = folder.lstat().st_mode
-        if stat.S_ISLNK(mode):
-            die(f"symlink collection path: {folder.name}")
-        if not stat.S_ISDIR(mode):
-            continue
-        names.add(folder.name[len(COLLECTION_PREFIX):])
-        for path in folder.iterdir():
-            rel = folder.name + "/" + path.name
-            if is_record(rel):
-                st = path.lstat()
+    """Collection folders by name, at any depth outside hidden folders; stamps of records and archives."""
+    folders, files = defaultdict(set), {}
+
+    def fail(error):
+        raise error
+
+    for current, dirs, entries in os.walk(ROOT, onerror=fail):
+        for entry in sorted(dirs + entries):
+            if not entry.startswith(COLLECTION_PREFIX) or entry == COLLECTION_PREFIX:
+                continue
+            path = Path(current) / entry
+            rel = path.relative_to(ROOT).as_posix()
+            st = path.lstat()
+            if stat.S_ISLNK(st.st_mode):
+                die(f"symlink collection path: {rel}")
+            if stat.S_ISDIR(st.st_mode):
+                folders[name_of(rel)].add(rel)
+                for child in path.iterdir():
+                    record = rel + "/" + child.name
+                    if is_record(record):
+                        child_st = child.lstat()
+                        if not stat.S_ISREG(child_st.st_mode):
+                            die(f"record is not a regular file: {record}")
+                        files[record] = stamp(child_st)
+            elif is_archive(rel):
                 if not stat.S_ISREG(st.st_mode):
-                    die(f"record is not a regular file: {rel}")
+                    die(f"archive is not a regular file: {rel}")
+                folders[name_of(folder_of(rel))].add(rel)
                 files[rel] = stamp(st)
-    return names, files
+        dirs[:] = [d for d in dirs if not d.startswith((".", COLLECTION_PREFIX))]
+    return folders, files
+
+
+def unpack(text):
+    """Archive blocks by ID as (content, start, end); start and end are offsets into text.
+    Markers are written with LF; a CRLF checkout converts them and the separator alike."""
+    blocks, block, offset = {}, None, 0
+    for line in re.findall(r"[^\n]*\n|[^\n]+\Z", text):
+        start = ARCHIVED.fullmatch(line)
+        if block is None and start:
+            if start[1] in blocks:
+                die(f"{start[1]} archived twice")
+            block = (start[1], offset, offset + len(line), start[3])
+        elif block and line in (f"<!-- end archived: {block[0]} -->" + end for end in ("\n", "\r\n")):
+            content = text[block[2]:offset]
+            if not content.endswith(block[3]):
+                die(f"malformed archive block {block[0]}")
+            blocks[block[0]] = (content[:-len(block[3])], block[1], offset + len(line))
+            block = None
+        elif MARKER.search(line) or (block is None and blocks):
+            die(f"malformed archive line: {line.rstrip()}")
+        offset += len(line)
+    if block:
+        die(f"archive block {block[0]} has no end marker")
+    return blocks
+
+
+def stored(rel, text):
+    """Archived content by the record's former path."""
+    try:
+        blocks = unpack(text)
+    except ValueError as error:
+        die(f"{rel}: {error}")
+    return {f"{folder_of(rel)}/{item}.md": content for item, (content, _, _) in blocks.items()}
+
+
+def archived_paths(documents):
+    """Former paths of archived records, which stay valid wikilink targets."""
+    paths = set()
+    for rel, content in documents.items():
+        if is_archive(rel):
+            try:
+                paths.update(stored(rel, content))
+            except ValueError:
+                pass  # check reports the malformed archive
+    return paths
+
+
+def conflicts(folders, records, archived):
+    # An archive is named only when its folder is absent.
+    places = {name: {p for p in paths if not (is_archive(p) and folder_of(p) in paths)}
+              for name, paths in folders.items()}
+    return ([f"duplicate collection name {name}: {', '.join(sorted(paths))}"
+             for name, paths in sorted(places.items()) if len(paths) > 1]
+            + [f"archived ID reused by an active record: {records[ref].rel}"
+               for ref in sorted(records.keys() & archived.keys())])
 
 
 def read_bytes(rel, expected):
@@ -206,6 +305,8 @@ def structure(lines):
 
 
 class Record:
+    archived = False
+
     def __init__(self, rel, text):
         self.rel = rel
         self.ref = ref_of(rel)
@@ -303,18 +404,28 @@ class Record:
 
 
 def snapshot():
+    """Active and archived records by ref; archived ones are flagged."""
     before = inventory()
-    records = {}
+    records, archived = {}, {}
     for rel, sig in sorted(before[1].items()):
         try:
             content = read_bytes(rel, sig).decode("utf-8")
         except UnicodeDecodeError as error:
             die(f"{rel}: invalid UTF-8: {error}")
-        rec = Record(rel, content)
-        records[rec.ref] = rec
+        if is_archive(rel):
+            for path, body in stored(rel, content).items():
+                rec = Record(path, body)
+                rec.archived = True
+                archived[rec.ref] = rec
+        else:
+            rec = Record(rel, content)
+            records[rec.ref] = rec
     if inventory() != before:
         die("collections changed during snapshot; take a consistent read")
-    return before, records
+    problems = conflicts(before[0], records, archived)
+    if problems:
+        die("\n".join(problems))
+    return before, {**archived, **records}
 
 
 class Network:
@@ -365,7 +476,7 @@ class Network:
                     break
                 value += state not in SATISFIED_STATES[target.name]
             counts[ref] = value
-            if value is None:
+            if value is None and not records[ref].archived:
                 note(f"{ref}: _unmet unknown; check reachable needs, states and SATISFIED_STATES")
         return counts
 
@@ -382,26 +493,75 @@ def walk(edges, origin):
 
 
 def check(staged_view, documents, problems, warnings, git, base="HEAD"):
-    records = {}
+    records, archived, contents, origin, folders = {}, {}, {}, {}, defaultdict(set)
     for rel, content in documents.items():
+        if not (is_record(rel) or is_archive(rel)):
+            continue
+        folders[name_of(folder_of(rel))].add(rel if is_archive(rel) else folder_of(rel))
         if is_record(rel):
             r = Record(rel, content)
             records[r.ref] = r
             problems.extend(r.errors)
-    problems.extend(Network(records).errors)
+            continue
+        try:
+            found = stored(rel, content)
+        except ValueError as error:
+            problems.append(str(error))
+            continue
+        for path, body in found.items():
+            r = Record(path, body)
+            archived[r.ref], contents[r.ref], origin[r.ref] = r, body, rel
+    problems.extend(conflicts(folders, records, archived))
+    problems.extend(Network({**archived, **records}).errors)
     if not staged_view:
         return
 
-    def changed(kind):
+    def changed(kind, test=is_record):
         args = ["diff", "--cached", "--no-renames", "--name-only", "-z", "--diff-filter=" + kind]
         result = git(*args, *([base] if base != "HEAD" else []))
         if result.returncode:
             problems.append(f"cannot inspect staged {kind} paths: {result.stderr.strip()}")
             return []
-        return [p for p in result.stdout.split("\0") if is_record(p)]
+        return [p for p in result.stdout.split("\0") if test(p)]
 
-    for rel in changed("D"):
-        problems.append(f"committed record deleted: {rel} (archive by state)")
+    def committed(rel):
+        result = git("show", f"{base}:{rel}")
+        if result.returncode:
+            problems.append(f"cannot read {base}:{rel}: {result.stderr.strip()}")
+            return None
+        return result.stdout
+
+    # Archiving is a pure move of committed content, and archived content is frozen.
+    previous = {}
+    for rel in changed("DMT", is_archive):
+        try:
+            previous.update((ref_of(p), (p, body)) for p, body in stored(rel, committed(rel) or "").items())
+        except ValueError:
+            pass  # a malformed committed archive was reported when it was committed
+    rewritten = set(changed("AMT", is_archive))
+    deleted = changed("D")
+    for rel in deleted:
+        ref = ref_of(rel)
+        if ref in contents:
+            if ref not in previous and contents[ref] != committed(rel):
+                problems.append(f"archived record differs from its committed version: {rel}")
+        # A moved collection keeps each record, unchanged, at its new path.
+        elif not (ref in records and records[ref].rel != rel
+                  and documents[records[ref].rel] == committed(rel)):
+            problems.append(f"committed record deleted: {rel} (close it by state or use the archive command; do not delete)")
+    for ref in sorted(contents.keys() - previous.keys() - {ref_of(rel) for rel in deleted}):
+        if origin[ref] in rewritten:
+            problems.append(f"archive block has no committed record deleted in this save: {archived[ref].rel}")
+    for ref, (path, body) in sorted(previous.items()):
+        if ref in contents:
+            if contents[ref] != body:
+                problems.append(f"archived record altered: {path}; archived content is frozen")
+        elif ref not in records:
+            problems.append(f"archived record removed: {path} (restore it or keep it archived)")
+        else:
+            old = Record(path, body).events
+            if old and records[ref].events[-len(old):] != old:
+                problems.append(f"earlier governed entry altered or removed in {records[ref].rel}: prepend a new entry")
     for rel in changed("MT"):
         r = records.get(ref_of(rel))
         if r is None:
@@ -524,7 +684,7 @@ def schema(names, records):
         numeric = {k.lower() for k in NUMERIC_FIELDS.get(name, ())}
         keys = ["state"] + sorted(GOVERNED_FIELDS) + sorted(NUMERIC_FIELDS.get(name, ()))
         for r in records.values():
-            if r.name == name:
+            if r.name == name and not r.archived:
                 keys.extend(r.lines[i][2:].split(":", 1)[0] for i in r.at.values())
         spellings, columns = {}, {}
         tables[name] = dict(META)
@@ -573,10 +733,11 @@ def fill(db, tables, records):
         definition = ", ".join(k + (" INTEGER" if k == "depth" else " TEXT") for k in cols)
         db.execute(f"CREATE TABLE {name} ({definition})")
     for ref, r in records.items():
-        cols = tables[r.name]
-        values = [r.id, ref, r.title, unmet[ref]]
-        values.extend(sql_value(r, k, t) for k, t in cols.items() if k not in META)
-        db.execute(f"INSERT INTO {quote(mapped_name(r.name, collection=True))} VALUES ({','.join('?' for _ in values)})", values)
+        if not r.archived:
+            cols = tables[r.name]
+            values = [r.id, ref, r.title, unmet[ref]]
+            values.extend(sql_value(r, k, t) for k, t in cols.items() if k not in META)
+            db.execute(f"INSERT INTO {quote(mapped_name(r.name, collection=True))} VALUES ({','.join('?' for _ in values)})", values)
         db.executemany("INSERT INTO needs VALUES (?,?)", ((ref, n) for n in r.needs))
     public_names = {sql_name(mapped_name(name, collection=True)) for name in tables}
     for name, col in [(name, cols[0]) for name, cols in SYSTEM.items()] + [("reach", "need")]:
@@ -654,6 +815,9 @@ def query(names, records, name, sql):
         for n, cols in SYSTEM.items():
             note(n + "(" + ", ".join(cols) + ")")
         note("Use query NAME 'SELECT ...', COLLATE natural_id; NULL prints empty.")
+        count = sum(r.archived and r.name == name for r in records.values())
+        if count:
+            note(f"{count} archived records in {location(names, name)}{ARCHIVE_SUFFIX}: not table rows; needs, reach, _unmet and graph include them.")
         sql = f"SELECT _id, state, _title FROM {quote(mapped_name(name, collection=True))} ORDER BY _id"
 
     db = sqlite3.connect(":memory:")
@@ -693,6 +857,72 @@ def query(names, records, name, sql):
         db.close()
 
 
+def location(folders, name):
+    if name not in folders:
+        die(f"unknown collection: {name}")
+    place = min(folders[name])
+    return folder_of(place) if is_archive(place) else place
+
+
+def refuse(ref, reason):
+    note(f"REFUSED: {ref}: {reason}")
+
+
+def archive(folders, records, name, items):
+    head()
+    folder = location(folders, name)
+    path = ROOT / (folder + ARCHIVE_SUFFIX)
+    refused = 0
+    for item in dict.fromkeys(items):
+        ref = name + "/" + item
+        reason = None
+        if ref in records and records[ref].archived:
+            reason = "already archived"
+        elif ref not in records:
+            reason = "no such active record"
+        else:
+            rel = records[ref].rel
+            data = (ROOT / rel).read_bytes()
+            committed = core().git("show", f"HEAD:{rel}", binary=True)
+            if committed.returncode or committed.stdout.replace(b"\r\n", b"\n") != data.replace(b"\r\n", b"\n"):
+                reason = "uncommitted or changed since commit; save it first"
+            elif MARKER.search(data.decode("utf-8")):
+                reason = "content contains archive-marker text (<!-- archived:)"
+        if reason:
+            refuse(ref, reason)
+            refused += 1
+            continue
+        if not path.exists():
+            path.write_bytes(ARCHIVE_HEADER.format(name).encode("utf-8"))
+        with open(path, "ab") as stream:
+            stream.write(f"<!-- archived: {item} {date.today().isoformat()} -->\n".encode("utf-8")
+                         + data + f"\n<!-- end archived: {item} -->\n".encode("utf-8"))
+        (ROOT / rel).unlink()
+        print(f"archived {ref}")
+    if refused:
+        sys.exit(1)
+
+
+def restore(folders, records, name, item):
+    folder = location(folders, name)
+    ref, rel = name + "/" + item, f"{folder}/{item}.md"
+    path = ROOT / (folder + ARCHIVE_SUFFIX)
+    text = path.read_bytes().decode("utf-8") if path.exists() else ""
+    blocks = unpack(text)
+    if ref in records and not records[ref].archived:
+        refuse(ref, f"active record exists: {records[ref].rel}")
+        sys.exit(1)
+    if item not in blocks:
+        refuse(ref, "not archived")
+        sys.exit(1)
+    content, start, end = blocks[item]
+    (ROOT / folder).mkdir(exist_ok=True)
+    with open(ROOT / rel, "xb") as stream:
+        stream.write(content.encode("utf-8"))
+    path.write_bytes((text[:start] + text[end:]).encode("utf-8"))
+    print(f"restored {ref}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
                                      allow_abbrev=False)
@@ -701,17 +931,27 @@ def main():
     q.add_argument("name")
     q.add_argument("sql", nargs="?")
     sub.add_parser("graph").add_argument("ref")
+    a = sub.add_parser("archive")
+    a.add_argument("name")
+    a.add_argument("ids", nargs="+")
+    r = sub.add_parser("restore")
+    r.add_argument("name")
+    r.add_argument("id")
     if len(sys.argv) == 1:
         parser.print_help()
         return
     args = parser.parse_args()
     revision = head() if args.command == "query" else None
     before, records = snapshot()
-    errors = [err for r in records.values() for err in r.errors]
+    errors = [err for r in records.values() if not r.archived for err in r.errors]
     if errors:
         die("\n".join(errors))
     if args.command == "graph":
         graph(records, args.ref)
+    elif args.command == "archive":
+        archive(before[0], records, args.name, args.ids)
+    elif args.command == "restore":
+        restore(before[0], records, args.name, args.id)
     else:
         if head() != revision:
             die("HEAD changed during snapshot")

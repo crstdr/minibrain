@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [0.7.0-alpha.8](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.7...v0.7.0-alpha.8) | `tools/collection.py` and `tools/minibrain.py`: take both helpers whole; `.agents/skills/reflect/SKILL.md` Destinations: one archive line. Brains without collection.py take tools/minibrain.py and the reflect line. |
 | [0.7.0-alpha.7](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.6...v0.7.0-alpha.7) | `AGENTS.md` opening block, Authority and privacy, Resume step 3 and Checkpoint steps 4–5; `CLAUDE.md` mirrors the opening block; `tools/collection.py`: take the helper whole. |
 | [0.7.0-alpha.6](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.5...v0.7.0-alpha.6) | `AGENTS.md` Checkpoint: express the reflection cue as explicit When/Do conditions and action. |
 | [0.7.0-alpha.5](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.4...v0.7.0-alpha.5) | `AGENTS.md` Checkpoint: reflection invitation after a completed corrective save, unless timing is already agreed. |
@@ -19,6 +20,13 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.4.2](https://github.com/crstdr/minibrain/compare/v0.3.1...v0.4.2) | nothing |
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
+
+## 0.7.0-alpha.8
+
+- Collections: a `collection.NAME` folder may sit at any depth outside hidden folders, usually inside the space that owns its records. Names stay unique across the brain; a clash is a PROBLEM naming both paths.
+- New `archive` and `restore` commands move committed records whole into `collection.NAME.archive.md` beside the folder and back. Archived records keep their IDs and stay in `needs`, `reach`, `_unmet`, `graph` and wikilink checks, but not in SQL tables. Archived content is frozen. Nothing archives automatically.
+- Core helper: collection folders and archives at any depth are neither topics nor spaces and do not trigger the changelog gate.
+- Untested with agents.
 
 ## 0.7.0-alpha.7
 
