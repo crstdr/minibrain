@@ -827,8 +827,8 @@ def lock(args):
     if staged:
         # Refusing here stranded a writer behind its own interrupted save; the holder judges ownership.
         print(f"{len(staged)} paths were already staged: {shown_paths(staged)}.\n"
-              "Left by your own interrupted save: finish it. Otherwise release the lock and report; "
-              "never unstage or commit another writer's paths.")
+              "If your own interrupted save left them, finish it; otherwise release the lock and report. "
+              "Never unstage or commit another writer's paths.")
     return 0
 
 

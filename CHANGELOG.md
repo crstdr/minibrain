@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [0.7.0-alpha.9](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.8...v0.7.0-alpha.9) | `tools/minibrain.py`: take the helper whole. |
 | [0.7.0-alpha.8](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.7...v0.7.0-alpha.8) | `tools/collection.py` and `tools/minibrain.py`: take both helpers whole; `.agents/skills/reflect/SKILL.md` Destinations: one archive line. `AGENTS.md` `<rpce_tooling_guidance>`: NAME line. Brains without collection.py take tools/minibrain.py and the reflect line. |
 | [0.7.0-alpha.7](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.6...v0.7.0-alpha.7) | `AGENTS.md` opening block, Authority and privacy, Resume step 3 and Checkpoint steps 4–5; `CLAUDE.md` mirrors the opening block; `tools/collection.py`: take the helper whole. |
 | [0.7.0-alpha.6](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.5...v0.7.0-alpha.6) | `AGENTS.md` Checkpoint: express the reflection cue as explicit When/Do conditions and action. |
@@ -20,6 +21,11 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.4.2](https://github.com/crstdr/minibrain/compare/v0.3.1...v0.4.2) | nothing |
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
+
+## 0.7.0-alpha.9
+
+- The helper recovers a writer's own stuck save: `lock <name>` re-issues a lost label when that name already holds the lock, and no longer refuses files left staged by an interrupted save.
+- Recovery only: `AGENTS.md` and the output of a normal `lock`, `commit`, `unlock` and `check` are unchanged from alpha.8.
 
 ## 0.7.0-alpha.8
 
