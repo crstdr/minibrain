@@ -916,14 +916,13 @@ def writer_guard(label):
         return {}, "a writer lock is held but its owner is unreadable; treat it as held and report it to the person"
     if meta["owner"] != label and label and meta["owner"].partition("/")[0] == label.partition("/")[0]:
         return {}, REPLACED.format(label=label, name=label.partition("/")[0])
+    if not label:
+        return {}, (f"commit needs --label while a lock is held. Held by {meta['owner']} "
+                    f"(since {meta.get('at', '?')}).\nIf you are {meta['owner'].partition('/')[0]}: "
+                    f"rerun with --label {meta['owner']}. Otherwise stay read-only.")
     if meta["owner"] != label:
-        detail = f", not {label}; " if label else "; "
-        detail += ("use this session's issued label, or stay read-only "
-                   "if this session did not acquire it")
-        if not label:
-            name = meta["owner"].partition("/")[0]
-            detail += f". Label lost and {name} is your name: `lock {name}` re-issues it"
-        return {}, f"the lock belongs to {meta['owner']} (since {meta.get('at', '?')}){detail}"
+        return {}, (f"the lock belongs to {meta['owner']} (since {meta.get('at', '?')}), not {label}; "
+                    "use this session's issued label, or stay read-only if this session did not acquire it")
     return meta, None
 
 

@@ -777,7 +777,7 @@ class GitReferenceTests(unittest.TestCase):
         label = self.acquire()
         self.assertIn("nothing is staged", self.tool("commit", "--label", label, "-m", "x", expected=1))
         self.stage_change()
-        self.assertIn("use this session's issued label", self.tool("commit", "-m", "x", expected=1))
+        self.assertIn(f"rerun with --label {label}. Otherwise stay read-only", self.tool("commit", "-m", "x", expected=1))
         self.assertIn("not Beta/0000", self.tool("commit", "--label", "Beta/0000", "-m", "x", expected=1))
         for args in [(), ("-m",), ("-a", "-m", "x"), ("-m", "x", "topics/Project.md")]:
             self.assertIn("usage:", self.tool("commit", "--label", label, *args, expected=2))
