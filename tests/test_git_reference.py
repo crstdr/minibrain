@@ -522,11 +522,61 @@ class GitReferenceTests(unittest.TestCase):
         self.assertIn(label, self.tool("check"))
         self.tool("unlock", label)
 
-    def test_contending_seat_and_same_seat_both_refused(self):
+    def test_another_name_is_refused_and_cannot_release(self):
         label = self.acquire()
         self.assertIn("LOCK HELD", self.tool("lock", "Beta", expected=1))
-        self.assertIn("LOCK HELD", self.tool("lock", "Alpha", expected=1))
+        self.assertIn("Never remove another writer's lock", self.tool("unlock", "Beta/0000", expected=1))
         self.tool("unlock", label)
+
+    def reissued(self, out):
+        return re.search(r"lock re-issued: ([A-Za-z0-9_-]+/[0-9a-f]+)", out)[1]
+
+    def test_same_name_gets_a_fresh_label_after_a_forgotten_release(self):
+        first = self.acquire()
+        self.stage_change()
+        self.tool("commit", "--label", first, "-m", "Alpha: First")
+        out = self.tool("lock", "Alpha")  # the save landed; the lock was never released
+        second = self.reissued(out)
+        self.assertNotEqual(first, second)
+        self.assertNotIn("changed paths", out)
+        for args in [("unlock", first), ("commit", "--label", first, "-m", "x")]:
+            self.assertIn("is not current", self.tool(*args, expected=1))
+        self.stage_change("Second.")
+        self.tool("commit", "--label", second, "-m", "Alpha: Second")
+        self.assertEqual(self.commits(), "3")
+        self.tool("unlock", second)
+
+    def test_reissue_lists_unfinished_work_and_keeps_the_amend_receipt(self):
+        first = self.acquire()
+        self.stage_change()
+        self.tool("commit", "--label", first, "-m", "Alpha: First")
+        self.write("MEMORY.md", "# Memory\n\n## Focus\n\nMissed.\n\n## Open threads\n\n")
+        self.write("topics/Project.md", "# Project\n\n## Current status\n\nLater.\n\n## History\n")
+        self.git("add", "--", "MEMORY.md")
+        out = self.tool("lock", "Alpha")
+        self.assertIn("staged: MEMORY.md", out)
+        self.assertIn("other changed paths: topics/Project.md", out)
+        self.git("restore", "--", "topics/Project.md")
+        self.tool("commit", "--label", self.reissued(out), "--amend")
+        self.assertEqual(self.commits(), "2")
+        self.tool("unlock", self.reissued(out))
+
+    def test_reissue_never_overwrites_a_lock_that_changed_meanwhile(self):
+        self.acquire()
+        helper = self.load_helper()
+        seen = helper.lock_meta()
+        self.tool("unlock", "--force")
+        other = self.acquire("Beta")
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(helper.reissue("Alpha", seen), 1)
+        self.assertIn("changed meanwhile", output.getvalue())
+        self.tool("unlock", other)
+
+    def test_reissue_leaves_an_unreadable_lock_alone(self):
+        self.acquire()
+        self.write(".git/kb-writer.lock/meta.json", "not-json")
+        self.assertIn("LOCK HELD", self.tool("lock", "Alpha", expected=1))
+        self.assertEqual((self.root / ".git/kb-writer.lock/meta.json").read_text(), "not-json")
 
     def test_wrong_label_cannot_release(self):
         label = self.acquire()
@@ -542,15 +592,18 @@ class GitReferenceTests(unittest.TestCase):
         self.tool("unlock", first, expected=1)
         self.tool("unlock", second)
 
-    def test_staged_foreign_work_is_not_unstaged_or_committed(self):
-        self.write("work.txt", "synthetic pending staging\n")
-        self.git("add", "--", "work.txt")
+    def test_paths_staged_before_acquisition_are_listed_not_unstaged_or_committed(self):
+        self.write("MEMORY.md", "# Memory\n\n## Focus\n\nLeft staged.\n\n## Open threads\n\n")
+        self.git("add", "--", "MEMORY.md")
         before = self.git("diff", "--cached").stdout
         head = self.git("rev-parse", "HEAD").stdout
-        self.assertIn("REFUSED", self.tool("lock", "Alpha", expected=1))
-        self.assertFalse((self.root / ".git/kb-writer.lock").exists())
+        out = self.tool("lock", "Alpha")  # refusing here stranded a writer behind its own leftover
+        self.assertIn("1 paths were already staged: MEMORY.md", out)
         self.assertEqual(self.git("diff", "--cached").stdout, before)
         self.assertEqual(self.git("rev-parse", "HEAD").stdout, head)
+        label = re.search(r"lock acquired: (\S+)", out)[1]
+        self.assertIn("requires staged CHANGELOG.md", self.tool("commit", "--label", label, "-m", "x", expected=1))
+        self.tool("unlock", label)
 
     def test_unreadable_owner_is_preserved(self):
         label = self.acquire()
@@ -725,7 +778,7 @@ class GitReferenceTests(unittest.TestCase):
         self.assertIn("nothing is staged", self.tool("commit", "--label", label, "-m", "x", expected=1))
         self.stage_change()
         self.assertIn("use this session's issued label", self.tool("commit", "-m", "x", expected=1))
-        self.assertIn("not Alpha/0000", self.tool("commit", "--label", "Alpha/0000", "-m", "x", expected=1))
+        self.assertIn("not Beta/0000", self.tool("commit", "--label", "Beta/0000", "-m", "x", expected=1))
         for args in [(), ("-m",), ("-a", "-m", "x"), ("-m", "x", "topics/Project.md")]:
             self.assertIn("usage:", self.tool("commit", "--label", label, *args, expected=2))
         self.assertEqual(self.commits(), "1")
@@ -1378,10 +1431,9 @@ class GitReferenceTests(unittest.TestCase):
         self.assertIn("lock remains held", output.getvalue())
 
     def test_failed_rollback_reports_retained_lock(self):
-        self.write("work.txt", "Synthetic staging\n")
-        self.git("add", "--", "work.txt")
         helper = self.load_helper()
-        with mock.patch.object(helper, "release_lock", return_value=False), contextlib.redirect_stdout(io.StringIO()) as output:
+        with mock.patch.object(helper, "staged_paths", return_value=(set(), "synthetic failure")), \
+                mock.patch.object(helper, "release_lock", return_value=False), contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(helper.lock(["Alpha"]), 1)
         self.assertIn("lock remains held", output.getvalue())
         self.assertTrue((self.root / ".git/kb-writer.lock").is_dir())

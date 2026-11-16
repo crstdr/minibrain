@@ -795,9 +795,10 @@ def lock(args):
         LOCK.mkdir()
     except FileExistsError:
         meta = lock_meta()
+        if meta.get("owner", "").partition("/")[0] == name:
+            return reissue(name, meta)
         print(f"LOCK HELD: {meta.get('owner', '(owner unreadable)')} since {meta.get('at', '?')} "
               f"(HEAD {shown_head(meta)}).\n"
-              "A lock this session did not acquire is never its own, whatever name it carries.\n"
               "Do not change shared memory files or stage anything; continue read-only.\n"
               "Recheck at an appropriate later point; report owner, timestamp and unfinished state\n"
               "if it remains held and blocks work (unreadable ownership: report now). No automatic retry loop or expiry.\n"
@@ -807,13 +808,9 @@ def lock(args):
         print(f"REFUSED: cannot acquire writer lock ({error}); inspect and report, do not retry automatically")
         return 1
     staged, staged_error = staged_paths()
-    if staged_error or staged:
+    if staged_error:
         released = release_lock()  # no checkpoint work was done under it
-        if staged_error:
-            print(f"cannot inspect the staging area ({staged_error})")
-        else:
-            print(f"REFUSED: {len(staged)} paths were staged before any checkpoint began: "
-                  + ", ".join(sorted(staged)[:8]) + ".\nDo not unstage or commit them; report to the person.")
+        print(f"cannot inspect the staging area ({staged_error})")
         print("Acquisition cancelled; lock released." if released else
               "Acquisition incomplete; lock remains held. Preserve state and report to the person.")
         return 1
@@ -827,6 +824,43 @@ def lock(args):
               "Preserve state and report to the person; do not treat this as successful acquisition.")
         return 1
     print(f"lock acquired: {owner} — keep this label; release with: python3 tools/minibrain.py unlock {owner}")
+    if staged:
+        # Refusing here stranded a writer behind its own interrupted save; the holder judges ownership.
+        print(f"{len(staged)} paths were already staged: {shown_paths(staged)}.\n"
+              "Left by your own interrupted save: finish it. Otherwise release the lock and report; "
+              "never unstage or commit another writer's paths.")
+    return 0
+
+
+def shown_paths(paths):
+    return ", ".join(sorted(paths)[:8]) + (" …" if len(paths) > 8 else "")
+
+
+def reissue(name, meta):
+    """A fresh label for the lock this name already holds, so a writer that lost its label
+    (compaction, restart, a forgotten release) is not stranded. Replaces the earlier label,
+    which exposes a second session under the same name; keeps the amend receipt."""
+    owner = f"{name}/{secrets.token_hex(16)}"
+    try:
+        if lock_meta() != meta:  # released or re-issued meanwhile: never overwrite another acquisition
+            raise OSError("the lock changed meanwhile")
+        (LOCK / "meta.json").write_text(json.dumps({**meta, "owner": owner}), encoding="utf-8")
+    except OSError as error:
+        print(f"REFUSED: cannot record the new label ({error}); lock remains held. "
+              "Preserve state and report to the person.")
+        return 1
+    print(f"lock re-issued: {owner} — continuing {name}'s checkpoint (since {meta.get('at', '?')}, "
+          f"HEAD {shown_head(meta)}); earlier labels no longer work.\n"
+          f"Finish anything unfinished, then release with: python3 tools/minibrain.py unlock {owner}")
+    staged, staged_error = staged_paths()
+    changed, changed_error = status_paths()
+    if staged_error or changed_error:
+        print(f"cannot inspect unfinished work ({staged_error or changed_error}); inspect it yourself")
+    elif changed:
+        if staged:
+            print(f"staged: {shown_paths(staged)}")
+        if changed - staged:
+            print(f"other changed paths: {shown_paths(changed - staged)}")
     return 0
 
 
@@ -849,6 +883,9 @@ def unlock(args):
               "Only the person overrides it, with: python3 tools/minibrain.py unlock --force")
         return 1
     held = meta.get("owner", "(owner unreadable)")
+    if not force and held != owner and held.partition("/")[0] == owner.partition("/")[0]:
+        print("REFUSED: " + REPLACED.format(label=owner, name=owner.partition("/")[0]))
+        return 1
     if not force and held != owner:
         print(f"REFUSED: the lock belongs to {held} (since {meta.get('at', '?')}), not {owner or '(no label)'}.\n"
               "Never remove another writer's lock: it may be a live session mid-checkpoint.\n"
@@ -858,6 +895,11 @@ def unlock(args):
         return 1
     print(f"lock released ({held})")
     return 0
+
+
+REPLACED = ("{label} is not current. Check this session's latest `lock {name}` result. "
+            "If it issued a different label, use that; otherwise stop, keep your changes and report. "
+            "Do not lock again.")
 
 
 def writer_guard(label):
@@ -872,10 +914,15 @@ def writer_guard(label):
     meta = lock_meta()
     if not meta:
         return {}, "a writer lock is held but its owner is unreadable; treat it as held and report it to the person"
+    if meta["owner"] != label and label and meta["owner"].partition("/")[0] == label.partition("/")[0]:
+        return {}, REPLACED.format(label=label, name=label.partition("/")[0])
     if meta["owner"] != label:
         detail = f", not {label}; " if label else "; "
         detail += ("use this session's issued label, or stay read-only "
                    "if this session did not acquire it")
+        if not label:
+            name = meta["owner"].partition("/")[0]
+            detail += f". Label lost and {name} is your name: `lock {name}` re-issues it"
         return {}, f"the lock belongs to {meta['owner']} (since {meta.get('at', '?')}){detail}"
     return meta, None
 
@@ -960,6 +1007,8 @@ def commit(args):
         try:
             if created.returncode or not head:
                 raise OSError("cannot read the created commit ID")
+            if lock_meta().get("owner") != label:  # never restore a label replaced during this commit
+                raise OSError("the lock changed meanwhile")
             meta["commit"] = head
             (LOCK / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
         except OSError as error:
