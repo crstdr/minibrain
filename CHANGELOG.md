@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [0.8-alpha.1](https://github.com/crstdr/minibrain/compare/v0.7.0...v0.8-alpha.1) | `AGENTS.md` opening block (IMPROVE) and Checkpoint step 2; `CLAUDE.md` mirrors the opening block; `.agents/skills/reflect/SKILL.md` description and Principles. |
 | [0.7.0](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.9...v0.7.0) | `tools/minibrain.py`: take the helper whole. From 0.6.1: the changed sections of `AGENTS.md`, `CLAUDE.md`'s opening block, `tools/minibrain.py` whole and the reflect skill's Destinations; `tools/collection.py` is optional. |
 | [0.7.0-alpha.9](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.8...v0.7.0-alpha.9) | `tools/minibrain.py`: take the helper whole. |
 | [0.7.0-alpha.8](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.7...v0.7.0-alpha.8) | `tools/collection.py` and `tools/minibrain.py`: take both helpers whole; `.agents/skills/reflect/SKILL.md` Destinations: one archive line. `AGENTS.md` `<rpce_tooling_guidance>`: NAME line. Brains without collection.py take tools/minibrain.py and the reflect line. |
@@ -22,6 +23,12 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.4.2](https://github.com/crstdr/minibrain/compare/v0.3.1...v0.4.2) | nothing |
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
+
+## 0.8-alpha.1
+
+- New rules reach `reflect`. The opening block's IMPROVE line, Checkpoint step 2 and the reflect skill now name what users and agents call them: standing rule, instruction or direction, ground or working rule, preference, lesson, and "remember…". The agent stores each where it will apply; plain facts need only a save.
+- Explicit rules are stored without asking first; inferred rules and changes to authority are still confirmed or proposed.
+- Untested with agents.
 
 ## 0.7.0
 

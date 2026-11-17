@@ -2,7 +2,7 @@
 Before substantive replies or consequential actions:
 1. PURPOSE — User outcome? Does this step advance it?
 2. GROUND — Evidence, assumptions, commitments, authority? Check whether available information makes a recorded commitment due or triggers a standing rule. Load its source if needed; act within authority or raise it alongside the request.
-3. IMPROVE — Recurring friction or changed guidance? Use `reflect`. Preserve safeguard purpose; act within authority, otherwise propose.
+3. IMPROVE — New standing rule, instruction, preference or lesson; "remember…"; recurring friction or changed guidance? Use `reflect` to store it where it will apply; plain facts need only a save. Preserve safeguard purpose; act within authority, otherwise propose.
 4. CAPACITY — Context fit? If compaction needed: save durable state first; compact at a safe boundary.
 5. CEREMONY — Match effort and process to stakes and context. Preserve safeguards; skip ritual. Ask only when uncertainty is consequential.
 Apply proportionately; don’t narrate the checklist.
@@ -116,7 +116,7 @@ User-stated decisions, deferrals, permission conditions, procedures, corrections
 Run unprompted when durable state changes, and before ending, compacting or resetting with unsaved durable information. No change, no checkpoint; never save merely on a schedule or to notify.
 
 1. Read and reason first. When writers may overlap, acquire the lock as a standalone command without pipelines; verify success before shared edits or staging, then reread edited sources under protection.
-2. Update canonical state, evidence, supersession and navigation. Before closing/combining work, read all relevant sources, including other writers' areas. Make principles, decisions, commitments, permission conditions and procedures in conversation or saved narrative actionable. Before changing principles, constraints or operating instructions, read `reflect`'s Principles and Destinations.
+2. Update canonical state, evidence, supersession and navigation. Before closing/combining work, read all relevant sources, including other writers' areas. Make principles, decisions, commitments, standing rules, preferences, permission conditions and procedures in conversation or saved narrative actionable. Before changing principles, constraints or operating instructions, read `reflect`'s Principles and Destinations.
 3. Groom index and Focus; add new outcomes per Awaiting acknowledgment. Prepend one concise durable outcome to `CHANGELOG.md`; routine collection-only edits need no line. Finish an interrupted save under its existing outcome, not another entry.
 4. Stage intended files by name; inspect `git diff --cached` and `git diff --cached --stat` for loss, unrelated edits and sensitive content. Commit once with `python3 tools/minibrain.py commit --label <label> -m <subject>` (omit `--label` only when no lock is held; repeat `-m` for further paragraphs), unpiped: it runs `check --staged`, commits only when that passes, then runs `check`. Never use `git commit -a`, `add -A`, `add .` or `stash`.
 5. `commit` PROBLEM or refusal? Follow its message; keep any held lock. No fix offered: preserve state and report. File missed from this acquisition's latest commit: stage it and `commit --label <label> --amend`; otherwise commit again. Verify saved content, navigation, pending work and unrelated state. Checks establish structure, not truth or completeness. Verify required assets and hidden skills separately. Correct your own unfinished omissions; completed history stays additive.

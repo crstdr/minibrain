@@ -1,6 +1,6 @@
 ---
 name: reflect
-description: Review recurring friction, changed guidance or a request for reflection; improve the agent's approach and memory proportionately.
+description: Store a new standing rule, standing instruction or direction, ground or working rule, preference, lesson, or anything the user asks to remember, where it will apply; review recurring friction, changed guidance or a request for reflection; improve the agent's approach and memory proportionately.
 ---
 
 # Reflect
@@ -11,7 +11,7 @@ Choose the smallest useful improvement—or none. Propose anything outside exist
 
 ## Principles
 
-Maintain one root `<principles>` block: concise general rules, one per bullet, no examples; preserve scope and conditions. Capture explicit directions; confirm inferred generalisations before adoption. Reconcile conflicts and revisions. Empty means unseeded, not cancellation of existing rules.
+Maintain one root `<principles>` block: concise general rules, one per bullet, no examples; preserve scope and conditions. Capture explicit directions, standing rules and preferences; confirm inferred generalisations before adoption. Reconcile conflicts and revisions. Empty means unseeded, not cancellation of existing rules.
 
 Keep evidence, rationale and supersession in canonical memory outside the block. Routine capture need not wait for reflection. Permission or procedure changes retain normal approval and writer safeguards; communicate changed constraints before affected writers continue dependent work.
 
