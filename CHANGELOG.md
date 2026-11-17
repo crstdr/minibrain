@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [0.7.0](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.9...v0.7.0) | `tools/minibrain.py`: take the helper whole. From 0.6.1: the changed sections of `AGENTS.md`, `CLAUDE.md`'s opening block, `tools/minibrain.py` whole and the reflect skill's Destinations; `tools/collection.py` is optional. |
 | [0.7.0-alpha.9](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.8...v0.7.0-alpha.9) | `tools/minibrain.py`: take the helper whole. |
 | [0.7.0-alpha.8](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.7...v0.7.0-alpha.8) | `tools/collection.py` and `tools/minibrain.py`: take both helpers whole; `.agents/skills/reflect/SKILL.md` Destinations: one archive line. `AGENTS.md` `<rpce_tooling_guidance>`: NAME line. Brains without collection.py take tools/minibrain.py and the reflect line. |
 | [0.7.0-alpha.7](https://github.com/crstdr/minibrain/compare/v0.7.0-alpha.6...v0.7.0-alpha.7) | `AGENTS.md` opening block, Authority and privacy, Resume step 3 and Checkpoint steps 4–5; `CLAUDE.md` mirrors the opening block; `tools/collection.py`: take the helper whole. |
@@ -21,6 +22,15 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.4.2](https://github.com/crstdr/minibrain/compare/v0.3.1...v0.4.2) | nothing |
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
+
+## 0.7.0
+
+- Your agent can now keep lists as well as notes. If it tracks tasks, tickets or contacts, it can store each one as a small Markdown file in a collection folder, then answer questions such as "what is blocked, and by what?" with a query instead of rereading everything. Closed records move to an archive file, so the working list stays short. Collections are optional, and a brain that doesn't use them works as before.
+- Saving memory takes one command. The agent runs `minibrain.py commit`, which checks the changes, saves only the files the agent chose, and checks the result. Before 0.7 the agent ran those steps itself.
+- An interrupted save no longer leaves memory frozen. In our tests an agent would sometimes lose its place halfway through a save, for example after its context was compacted, and then stop saving for the rest of the session while it waited for you to step in. Now it picks up its own unfinished save and carries on.
+- The agent looks for what is due before it starts. At the beginning of each piece of work it checks for commitments that have come due and standing rules that apply, and raises them alongside your request. After fixing a mistake that could happen again, it asks whether you want it to record the lesson.
+- Since alpha.9: a `commit` without `--label` while a lock is held is refused with the exact command to rerun.
+- We tested the 0.7 pre-releases with more than 20 model configurations on our Project Manager Bench, covering models from Anthropic, OpenAI and xAI, and open models including DeepSeek, GLM, Kimi, MiMo, MiniMax and Mistral.
 
 ## 0.7.0-alpha.9
 
