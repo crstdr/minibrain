@@ -49,6 +49,25 @@ class EstimateTests(unittest.TestCase):
         self.assertIn(r["recommended"], group["refs"])
         self.assertEqual(group["evidence"]["tools/minibrain.py"], "identical after config")
 
+    def test_joint_fingerprint_without_any_individually_unique_file(self):
+        self.release("v2.1.0", "new", "second")
+        self.write(self.brain, "old", "second")
+        self.assertEqual(self.run_estimate()["recommended"], "v1.1.0")
+
+    def test_pristine_v070_against_v08_alpha1(self):
+        repo = Path(__file__).resolve().parents[1]
+        for tag in ("v0.7.0", "v0.8-alpha.1"):
+            if subprocess.run(["git", "-C", repo, "rev-parse", "--verify", "--quiet",
+                               tag + "^{commit}"], capture_output=True).returncode:
+                self.skipTest("release history unavailable")
+        from tools.upgrade_base import FILES
+        for rel in FILES:
+            path = self.brain / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(subprocess.check_output(["git", "-C", repo, "show",
+                                                      f"v0.7.0:starter/{rel}"]))
+        self.assertEqual(estimate(repo, "v0.8-alpha.1", self.brain)["recommended"], "v0.7.0")
+
     def test_shared_helper_and_adapted_prose_are_not_enough(self):
         self.write(self.brain, "old", "locally chosen")
         self.assertIsNone(self.run_estimate()["recommended"])
