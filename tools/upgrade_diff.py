@@ -152,6 +152,9 @@ def main(argv):
         old, banner = explicit, [f"base: KNOWN {explicit}"]
     else:
         old, banner = choose_base(new, brain)
+        if old and maps:  # the estimator reads default paths; remapped files could mislead it
+            old, banner = None, ["base: estimate not used because --map changes file paths; "
+                                 "pass --from <ref> for a full review"]
     if old:
         paths = [p for p in git("diff", "--name-only", old, new, "--", "starter").stdout.splitlines() if p]
     else:  # target-only: every target line counts as added, so nothing is hidden
