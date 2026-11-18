@@ -4,29 +4,70 @@
 Run from a minibrain clone, outside the brain:
     python3 tools/upgrade_diff.py <adopted-ref> <target-ref> <brain-dir> [--map starter/path=local/path]...
 
-For every starter file that changed between the two refs it prints each upstream hunk:
-the lines removed and added upstream, whether each added line is in the brain's copy
-("have"), and otherwise the closest local line ("near") or nothing ("missing").
-Read-only. It reports evidence; the upgrading agent decides what to take, merge or skip.
-Matching ignores surrounding whitespace only, so an adapted sentence shows as "near".
+Prints a summary first (files needing inspection, line counts), then every upstream hunk:
+the lines removed and added upstream and, for each added line, where the brain has it:
+  [have L12 § Heading]      the same line, outside fenced examples
+  [example L40 § Heading]   the same line, but only inside a fenced block
+  [near L12 § Heading]      a reworded line; the changed words follow as {-brain-}{+upstream+}
+  [partial 2/3]             no matching line, but some of its clauses appear; missing clauses listed
+  [missing]                 nothing comparable found
+Helpers are compared with the target as a short diff (usually local configuration).
+Read-only. Evidence, not a verdict: the upgrading agent decides what to take, merge or keep.
+Exit 2 on bad arguments, unknown refs or a brain folder without AGENTS.md.
 """
-from difflib import SequenceMatcher, get_close_matches
+from difflib import SequenceMatcher, get_close_matches, unified_diff
 from pathlib import Path
+import re
 import subprocess
 import sys
 
 REPO = Path(__file__).resolve().parent.parent
+HELPER_DIFF_LINES = 40
+
+
+def git(*args):
+    return subprocess.run(["git", "-C", str(REPO), *args], capture_output=True, text=True)
 
 
 def show(ref, path):
-    out = subprocess.run(["git", "-C", str(REPO), "show", f"{ref}:{path}"], capture_output=True, text=True)
+    out = git("show", f"{ref}:{path}")
     return out.stdout.splitlines() if out.returncode == 0 else None
 
 
-def changed(old, new):
-    out = subprocess.run(["git", "-C", str(REPO), "diff", "--name-only", old, new, "--", "starter"],
-                         capture_output=True, text=True, check=True)
-    return [p for p in out.stdout.splitlines() if p]
+def index(lines):
+    """Stripped line -> list of (line number, heading, in a fenced block)."""
+    found, heading, fenced = {}, "(top)", False
+    for n, line in enumerate(lines, 1):
+        s = line.strip()
+        if s.startswith("```"):
+            fenced = not fenced
+            continue
+        if not fenced and re.match(r"#{1,6} |<[a-z_]+>$", s):
+            heading = s.lstrip("# ")
+        if s:
+            found.setdefault(s, []).append((n, heading, fenced))
+    return found
+
+
+def clauses(line):
+    return [c.strip(" .;") for c in re.split(r"(?<=[.;?])\s+", line.strip()) if len(c.strip(" .;")) > 12]
+
+
+def word_diff(old, new):
+    a, b = old.split(), new.split()
+    out = []
+    for tag, i1, i2, j1, j2 in SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if tag == "equal":
+            out.append(" ".join(a[i1:i2]) if i2 - i1 <= 6 else f"{' '.join(a[i1:i1+3])} … {' '.join(a[i2-3:i2])}")
+        else:
+            if i2 > i1: out.append("{-" + " ".join(a[i1:i2]) + "-}")
+            if j2 > j1: out.append("{+" + " ".join(b[j1:j2]) + "+}")
+    return " ".join(out)
+
+
+def where(hits):
+    n, heading, _ = hits[0]
+    return f"L{n} § {heading[:40]}"
 
 
 def main(argv):
@@ -42,47 +83,82 @@ def main(argv):
         print(__doc__.strip())
         return 2
     old, new, brain = args[0], args[1], Path(args[2])
-    totals = {"have": 0, "near": 0, "missing": 0}
-    for path in changed(old, new):
+    for ref in (old, new):
+        if git("rev-parse", "-q", "--verify", f"{ref}^{{commit}}").returncode:
+            print(f"ERROR: unknown ref {ref} in {REPO}")
+            return 2
+    if not (brain / "AGENTS.md").is_file():
+        print(f"ERROR: {brain} has no AGENTS.md; check the brain path")
+        return 2
+    paths = [p for p in git("diff", "--name-only", old, new, "--", "starter").stdout.splitlines() if p]
+    files, body = [], []
+    totals = dict.fromkeys(("have", "example", "near", "partial", "missing"), 0)
+    for path in paths:
         rel = maps.get(path, path.removeprefix("starter/"))
         before, after = show(old, path) or [], show(new, path)
         local_file = brain / rel
-        print(f"\n=== {path} -> {rel}")
         if after is None:
-            print(f"removed upstream; brain copy {'exists' if local_file.exists() else 'absent'}")
+            files.append(f"removed upstream: {rel} ({'still in brain' if local_file.exists() else 'absent'})")
             continue
         if not local_file.exists():
-            print("MISSING in brain (new or renamed upstream file); use --map if it lives elsewhere")
+            files.append(f"absent in brain: {rel} (new or renamed upstream; --map if it lives elsewhere)")
             continue
         local = local_file.read_text(encoding="utf-8", errors="replace").splitlines()
         if local == after:
-            print("identical to target")
+            files.append(f"identical to target: {rel}")
             continue
         if path.endswith(".py"):
-            print("differs from target; helpers are taken whole: compare configuration constants, then replace")
+            diff = list(unified_diff(after, local, f"target/{rel}", f"brain/{rel}", n=0, lineterm=""))
+            files.append(f"helper differs: {rel} ({sum(1 for d in diff if d[:1] in '+-' and d[:3] not in ('+++', '---'))} lines; diff below)")
+            body.append(f"\n=== {rel}: target → brain (expect only local configuration)")
+            body.extend(diff[:HELPER_DIFF_LINES] + ([f"… {len(diff) - HELPER_DIFF_LINES} more diff lines"] if len(diff) > HELPER_DIFF_LINES else []))
             continue
-        stripped = {l.strip() for l in local}
+        files.append(f"inspect: {rel}")
+        found = index(local)
+        live = [s for s, hits in found.items() if any(not f for *_, f in hits)]
+        body.append(f"\n=== {path} -> {rel}")
         for tag, i1, i2, j1, j2 in SequenceMatcher(None, before, after, autojunk=False).get_opcodes():
             if tag == "equal":
                 continue
-            print(f"\n@@ upstream lines {j1 + 1}-{j2} ({tag})")
+            body.append(f"\n@@ upstream {new} lines {j1 + 1}-{j2} ({tag})")
             for line in before[i1:i2]:
-                print(f"  - {line}" + ("   [still in brain]" if line.strip() in stripped and line.strip() else ""))
+                if line.strip():
+                    hits = [h for h in found.get(line.strip(), []) if not h[2]]
+                    body.append(f"  - {line}" + (f"   [old text still in brain {where(hits)}]" if hits else ""))
             for line in after[j1:j2]:
-                if not line.strip():
+                s = line.strip()
+                if not s or s.startswith("```"):
                     continue
-                if line.strip() in stripped:
+                hits = found.get(s, [])
+                if any(not h[2] for h in hits):
                     totals["have"] += 1
-                    print(f"  + {line}   [have]")
+                    body.append(f"  + {line}   [have {where([h for h in hits if not h[2]])}]")
                     continue
-                near = get_close_matches(line.strip(), list(stripped), n=1, cutoff=0.6)
-                key = "near" if near else "missing"
-                totals[key] += 1
-                print(f"  + {line}   [{key}]")
+                if hits:
+                    totals["example"] += 1
+                    body.append(f"  + {line}   [example {where(hits)}: only inside a fenced block]")
+                    continue
+                near = get_close_matches(s, live, n=1, cutoff=0.6)
                 if near:
-                    print(f"    brain: {near[0]}")
-    print(f"\nadded upstream lines: {totals['have']} have, {totals['near']} near, {totals['missing']} missing. "
-          "Account for each near or missing line: take it, merge it, or record why the brain keeps its own.")
+                    totals["near"] += 1
+                    body.append(f"  + {line}   [near {where(found[near[0]])}]")
+                    body.append(f"    changes: {word_diff(near[0], s)}")
+                    continue
+                parts = clauses(s)
+                have = [c for c in parts if any(c in l for l in live)]
+                if parts and have:
+                    totals["partial"] += 1
+                    body.append(f"  + {line}   [partial {len(have)}/{len(parts)}]")
+                    body.extend(f"    not found: {c}" for c in parts if c not in have)
+                    continue
+                totals["missing"] += 1
+                body.append(f"  + {line}   [missing]")
+    print(f"upgrade diff {old} → {new} for {brain}")
+    print("files:")
+    print("\n".join(f"  {f}" for f in files) or "  no starter changes between these refs")
+    print("added lines: " + ", ".join(f"{v} {k}" for k, v in totals.items()))
+    print("Account for each line not marked have: take it, merge it, or record why the brain keeps its own.")
+    print("\n".join(body))
     return 0
 
 
