@@ -2,7 +2,12 @@
 """Show an upgrading agent, change by change, which upstream starter edits a brain already has.
 
 Run from a minibrain clone, outside the brain:
-    python3 tools/upgrade_diff.py <adopted-ref> <target-ref> <brain-dir> [--map starter/path=local/path]...
+    python3 tools/upgrade_diff.py <target-ref> <brain-dir> [--from <adopted-ref>|auto] [--map starter/path=local/path]...
+    (older form: python3 tools/upgrade_diff.py <adopted-ref> <target-ref> <brain-dir>)
+
+Base: --from <ref> uses a known adopted ref, tagged or not. Without it the tool estimates the base
+from the brain's files and uses the estimate only when one candidate is clearly ahead; otherwise it
+lists the candidates with their evidence and gives a target-only review. The banner says which.
 
 Prints a summary first (files needing inspection, line counts), then every upstream hunk:
 the lines removed and added upstream and, for each added line, where the brain has it:
@@ -15,7 +20,7 @@ For replaced lines, "upstream change" first shows what the release itself change
   [missing]                 nothing comparable found
 Helpers are compared with the target as a short diff (usually local configuration).
 Read-only. Evidence, not a verdict: the upgrading agent decides what to take, merge or keep.
-Exit 2 on bad arguments, unknown refs or a brain folder without AGENTS.md.
+Exit 2 on bad arguments, an unresolvable ref or a brain folder without AGENTS.md; a review with no\nusable base is still a valid result (exit 0).
 """
 from difflib import SequenceMatcher, get_close_matches, unified_diff
 from pathlib import Path
@@ -25,6 +30,7 @@ import sys
 
 REPO = Path(__file__).resolve().parent.parent
 HELPER_DIFF_LINES = 40
+SEEDS = ("MEMORY.md", "CHANGELOG.md", "MAP.md", "spaces/")  # starter seeds that hold the brain's own memory
 
 
 def git(*args):
@@ -91,39 +97,83 @@ def where(hits):
     return f"L{n} § {heading[:40]}"
 
 
+def resolves(ref):
+    return git("rev-parse", "-q", "--verify", f"{ref}^{{commit}}").returncode == 0
+
+
+def choose_base(new, brain):
+    """(base ref or None, banner lines). Uses the estimator when present; never a weak guess."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from upgrade_base import estimate
+    except ImportError:
+        return None, ["base: unknown (no estimator available); target-only review"]
+    result = estimate(REPO, new, brain)
+    groups = result.get("groups", [])
+    lines = []
+    for g in groups[:3]:
+        same = " (equivalent: same review)" if g.get("equivalent") and len(g["refs"]) > 1 else ""
+        lines.append(f"  candidate {', '.join(g['refs'])}{same}")
+        lines.extend(f"    {f}: {e}" for f, e in g.get("evidence", {}).items())
+    base = result.get("recommended")
+    if base:
+        return base, [f"base: ESTIMATED {base}: {result.get('reason', '')}",
+                      "Every result below assumes that base; rerun with --from <ref> if you know the real one."] + lines
+    return None, ["base: unknown; no candidate is clearly ahead, so this is a target-only review "
+                  "(see the TARGET-ONLY note below)"] + lines + [
+                 f"  if you know the base: python3 tools/upgrade_diff.py {new} <brain-dir> --from <ref>"]
+
+
 def main(argv):
-    args, maps = [], {}
+    args, maps, explicit = [], {}, None
     while argv:
         a = argv.pop(0)
         if a == "--map" and argv and "=" in argv[0]:
             src, dst = argv.pop(0).split("=", 1)
             maps[src] = dst
+        elif a == "--from" and argv:
+            explicit = argv.pop(0)
         else:
             args.append(a)
-    if len(args) != 3:
+    if len(args) == 3 and explicit is None:  # older form: <adopted-ref> <target-ref> <brain-dir>
+        explicit, args = args[0], args[1:]
+    if len(args) != 2:
         print(__doc__.strip())
         return 2
-    old, new, brain = args[0], args[1], Path(args[2])
-    for ref in (old, new):
-        if git("rev-parse", "-q", "--verify", f"{ref}^{{commit}}").returncode:
+    new, brain = args[0], Path(args[1])
+    for ref in [new] + ([explicit] if explicit not in (None, "auto") else []):
+        if not resolves(ref):
             print(f"ERROR: unknown ref {ref} in {REPO}")
             return 2
     if not (brain / "AGENTS.md").is_file():
         print(f"ERROR: {brain} has no AGENTS.md; check the brain path")
         return 2
-    paths = [p for p in git("diff", "--name-only", old, new, "--", "starter").stdout.splitlines() if p]
+    if explicit not in (None, "auto"):
+        old, banner = explicit, [f"base: KNOWN {explicit}"]
+    else:
+        old, banner = choose_base(new, brain)
+    if old:
+        paths = [p for p in git("diff", "--name-only", old, new, "--", "starter").stdout.splitlines() if p]
+    else:  # target-only: every target line counts as added, so nothing is hidden
+        paths = [p for p in git("ls-tree", "-r", "--name-only", new, "--", "starter").stdout.splitlines() if p]
+        banner.append("TARGET-ONLY: each target line is checked against the brain, with no base to compare. "
+                      "Text the brain adapted on purpose and text upstream changed look alike; "
+                      "no 'upstream change' lines can be shown.")
     files, body = [], []
     totals = dict.fromkeys(("have", "example", "near", "partial", "missing"), 0)
     for path in paths:
         rel = maps.get(path, path.removeprefix("starter/"))
-        previous, after = show(old, path), show(new, path)
+        previous, after = (show(old, path) if old else None), show(new, path)
         before = previous or []
         local_file = brain / rel
+        if not old and rel.startswith(SEEDS):
+            files.append(f"seed file, not compared line by line without a base: {rel}")
+            continue
         if after is None:
             files.append(f"removed upstream: {rel} ({'still in brain' if local_file.exists() else 'absent'})")
             continue
         if not local_file.exists():
-            origin = "present at both refs" if previous is not None else "new upstream"
+            origin = "in target" if not old else "present at both refs" if previous is not None else "new upstream"
             files.append(f"{rel}: absent locally; {origin} (--map if it lives elsewhere)")
             continue
         local = local_file.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -184,7 +234,8 @@ def main(argv):
                     continue
                 totals["missing"] += 1
                 body.append(f"  + {line}   [missing]")
-    print(f"upgrade diff {old} → {new} for {brain}")
+    print(f"upgrade diff {old or '(no base)'} → {new} for {brain}")
+    print("\n".join(banner))
     print("files:")
     print("\n".join(f"  {f}" for f in files) or "  no starter changes between these refs")
     print("added lines: " + ", ".join(f"{v} {k}" for k, v in totals.items()))

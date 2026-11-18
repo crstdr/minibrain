@@ -54,6 +54,27 @@ class UpgradeDiffTests(unittest.TestCase):
         agents.write_text("```\n" + lines[i] + "\n```\n" + "\n".join(lines) + "\n")
         self.assertRegex(self.run_tool(brain), rf"3\. IMPROVE — New standing rule.*\[near L{i + 4} ")
 
+    def test_no_base_gives_a_target_only_review(self):
+        out = subprocess.run([sys.executable, str(TOOL), "v0.8-alpha.1", str(self.brain_at("v0.7.0")), "--from", "auto"],
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stdout)
+        self.assertIn("base:", out.stdout)
+        if "TARGET-ONLY" in out.stdout:
+            self.assertNotIn("upstream change:", out.stdout)
+            self.assertRegex(out.stdout, r"3\. IMPROVE — New standing rule.*\[(near|partial|missing)")
+
+    def test_new_form_with_known_base_matches_the_old_form(self):
+        brain = str(self.brain_at("v0.7.0"))
+        new = subprocess.run([sys.executable, str(TOOL), "v0.8-alpha.1", brain, "--from", "v0.7.0"],
+                             capture_output=True, text=True, check=True).stdout
+        self.assertIn("base: KNOWN v0.7.0", new)
+        self.assertIn("upstream change: 3. IMPROVE", new)
+
+    def test_unresolvable_explicit_base_fails(self):
+        out = subprocess.run([sys.executable, str(TOOL), "v0.8-alpha.1", str(self.brain_at("v0.7.0")), "--from", "v9.9"],
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 2)
+
     def test_bad_brain_path_fails(self):
         out = subprocess.run([sys.executable, str(TOOL), "v0.7.0", "v0.8-alpha.1", "/nonexistent-brain"],
                              capture_output=True, text=True)
