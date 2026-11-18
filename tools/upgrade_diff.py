@@ -2,7 +2,8 @@
 """Show an upgrading agent, change by change, which upstream starter edits a brain already has.
 
 Run from a minibrain clone, outside the brain:
-    python3 tools/upgrade_diff.py <target-ref> <brain-dir> [--from <adopted-ref>|auto] [--map starter/path=local/path]...
+    python3 tools/upgrade_diff.py <target-ref> <brain-dir> [--from <adopted-ref>|auto]
+        [--map starter/path=local/path[#heading]]... [--skips <file>]
     (older form: python3 tools/upgrade_diff.py <adopted-ref> <target-ref> <brain-dir>)
 
 Base: --from <ref> uses a known adopted ref, tagged or not. Without it the tool estimates the base
@@ -18,7 +19,11 @@ the lines removed and added upstream and, for each added line, where the brain h
                             line is located and the rest are listed as "no literal match"
 For replaced lines, "upstream change" first shows what the release itself changed, old → new.
   [missing]                 nothing comparable found
-Helpers are compared with the target as a short diff (usually local configuration).
+  [skipped: listed in --skips]  the line contains a phrase from the --skips file (one per line):
+                            changes the brain declined on purpose, kept wherever it records them
+--map to path#heading compares a starter file with one section of a brain file. CLAUDE.md-style
+@file imports are followed. Dash variants and spacing are ignored when matching.
+Helpers are compared with the target as a short diff, with functions present only in the target named.
 Read-only. Evidence, not a verdict: the upgrading agent decides what to take, merge or keep.
 Exit 2 on bad arguments, an unresolvable ref or a brain folder without AGENTS.md; a review with no\nusable base is still a valid result (exit 0).
 """
@@ -42,6 +47,23 @@ def show(ref, path):
     return out.stdout.splitlines() if out.returncode == 0 else None
 
 
+def norm(text):
+    """Matching key: dash variants and runs of spaces are formatting, not wording."""
+    return re.sub(r"\s+", " ", re.sub(r"\s*[—–]\s*|\s+-\s+", " ", text)).strip()
+
+
+def section(lines, name):
+    """Lines of the first heading whose text contains name, up to the next heading of the same or higher level."""
+    start = level = None
+    for n, line in enumerate(lines):
+        m = re.match(r"(#{1,6}) +(.*)", line)
+        if m and start is None and name.lower() in m[2].lower():
+            start, level = n, len(m[1])
+        elif m and start is not None and len(m[1]) <= level:
+            return lines[start:n]
+    return lines[start:] if start is not None else None
+
+
 def index(lines):
     """Map each line to its position, heading and whether it is example/comment text."""
     found, heading, fence, comment = {}, "(top)", None, False
@@ -62,7 +84,7 @@ def index(lines):
                 if comment:
                     hidden, end, tail = tail.partition("-->")
                     if hidden.strip():
-                        found.setdefault(hidden.strip(), []).append((n, heading, True))
+                        found.setdefault(norm(hidden), []).append((n, heading, True))
                     comment = not bool(end)
                 else:
                     prefix, start, tail = tail.partition("<!--")
@@ -72,7 +94,7 @@ def index(lines):
         if not inactive and re.match(r"#{1,6} |<[a-z_]+>$", s):
             heading = s.lstrip("# ")
         if s:
-            found.setdefault(s, []).append((n, heading, inactive))
+            found.setdefault(norm(s), []).append((n, heading, inactive))
     return found
 
 
@@ -154,7 +176,7 @@ def choose_base(new, brain):
 
 
 def main(argv):
-    args, maps, explicit = [], {}, None
+    args, maps, explicit, skips = [], {}, None, []
     while argv:
         a = argv.pop(0)
         if a == "--map" and argv and "=" in argv[0]:
@@ -162,6 +184,13 @@ def main(argv):
             maps[src] = dst
         elif a == "--from" and argv:
             explicit = argv.pop(0)
+        elif a == "--skips" and argv:
+            skip_file = Path(argv.pop(0))
+            if not skip_file.is_file():
+                print(f"ERROR: --skips file not found: {skip_file}")
+                return 2
+            skips.extend(norm(l).lower() for l in skip_file.read_text(encoding="utf-8").splitlines()
+                         if l.strip() and not l.lstrip().startswith("#"))
         else:
             args.append(a)
     if len(args) == 3 and explicit is None:  # older form: <adopted-ref> <target-ref> <brain-dir>
@@ -192,11 +221,12 @@ def main(argv):
                       "Text the brain adapted on purpose and text upstream changed look alike; "
                       "no 'upstream change' lines can be shown.")
     files, body = [], []
-    totals = dict.fromkeys(("have", "example", "near", "partial", "missing"), 0)
+    totals = dict.fromkeys(("have", "example", "near", "partial", "missing", "skipped"), 0)
     for path in paths:
         rel = maps.get(path, path.removeprefix("starter/"))
         previous, after = (show(old, path) if old else None), show(new, path)
         before = previous or []
+        rel, _, part = rel.partition("#")
         local_file = brain / rel
         if not old and path.removeprefix("starter/").startswith(SEEDS):  # by upstream path, not --map
             files.append(f"seed file, not compared line by line without a base: {rel}"
@@ -210,6 +240,12 @@ def main(argv):
             files.append(f"{rel}: absent locally; {origin} (--map if it lives elsewhere; it may also live as a section of another file)")
             continue
         local = local_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        if part:
+            local = section(local, part)
+            if local is None:
+                files.append(f"{rel}#{part}: no heading containing '{part}' in {rel}")
+                continue
+            rel = f"{rel}#{part}"
         if local == after:
             files.append(f"identical to target: {rel}")
             continue
@@ -219,6 +255,10 @@ def main(argv):
             config = [d for d in changed if re.match(r"[+-][A-Z][A-Z0-9_]* = ", d)]
             kind = ("configuration assignments only" if len(config) == len(changed)
                     else f"{len(config)} configuration lines, {len(changed) - len(config)} other changed lines")
+            defs = lambda text: set(re.findall(r"^def (\w+)\(", "\n".join(text), re.M))
+            added = sorted(defs(after) - defs(local))
+            if added:
+                kind += "; functions only in target: " + ", ".join(added[:8]) + (" …" if len(added) > 8 else "")
             files.append(f"helper differs: {rel} ({len(changed)} changed lines: {kind})")
             body.append(f"\n=== {rel}: target → brain diff ({kind})")
             body.extend(diff[:HELPER_DIFF_LINES])
@@ -227,7 +267,14 @@ def main(argv):
                             f"git -C {REPO} show {new}:{path} | diff -u - {local_file}")
             continue
         files.append(f"inspect: {rel}")
+        imported = []  # follow @file imports such as CLAUDE.md's @AGENTS.md
+        for line in local:
+            m = re.fullmatch(r"\s*@([\w./-]+\.md)\s*", line)
+            if m and (brain / m[1]).is_file():
+                imported += (brain / m[1]).read_text(encoding="utf-8", errors="replace").splitlines()
         found = index(local)
+        for key, hits in index(imported).items():
+            found.setdefault(key, []).extend((n, f"via @import § {h}", f) for n, h, f in hits)
         live = [s for s, hits in found.items() if any(not f for *_, f in hits)]
         body.append(f"\n=== {path} -> {rel}")
         for tag, i1, i2, j1, j2 in SequenceMatcher(None, before, after, autojunk=False).get_opcodes():
@@ -242,7 +289,7 @@ def main(argv):
                         body.append(f"  upstream change: {word_diff(prior[0], line.strip())}")
             for line in before[i1:i2]:
                 if line.strip():
-                    hits = [h for h in found.get(line.strip(), []) if not h[2]]
+                    hits = [h for h in found.get(norm(line), []) if not h[2]]
                     body.append(f"  - {line}" + (f"   [old text still in brain {where(hits)}]" if hits else ""))
             for line in after[j1:j2]:
                 s = line.strip()
@@ -252,7 +299,11 @@ def main(argv):
                            if a.removeprefix("starter/") in s and a.removeprefix("starter/") != b]
                 if renamed:
                     line = f"{line}   (mapped: {'; '.join(renamed)})"
-                hits = found.get(s, [])
+                if any(k in norm(s).lower() for k in skips):
+                    totals["skipped"] += 1
+                    body.append(f"  + {line}   [skipped: listed in --skips]")
+                    continue
+                hits = found.get(norm(s), [])
                 if any(not h[2] for h in hits):
                     totals["have"] += 1
                     body.append(f"  + {line}   [have {where([h for h in hits if not h[2]])}]")
@@ -261,17 +312,22 @@ def main(argv):
                     totals["example"] += 1
                     body.append(f"  + {line}   [example {where(hits)}: only in an example or HTML comment]")
                     continue
-                near = get_close_matches(s, live, n=1, cutoff=0.6)
+                near = get_close_matches(norm(s), live, n=1, cutoff=0.6)
                 if near:
                     totals["near"] += 1
                     body.append(f"  + {line}   [near {where(found[near[0]])}]")
-                    body.append(f"    local → target, comparison only: {word_diff(near[0], s)}")
+                    body.append(f"    local → target, comparison only: {word_diff(near[0], norm(s))}")
                     continue
                 parts = clauses(s)
-                have = [c for c in parts if any(c in l for l in live)]
+                have = [c for c in parts if any(norm(c) in l for l in live)]
+                if parts and len(have) == len(parts):
+                    host = next(l for l in live if all(norm(c) in l for c in parts))
+                    totals["have"] += 1
+                    body.append(f"  + {line}   [have, inside a longer line {where(found[host])}]")
+                    continue
                 if parts and have:
                     totals["partial"] += 1
-                    closest = get_close_matches(s, live, n=1, cutoff=0.3)
+                    closest = get_close_matches(norm(s), live, n=1, cutoff=0.3)
                     body.append(f"  + {line}   [partial {len(have)}/{len(parts)}]"
                                 + (f"   closest local: {where(found[closest[0]])}" if closest else ""))
                     unmatched = [c for c in parts if c not in have]

@@ -75,6 +75,52 @@ class UpgradeDiffTests(unittest.TestCase):
                              capture_output=True, text=True)
         self.assertEqual(out.returncode, 2)
 
+    def improve_line(self):
+        new = subprocess.run(["git", "-C", str(ROOT), "show", "v0.8-alpha.1:starter/AGENTS.md"],
+                             capture_output=True, text=True, check=True).stdout
+        return next(l for l in new.splitlines() if l.startswith("3. IMPROVE"))
+
+    def tool_args(self, brain, *extra):
+        return subprocess.run([sys.executable, str(TOOL), "v0.8-alpha.1", str(brain), "--from", "v0.7.0", *extra],
+                              capture_output=True, text=True, check=True).stdout
+
+    def test_dash_and_spacing_differences_still_match(self):
+        brain = self.brain_at("v0.7.0")
+        agents = brain / "AGENTS.md"
+        agents.write_text(agents.read_text() + "\n" + self.improve_line().replace("—", " ") + "\n")
+        self.assertRegex(self.tool_args(brain), r"\+ 3\. IMPROVE — New standing rule.*\[have L")
+
+    def test_a_sentence_inside_a_longer_line_counts_as_present(self):
+        brain = self.brain_at("v0.7.0")
+        agents = brain / "AGENTS.md"
+        sentence = "User-stated decisions, deferrals, permission conditions, procedures, corrections and lessons are durable state—even when no action is due."
+        agents.write_text(agents.read_text() + "\nLocal preamble words. " + sentence + " Local tail.\n")
+        out = self.tool_args(brain)
+        if "+ " + sentence in out:
+            self.assertIn("[have, inside a longer line", out.split("+ " + sentence, 1)[1].splitlines()[0])
+
+    def test_imports_are_followed(self):
+        brain = self.brain_at("v0.7.0")
+        (brain / "AGENTS.md").write_text((brain / "AGENTS.md").read_text() + "\n" + self.improve_line() + "\n")
+        (brain / "CLAUDE.md").write_text("@AGENTS.md\n")
+        self.assertIn("via @import", self.tool_args(brain))
+
+    def test_skips_mark_declined_lines(self):
+        brain = self.brain_at("v0.7.0")
+        skips = brain.parent / (brain.name + "-skips.txt")
+        skips.write_text("New standing rule, instruction\n")
+        self.addCleanup(skips.unlink)
+        out = self.tool_args(brain, "--skips", str(skips))
+        self.assertRegex(out, r"3\. IMPROVE — New standing rule.*\[skipped")
+
+    def test_map_to_a_section(self):
+        brain = self.brain_at("v0.7.0")
+        skill = brain / ".agents/skills/reflect/SKILL.md"
+        (brain / "AGENTS.md").write_text((brain / "AGENTS.md").read_text() + "\n## Reflect\n\n" + skill.read_text())
+        skill.unlink()
+        out = self.tool_args(brain, "--map", "starter/.agents/skills/reflect/SKILL.md=AGENTS.md#reflect")
+        self.assertIn("inspect: AGENTS.md#reflect", out)
+
     def test_bad_brain_path_fails(self):
         out = subprocess.run([sys.executable, str(TOOL), "v0.7.0", "v0.8-alpha.1", "/nonexistent-brain"],
                              capture_output=True, text=True)
