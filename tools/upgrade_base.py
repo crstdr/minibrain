@@ -116,8 +116,8 @@ def estimate(repo: Path, target: str, brain: Path) -> dict:
     recommended = None
     if winners and not compatible:
         reason = "Exact file evidence conflicts across release families; inspect the target directly."
-    elif len(winners) < 2 or not any(len(s) == 1 for s in winners):
-        reason = "No discriminating exact file with independent exact corroboration; inspect the target directly."
+    elif len(winners) < 2 or len(compatible) != 1:
+        reason = "Exact matches from separate files do not identify one release family; inspect the target directly."
     else:
         tree, = compatible
         refs = families[tree]
@@ -126,5 +126,5 @@ def estimate(repo: Path, target: str, brain: Path) -> dict:
         else:
             recommended = refs[-1]
             reason = ("Equivalent tags share one starter tree and review." if len(refs) > 1
-                      else "A discriminating exact file is corroborated by a separate file without conflicting exact evidence.")
+                      else "Exact matches from separate files jointly identify one release family without conflict.")
     return {"groups": groups, "recommended": recommended, "reason": reason}
