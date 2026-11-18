@@ -7,7 +7,7 @@ Run from a minibrain clone, outside the brain:
 Prints a summary first (files needing inspection, line counts), then every upstream hunk:
 the lines removed and added upstream and, for each added line, where the brain has it:
   [have L12 § Heading]      the same line, outside fenced examples
-  [example L40 § Heading]   the same line, but only inside a fenced block
+  [example L40 § Heading]   the same line, but only in an example or HTML comment
   [near L12 § Heading]      a reworded line; the changed words follow as {-brain-}{+upstream+}
   [partial 2/3]             no matching line, but some clauses appear literally; the closest local
                             line is located and the rest are listed as "no literal match"
@@ -68,7 +68,7 @@ def word_diff(old, new):
 
 
 def where(hits):
-    n, heading, _ = hits[0]
+    n, heading, _ = next((h for h in hits if not h[2]), hits[0])  # prefer an active occurrence
     return f"L{n} § {heading[:40]}"
 
 
@@ -144,7 +144,7 @@ def main(argv):
                     continue
                 if hits:
                     totals["example"] += 1
-                    body.append(f"  + {line}   [example {where(hits)}: only inside a fenced block]")
+                    body.append(f"  + {line}   [example {where(hits)}: only in an example or HTML comment]")
                     continue
                 near = get_close_matches(s, live, n=1, cutoff=0.6)
                 if near:

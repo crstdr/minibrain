@@ -46,6 +46,14 @@ class UpgradeDiffTests(unittest.TestCase):
         out = self.run_tool(self.brain_at("v0.7.0"))
         self.assertIn("upstream change: 3. IMPROVE — {-Recurring-} {+New standing rule", out)
 
+    def test_location_points_to_the_active_occurrence(self):
+        brain = self.brain_at("v0.7.0")
+        agents = brain / "AGENTS.md"
+        lines = agents.read_text().splitlines()
+        i = next(n for n, l in enumerate(lines) if l.startswith("3. IMPROVE"))
+        agents.write_text("```\n" + lines[i] + "\n```\n" + "\n".join(lines) + "\n")
+        self.assertRegex(self.run_tool(brain), rf"3\. IMPROVE — New standing rule.*\[near L{i + 4} ")
+
     def test_bad_brain_path_fails(self):
         out = subprocess.run([sys.executable, str(TOOL), "v0.7.0", "v0.8-alpha.1", "/nonexistent-brain"],
                              capture_output=True, text=True)
