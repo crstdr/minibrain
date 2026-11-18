@@ -115,12 +115,13 @@ def choose_base(new, brain):
         same = " (equivalent: same review)" if g.get("equivalent") and len(g["refs"]) > 1 else ""
         lines.append(f"  candidate {', '.join(g['refs'])}{same}")
         lines.extend(f"    {f}: {e}" for f, e in g.get("evidence", {}).items())
-    base = result.get("recommended")
+    base, reason = result.get("recommended"), result.get("reason", "")
     if base:
-        return base, [f"base: ESTIMATED {base}: {result.get('reason', '')}",
+        group = next((g["refs"] for g in groups if base in g["refs"]), [base])
+        label = f"SHARED REVIEW of {', '.join(group)} (same starter files)" if len(group) > 1 else f"ESTIMATED {base}"
+        return base, [f"base: {label}: {reason}",
                       "Every result below assumes that base; rerun with --from <ref> if you know the real one."] + lines
-    return None, ["base: unknown; no candidate is clearly ahead, so this is a target-only review "
-                  "(see the TARGET-ONLY note below)"] + lines + [
+    return None, [f"base: unknown, so this is a target-only review: {reason}"] + lines + [
                  f"  if you know the base: python3 tools/upgrade_diff.py {new} <brain-dir> --from <ref>"]
 
 
@@ -169,7 +170,7 @@ def main(argv):
         previous, after = (show(old, path) if old else None), show(new, path)
         before = previous or []
         local_file = brain / rel
-        if not old and rel.startswith(SEEDS):
+        if not old and path.removeprefix("starter/").startswith(SEEDS):  # by upstream path, not --map
             files.append(f"seed file, not compared line by line without a base: {rel}")
             continue
         if after is None:
