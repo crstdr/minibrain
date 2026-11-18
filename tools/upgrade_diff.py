@@ -130,8 +130,10 @@ def choose_base(new, brain):
     lines = []
     recorded = recorded_bases(brain)
     if recorded:
-        lines.append("  recorded in the brain's notes (a claim to confirm, not used): "
-                     + "; ".join(f"{r} at {w}" for r, w in list(recorded.items())[-3:]))
+        key = lambda r: [int(x) for x in re.findall(r"\d+", r)]
+        newest, *older = sorted(recorded, key=key, reverse=True)
+        lines.append(f"  recorded in the brain's notes (a claim to confirm, not used): newest {newest} at {recorded[newest]}"
+                     + (f"; older mentions, likely history: {', '.join(older[:3])}" if older else ""))
         lines.append(f"  if one is right: python3 tools/upgrade_diff.py {new} <brain-dir> --from <that ref>")
     exact = any("identical" in e for g in groups for e in g.get("evidence", {}).values())
     if groups and not exact and not result.get("recommended"):
@@ -205,7 +207,7 @@ def main(argv):
             continue
         if not local_file.exists():
             origin = "in target" if not old else "present at both refs" if previous is not None else "new upstream"
-            files.append(f"{rel}: absent locally; {origin} (--map if it lives elsewhere)")
+            files.append(f"{rel}: absent locally; {origin} (--map if it lives elsewhere; it may also live as a section of another file)")
             continue
         local = local_file.read_text(encoding="utf-8", errors="replace").splitlines()
         if local == after:
@@ -216,7 +218,7 @@ def main(argv):
             changed = [d for d in diff if d[:1] in "+-" and d[:3] not in ("+++", "---")]
             config = [d for d in changed if re.match(r"[+-][A-Z][A-Z0-9_]* = ", d)]
             kind = ("configuration assignments only" if len(config) == len(changed)
-                    else f"{len(config)} configuration lines, {len(changed) - len(config)} behaviour lines")
+                    else f"{len(config)} configuration lines, {len(changed) - len(config)} other changed lines")
             files.append(f"helper differs: {rel} ({len(changed)} changed lines: {kind})")
             body.append(f"\n=== {rel}: target → brain diff ({kind})")
             body.extend(diff[:HELPER_DIFF_LINES])
@@ -279,6 +281,9 @@ def main(argv):
                     continue
                 totals["missing"] += 1
                 body.append(f"  + {line}   [missing]")
+    unused = [src for src in maps if src not in paths]
+    if unused:
+        files.append("--map not used (file unchanged between these refs): " + ", ".join(unused))
     print(f"upgrade diff {old or '(no base)'} → {new} for {brain}")
     print("\n".join(banner))
     print("files:")
