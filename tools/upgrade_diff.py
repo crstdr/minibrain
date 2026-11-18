@@ -101,6 +101,23 @@ def resolves(ref):
     return git("rev-parse", "-q", "--verify", f"{ref}^{{commit}}").returncode == 0
 
 
+def recorded_bases(brain):
+    """Versions the brain's own notes mention near adoption words: hints to confirm, never used as the base."""
+    hits = {}
+    for f in [brain / "AGENTS.md"] + sorted(brain.glob("topics/*.md")) + sorted(brain.glob("spaces/**/*.md")):
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for n, line in enumerate(text, 1):
+            if re.search(r"adopt|upgrad|base|install", line, re.I):
+                for v in re.findall(r"\bv?(0\.\d+(?:\.\d+)?(?:-alpha\.\d+)?)\b", line):
+                    ref = f"v{v}"
+                    if ref not in hits and resolves(ref):
+                        hits[ref] = f"{f.relative_to(brain)} L{n}"
+    return hits
+
+
 def choose_base(new, brain):
     """(base ref or None, banner lines). Uses the estimator when present; never a weak guess."""
     try:
@@ -111,6 +128,15 @@ def choose_base(new, brain):
     result = estimate(REPO, new, brain)
     groups = result.get("groups", [])
     lines = []
+    recorded = recorded_bases(brain)
+    if recorded:
+        lines.append("  recorded in the brain's notes (a claim to confirm, not used): "
+                     + "; ".join(f"{r} at {w}" for r, w in list(recorded.items())[-3:]))
+        lines.append(f"  if one is right: python3 tools/upgrade_diff.py {new} <brain-dir> --from <that ref>")
+    exact = any("identical" in e for g in groups for e in g.get("evidence", {}).values())
+    if groups and not exact and not result.get("recommended"):
+        lines.append("  no release matches any brain file exactly (files mostly local); candidates omitted")
+        groups = []
     for g in groups[:3]:
         same = " (equivalent: same review)" if g.get("equivalent") and len(g["refs"]) > 1 else ""
         lines.append(f"  candidate {', '.join(g['refs'])}{same}")
@@ -171,7 +197,8 @@ def main(argv):
         before = previous or []
         local_file = brain / rel
         if not old and path.removeprefix("starter/").startswith(SEEDS):  # by upstream path, not --map
-            files.append(f"seed file, not compared line by line without a base: {rel}")
+            files.append(f"seed file, not compared line by line without a base: {rel}"
+                         + (" (its --map is not used)" if path in maps else ""))
             continue
         if after is None:
             files.append(f"removed upstream: {rel} ({'still in brain' if local_file.exists() else 'absent'})")
@@ -186,9 +213,16 @@ def main(argv):
             continue
         if path.endswith(".py"):
             diff = list(unified_diff(after, local, f"target/{rel}", f"brain/{rel}", n=0, lineterm=""))
-            files.append(f"helper differs: {rel} ({sum(1 for d in diff if d[:1] in '+-' and d[:3] not in ('+++', '---'))} lines; diff below)")
-            body.append(f"\n=== {rel}: target → brain (expect only local configuration)")
-            body.extend(diff[:HELPER_DIFF_LINES] + ([f"… {len(diff) - HELPER_DIFF_LINES} more diff lines"] if len(diff) > HELPER_DIFF_LINES else []))
+            changed = [d for d in diff if d[:1] in "+-" and d[:3] not in ("+++", "---")]
+            config = [d for d in changed if re.match(r"[+-][A-Z][A-Z0-9_]* = ", d)]
+            kind = ("configuration assignments only" if len(config) == len(changed)
+                    else f"{len(config)} configuration lines, {len(changed) - len(config)} behaviour lines")
+            files.append(f"helper differs: {rel} ({len(changed)} changed lines: {kind})")
+            body.append(f"\n=== {rel}: target → brain diff ({kind})")
+            body.extend(diff[:HELPER_DIFF_LINES])
+            if len(diff) > HELPER_DIFF_LINES:
+                body.append(f"… {len(diff) - HELPER_DIFF_LINES} more diff lines; full diff: "
+                            f"git -C {REPO} show {new}:{path} | diff -u - {local_file}")
             continue
         files.append(f"inspect: {rel}")
         found = index(local)
@@ -212,6 +246,10 @@ def main(argv):
                 s = line.strip()
                 if not s or s.startswith("```"):
                     continue
+                renamed = [f"{a.removeprefix('starter/')} is {b} here" for a, b in maps.items()
+                           if a.removeprefix("starter/") in s and a.removeprefix("starter/") != b]
+                if renamed:
+                    line = f"{line}   (mapped: {'; '.join(renamed)})"
                 hits = found.get(s, [])
                 if any(not h[2] for h in hits):
                     totals["have"] += 1
@@ -234,7 +272,10 @@ def main(argv):
                     closest = get_close_matches(s, live, n=1, cutoff=0.3)
                     body.append(f"  + {line}   [partial {len(have)}/{len(parts)}]"
                                 + (f"   closest local: {where(found[closest[0]])}" if closest else ""))
-                    body.extend(f"    no literal match: {c}" for c in parts if c not in have)
+                    unmatched = [c for c in parts if c not in have]
+                    body.extend(f"    no literal match: {c}" for c in unmatched[:3])
+                    if len(unmatched) > 3:
+                        body.append(f"    … {len(unmatched) - 3} more clauses with no literal match")
                     continue
                 totals["missing"] += 1
                 body.append(f"  + {line}   [missing]")
@@ -243,6 +284,7 @@ def main(argv):
     print("files:")
     print("\n".join(f"  {f}" for f in files) or "  no starter changes between these refs")
     print("added lines: " + ", ".join(f"{v} {k}" for k, v in totals.items()))
+    print("Labels are text matches, not coverage verdicts: a line marked missing may be covered in other words.")
     print("Account for each line not marked have: take it, merge it, or record why the brain keeps its own.")
     print("\n".join(body))
     return 0
