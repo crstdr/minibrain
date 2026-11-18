@@ -9,7 +9,9 @@ the lines removed and added upstream and, for each added line, where the brain h
   [have L12 § Heading]      the same line, outside fenced examples
   [example L40 § Heading]   the same line, but only inside a fenced block
   [near L12 § Heading]      a reworded line; the changed words follow as {-brain-}{+upstream+}
-  [partial 2/3]             no matching line, but some of its clauses appear; missing clauses listed
+  [partial 2/3]             no matching line, but some clauses appear literally; the closest local
+                            line is located and the rest are listed as "no literal match"
+For replaced lines, "upstream change" first shows what the release itself changed, old → new.
   [missing]                 nothing comparable found
 Helpers are compared with the target as a short diff (usually local configuration).
 Read-only. Evidence, not a verdict: the upgrading agent decides what to take, merge or keep.
@@ -121,6 +123,12 @@ def main(argv):
             if tag == "equal":
                 continue
             body.append(f"\n@@ upstream {new} lines {j1 + 1}-{j2} ({tag})")
+            if tag == "replace":  # what the release itself changed, before any local comparison
+                olds = [l.strip() for l in before[i1:i2] if l.strip()]
+                for line in after[j1:j2]:
+                    prior = get_close_matches(line.strip(), olds, n=1, cutoff=0.5)
+                    if prior and prior[0] != line.strip():
+                        body.append(f"  upstream change: {word_diff(prior[0], line.strip())}")
             for line in before[i1:i2]:
                 if line.strip():
                     hits = [h for h in found.get(line.strip(), []) if not h[2]]
@@ -148,8 +156,10 @@ def main(argv):
                 have = [c for c in parts if any(c in l for l in live)]
                 if parts and have:
                     totals["partial"] += 1
-                    body.append(f"  + {line}   [partial {len(have)}/{len(parts)}]")
-                    body.extend(f"    not found: {c}" for c in parts if c not in have)
+                    closest = get_close_matches(s, live, n=1, cutoff=0.3)
+                    body.append(f"  + {line}   [partial {len(have)}/{len(parts)}]"
+                                + (f"   closest local: {where(found[closest[0]])}" if closest else ""))
+                    body.extend(f"    no literal match: {c}" for c in parts if c not in have)
                     continue
                 totals["missing"] += 1
                 body.append(f"  + {line}   [missing]")

@@ -42,6 +42,10 @@ class UpgradeDiffTests(unittest.TestCase):
         self.assertIn("identical to target", out)
         self.assertIn("0 example, 0 near, 0 partial, 0 missing", out)
 
+    def test_upstream_change_is_shown_from_the_release_itself(self):
+        out = self.run_tool(self.brain_at("v0.7.0"))
+        self.assertIn("upstream change: 3. IMPROVE — {-Recurring-} {+New standing rule", out)
+
     def test_bad_brain_path_fails(self):
         out = subprocess.run([sys.executable, str(TOOL), "v0.7.0", "v0.8-alpha.1", "/nonexistent-brain"],
                              capture_output=True, text=True)
