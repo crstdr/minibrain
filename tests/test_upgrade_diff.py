@@ -68,6 +68,29 @@ class UpgradeDiffTests(unittest.TestCase):
         agents.write_text(agents.read_text() + "\n```\n" + improve + "\n```\n")
         self.assertRegex(self.run_tool(brain), r"3\. IMPROVE — New standing rule.*\[example L\d+")
 
+    def test_inactive_examples_and_comments_do_not_supply_instructions(self):
+        brain = self.brain_at("v0.7.0")
+        agents = brain / "AGENTS.md"
+        original = agents.read_text()
+        target = subprocess.check_output(["git", "-C", str(ROOT), "show",
+                                          "v0.8-alpha.1:starter/AGENTS.md"], text=True)
+        rule = next(line for line in target.splitlines() if line.startswith("3. IMPROVE"))
+        cases = [("~~~text", "~~~"), ("````text\n```", "````"), ("~~~\n```", "~~~~"),
+                 ("<!--", "-->"), ("<!--\n~~~", "-->")]
+        for opening, closing in cases:
+            with self.subTest(opening=opening):
+                agents.write_text(f"{original}\n{opening}\n{rule}\n{closing}\n")
+                self.assertRegex(self.run_tool(brain), r'3\. IMPROVE — New standing rule.*\[example L')
+                agents.write_text(agents.read_text() + rule + "\n")
+                self.assertRegex(self.run_tool(brain), r'3\. IMPROVE — New standing rule.*\[have L')
+
+    def test_absent_existing_file_and_comparison_direction(self):
+        brain = self.brain_at("v0.7.0")
+        (brain / "CLAUDE.md").unlink()
+        out = self.run_tool(brain)
+        self.assertIn("CLAUDE.md: absent locally; present at both refs", out)
+        self.assertIn("local → target, comparison only:", out)
+
 
 if __name__ == "__main__":
     unittest.main()

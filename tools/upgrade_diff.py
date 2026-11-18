@@ -37,17 +37,36 @@ def show(ref, path):
 
 
 def index(lines):
-    """Stripped line -> list of (line number, heading, in a fenced block)."""
-    found, heading, fenced = {}, "(top)", False
+    """Map each line to its position, heading and whether it is example/comment text."""
+    found, heading, fence, comment = {}, "(top)", None, False
     for n, line in enumerate(lines, 1):
         s = line.strip()
-        if s.startswith("```"):
-            fenced = not fenced
-            continue
-        if not fenced and re.match(r"#{1,6} |<[a-z_]+>$", s):
+        if fence:
+            if re.fullmatch(r" {0,3}" + fence[0] + "{" + str(len(fence)) + r",}[ \t]*", line):
+                fence = None
+                continue
+            inactive = True
+        else:
+            opener = re.match(r"^ {0,3}(`{3,}(?!`)|~{3,})(.*)$", line)
+            if not comment and opener and (opener[1][0] != "`" or "`" not in opener[2]):
+                fence = opener[1]
+                continue
+            tail, visible = line, ""
+            while tail:
+                if comment:
+                    hidden, end, tail = tail.partition("-->")
+                    if hidden.strip():
+                        found.setdefault(hidden.strip(), []).append((n, heading, True))
+                    comment = not bool(end)
+                else:
+                    prefix, start, tail = tail.partition("<!--")
+                    visible += prefix
+                    comment = bool(start)
+            s, inactive = visible.strip(), False
+        if not inactive and re.match(r"#{1,6} |<[a-z_]+>$", s):
             heading = s.lstrip("# ")
         if s:
-            found.setdefault(s, []).append((n, heading, fenced))
+            found.setdefault(s, []).append((n, heading, inactive))
     return found
 
 
@@ -97,13 +116,15 @@ def main(argv):
     totals = dict.fromkeys(("have", "example", "near", "partial", "missing"), 0)
     for path in paths:
         rel = maps.get(path, path.removeprefix("starter/"))
-        before, after = show(old, path) or [], show(new, path)
+        previous, after = show(old, path), show(new, path)
+        before = previous or []
         local_file = brain / rel
         if after is None:
             files.append(f"removed upstream: {rel} ({'still in brain' if local_file.exists() else 'absent'})")
             continue
         if not local_file.exists():
-            files.append(f"absent in brain: {rel} (new or renamed upstream; --map if it lives elsewhere)")
+            origin = "present at both refs" if previous is not None else "new upstream"
+            files.append(f"{rel}: absent locally; {origin} (--map if it lives elsewhere)")
             continue
         local = local_file.read_text(encoding="utf-8", errors="replace").splitlines()
         if local == after:
@@ -150,7 +171,7 @@ def main(argv):
                 if near:
                     totals["near"] += 1
                     body.append(f"  + {line}   [near {where(found[near[0]])}]")
-                    body.append(f"    changes: {word_diff(near[0], s)}")
+                    body.append(f"    local → target, comparison only: {word_diff(near[0], s)}")
                     continue
                 parts = clauses(s)
                 have = [c for c in parts if any(c in l for l in live)]
