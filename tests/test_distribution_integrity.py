@@ -62,6 +62,7 @@ class DistributionLinkTests(unittest.TestCase):
         # and intentionally synthetic [[wikilinks]] are not installed targets.
         sources = [ROOT / "README.md", ROOT / "CONTRIBUTING.md", ROOT / "SETUP.md"]
         sources.extend(sorted((ROOT / "starter").rglob("*.md")))
+        sources.extend(sorted((ROOT / "plugins").rglob("*.md")))
         checked = 0
         for source in sources:
             text = outside_fences(source.read_text(encoding="utf-8"))

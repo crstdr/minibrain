@@ -1,0 +1,566 @@
+<!-- SPDX-License-Identifier: MIT; Copyright (c) 2026 Cristian (crstdr) -->
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Product launch roadmap (Beta)</title>
+<style>
+:root{
+  --bg:#f6f1e7; --bg2:#efe8d9; --surface:#fffdf8; --ink:#1f2a3a; --dim:#667085; --line:rgba(31,42,58,.16);
+  --edge:rgba(31,42,58,.26); --grid:rgba(31,42,58,.045);
+  --pri:#1f2a3a; --pri-t:#fbf6ea;
+  --dec:#b7791f; --dec-bg:#fbeecf;
+  --gap:#b4432d; --gap-bg:#f9ddd4;
+  --idle:#5b6b82; --idle-bg:#e6eaf0;
+  --wip:#0f766e; --wip-bg:#d5eeea;
+  --ok:#4d7c0f; --ok-bg:#e2efcf;
+  --up:#b4432d; --down:#0f766e;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  --sans:"Avenir Next","Gill Sans","Trebuchet MS",Verdana,sans-serif;
+  --mono:"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#141a22; --bg2:#19212b; --surface:#1e2733; --ink:#e9e4d8; --dim:#98a2b3; --line:rgba(233,228,216,.16);
+  --edge:rgba(233,228,216,.30); --grid:rgba(233,228,216,.04);
+  --pri:#e9e4d8; --pri-t:#141a22;
+  --dec:#e5b454; --dec-bg:#3a2f16; --gap:#ef8a73; --gap-bg:#40211b; --idle:#a5b1c4; --idle-bg:#2a3340;
+  --wip:#5ecdc0; --wip-bg:#15332f; --ok:#a8d06a; --ok-bg:#26331a; --up:#ef8a73; --down:#5ecdc0;
+}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font:14px/1.45 var(--sans);color:var(--ink);background:var(--bg);display:grid;grid-template-rows:auto 1fr;overflow:hidden}
+header{padding:14px 22px 12px;border-bottom:1px solid var(--line);background:var(--bg2);display:flex;flex-wrap:wrap;gap:10px 28px;align-items:flex-end}
+h1{font:600 24px/1.1 var(--serif);margin:0;letter-spacing:.01em}
+.sub{color:var(--dim);font-size:12.5px;margin-top:3px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:600 12.5px var(--sans);padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.chip:hover{border-color:var(--ink)}
+.chip[aria-pressed=true]{background:var(--pri);color:var(--pri-t);border-color:var(--pri)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--dim);margin-left:auto}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:4px;border:1.5px solid;display:inline-block}
+main{display:grid;grid-template-columns:1fr 360px;min-height:0}
+#stage{position:relative;overflow:hidden;cursor:grab;min-width:0;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:28px 28px}
+#stage.drag{cursor:grabbing}
+#world{position:absolute;left:0;top:0;transform-origin:0 0}
+#edges{position:absolute;left:0;top:0;overflow:visible;pointer-events:none}
+#edges path{fill:none;stroke:var(--edge);stroke-width:1.4}
+#edges path.up{stroke:var(--up);stroke-width:2.4}
+#edges path.down{stroke:var(--down);stroke-width:2.4}
+#edges path.rel{stroke-dasharray:5 5}
+#edges path.off{opacity:.10}
+.nd{position:absolute;width:220px;height:50px;padding:5px 9px 5px 12px;border-radius:9px;border:1.5px solid;background:var(--surface);
+  font-size:12px;line-height:1.28;cursor:pointer;display:flex;align-items:center;transition:opacity .15s,box-shadow .15s;user-select:none}
+.nd b{font-weight:600;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.nd:hover{box-shadow:0 3px 12px rgba(0,0,0,.18)}
+.nd.off{opacity:.16}
+.nd.sel{box-shadow:0 0 0 3px var(--ink)}
+.nd.priority{background:var(--pri);border-color:var(--pri);color:var(--pri-t);height:64px;font-size:14px;font-family:var(--serif)}
+.nd.dec{background:var(--dec-bg);border-color:var(--dec)} .nd.gap{background:var(--gap-bg);border-color:var(--gap);border-style:dashed}
+.nd.idle{background:var(--idle-bg);border-color:var(--idle)} .nd.wip{background:var(--wip-bg);border-color:var(--wip)}
+.nd.ok{background:var(--ok-bg);border-color:var(--ok)}
+.nd.dec:before{content:"";flex:none;width:9px;height:9px;margin-right:7px;background:var(--dec);transform:rotate(45deg)}
+.col{position:absolute;top:-34px;font:600 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--dim);width:220px}
+.zoom{position:absolute;left:14px;bottom:14px;display:flex;gap:5px}
+.zoom button{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 16px var(--sans);cursor:pointer}
+.zoom button.w{width:auto;padding:0 11px;font-size:12.5px}
+.hint{position:absolute;right:14px;bottom:16px;font-size:11.5px;color:var(--dim)}
+aside{border-left:1px solid var(--line);background:var(--surface);overflow:auto;padding:18px 20px 30px;min-width:0}
+aside h2{font:600 19px/1.25 var(--serif);margin:8px 0 10px}
+.tag{display:inline-block;font:600 11px var(--sans);padding:3px 9px;border-radius:999px;border:1.5px solid}
+.kv{font-size:12.5px;color:var(--dim);margin:3px 0} .kv strong{color:var(--ink);font-weight:600}
+aside p{font-size:13.5px;line-height:1.5;margin:12px 0}
+aside h3{font:600 10.5px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--dim);margin:18px 0 6px}
+aside ul{list-style:none;margin:0;padding:0}
+aside li{font-size:12.8px;padding:5px 0 5px 16px;border-top:1px solid var(--line);cursor:pointer;position:relative;overflow-wrap:anywhere}
+aside li:hover{text-decoration:underline}
+aside li i{position:absolute;left:0;top:10px;width:8px;height:8px;border-radius:2px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0}
+.stat{border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+.stat b{font:600 24px/1 var(--serif);display:block} .stat span{font-size:11.5px;color:var(--dim)}
+.stat.big{grid-column:1/-1;background:var(--bg2)}
+@media (max-width:900px){main{grid-template-columns:1fr;grid-template-rows:60% 40%}aside{border-left:0;border-top:1px solid var(--line)}.legend{margin-left:0}}
+@media (prefers-reduced-motion:reduce){.nd{transition:none}}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>Product launch roadmap (Beta)</h1><div class="sub">Sample data</div><div class="sub" id="sub"></div></div>
+  <div class="chips" id="chips"></div>
+  <div class="legend" id="legend"></div>
+</header>
+<main>
+  <div id="stage">
+    <div id="world"><svg id="edges"></svg></div>
+    <div class="zoom"><button id="zi" title="Zoom in">+</button><button id="zo" title="Zoom out">−</button><button id="zf" class="w" title="Fit the graph to the window">Fit</button></div>
+    <div class="hint">Drag to move · scroll to zoom · click a box for detail</div>
+  </div>
+  <aside id="panel"></aside>
+</main>
+<script>
+const DATA = {
+  "nodes": [
+    {
+      "id": "release",
+      "title": "Release the pocket rain gauge",
+      "kind": "priority",
+      "state": "mapped",
+      "owner": "",
+      "serves": "",
+      "by": "",
+      "source": "Sample launch plan",
+      "importance": "",
+      "needs": [
+        "ship"
+      ],
+      "related": [],
+      "ext": [],
+      "body": "Get the first gauges ready for buyers.",
+      "daysLeft": 0
+    },
+    {
+      "id": "guide",
+      "title": "Help buyers get started",
+      "kind": "priority",
+      "state": "mapped",
+      "owner": "",
+      "serves": "",
+      "by": "",
+      "source": "Sample launch plan",
+      "importance": "",
+      "needs": [
+        "publish-guide"
+      ],
+      "related": [],
+      "ext": [],
+      "body": "Make setup clear before the first shipment.",
+      "daysLeft": 0
+    },
+    {
+      "id": "ship",
+      "title": "Pack the first batch",
+      "kind": "project",
+      "state": "specified",
+      "owner": "Fulfilment",
+      "serves": "release",
+      "by": "",
+      "source": "Sample launch plan",
+      "importance": "",
+      "needs": [
+        "verify",
+        "print-labels"
+      ],
+      "related": [],
+      "ext": [],
+      "body": "Pack 50 gauges. Target: 18 June 2030.",
+      "daysLeft": 2
+    },
+    {
+      "id": "verify",
+      "title": "Check calibration",
+      "kind": "project",
+      "state": "specified",
+      "owner": "Quality",
+      "serves": "release",
+      "by": "",
+      "source": "Sample launch plan",
+      "importance": "",
+      "needs": [
+        "assemble"
+      ],
+      "related": [],
+      "ext": [],
+      "body": "Check ten units against measured rainfall.",
+      "daysLeft": 3
+    },
+    {
+      "id": "assemble",
+      "title": "Assemble the first batch",
+      "kind": "project",
+      "state": "in-progress",
+      "owner": "Assembly",
+      "serves": "release",
+      "by": "",
+      "source": "Sample launch plan",
+      "importance": "",
+      "needs": [
+        "mould"
+      ],
+      "related": [],
+      "ext": [],
+      "body": "Fit the measurement tubes and mounting clips.",
+      "daysLeft": 4
+    },
+    {
+      "id": "mould",
+      "title": "Finish the mould",
+      "kind": "project",
+      "state": "blocked",
+      "owner": "Fabrication",
+      "serves": "release",
+      "by": "",
+      "source": "Sample launch plan",
+      "importance": "",
+      "needs": [
+        "finish-choice"
+      ],
+      "related": [],
+      "ext": [],
+      "body": "Work is blocked until you pick a surface finish.",
+      "daysLeft": 5
+    },
+    {
+      "id": "finish-choice",
+      "title": "Choose the surface finish",
+      "kind": "decision",
+      "state": "awaiting-user",
+      "owner": "User",
+      "serves": "release",
+      "by": "",
+      "source": "Sample launch plan",
+      "importance": "",
+      "needs": [],
+      "related": [],
+      "ext": [],
+      "body": "Matte is easier to grip; gloss is easier to wipe clean.",
+      "daysLeft": 0
+    },
+    {
+      "id": "print-labels",
+      "title": "Print carton labels",
+      "kind": "project",
+      "state": "specified",
+      "owner": "Fulfilment",
+      "serves": "release",
+      "by": "",
+      "source": "Sample launch plan",
+      "importance": "",
+      "needs": [
+        "label-proof"
+      ],
+      "related": [],
+      "ext": [],
+      "body": "Print the run after checking the proof.",
+      "daysLeft": 1
+    },
+    {
+      "id": "label-proof",
+      "title": "Proof the carton label",
+      "kind": "project",
+      "state": "in-progress",
+      "owner": "Packaging",
+      "serves": "release",
+      "by": "",
+      "source": "Sample launch plan",
+      "importance": "",
+      "needs": [
+        "stock"
+      ],
+      "related": [],
+      "ext": [],
+      "body": "Check the size markings and handling instructions.",
+      "daysLeft": 2
+    },
+    {
+      "id": "stock",
+      "title": "Receive carton stock",
+      "kind": "project",
+      "state": "done",
+      "owner": "Packaging",
+      "serves": "release",
+      "by": "",
+      "source": "Sample launch plan",
+      "importance": "",
+      "needs": [],
+      "related": [],
+      "ext": [],
+      "body": "The cartons are at the packing bench.",
+      "daysLeft": 0
+    },
+    {
+      "id": "publish-guide",
+      "title": "Publish the quick-start guide",
+      "kind": "project",
+      "state": "specified",
+      "owner": "Documentation",
+      "serves": "guide",
+      "by": "",
+      "source": "Sample launch plan",
+      "importance": "",
+      "needs": [
+        "edit-guide",
+        "photograph"
+      ],
+      "related": [],
+      "ext": [],
+      "body": "Publish the final PDF before shipping.",
+      "daysLeft": 1
+    },
+    {
+      "id": "edit-guide",
+      "title": "Edit the quick-start guide",
+      "kind": "project",
+      "state": "in-progress",
+      "owner": "Documentation",
+      "serves": "guide",
+      "by": "",
+      "source": "Sample launch plan",
+      "importance": "",
+      "needs": [
+        "units-choice",
+        "draft-guide"
+      ],
+      "related": [],
+      "ext": [],
+      "body": "Check that the same units appear in each example.",
+      "daysLeft": 2
+    },
+    {
+      "id": "units-choice",
+      "title": "Choose the default units",
+      "kind": "decision",
+      "state": "awaiting-user",
+      "owner": "User",
+      "serves": "guide",
+      "by": "",
+      "source": "Sample launch plan",
+      "importance": "",
+      "needs": [],
+      "related": [],
+      "ext": [],
+      "body": "Choose millimetres or inches for the worked examples.",
+      "daysLeft": 0
+    },
+    {
+      "id": "draft-guide",
+      "title": "Draft the setup steps",
+      "kind": "project",
+      "state": "done",
+      "owner": "Documentation",
+      "serves": "guide",
+      "by": "",
+      "source": "Sample launch plan",
+      "importance": "",
+      "needs": [],
+      "related": [],
+      "ext": [],
+      "body": "The draft covers mounting, reading and emptying the gauge.",
+      "daysLeft": 0
+    },
+    {
+      "id": "photograph",
+      "title": "Photograph the setup steps",
+      "kind": "project",
+      "state": "specified",
+      "owner": "Photography",
+      "serves": "guide",
+      "by": "",
+      "source": "Sample launch plan",
+      "importance": "",
+      "needs": [
+        "draft-guide"
+      ],
+      "related": [
+        "label-proof"
+      ],
+      "ext": [],
+      "body": "Show the bracket and the gauge at eye level.",
+      "daysLeft": 2
+    }
+  ],
+  "order": [
+    "release",
+    "guide"
+  ],
+  "short": {
+    "release": "First shipment",
+    "guide": "Quick-start guide"
+  },
+  "generated": "2030-06-01"
+};
+const N = new Map(DATA.nodes.map(n => [n.id, n]));
+const CAT = {priority:["priority","Priority"],dec:["dec","Needs your decision"],gap:["gap","Missing or blocked"],idle:["idle","Paused or not started"],wip:["wip","Partly built or under way"],ok:["ok","Done or live"]};
+const STATE = {"awaiting-user":"Needs your decision","missing":"Doesn't exist yet","built-off":"Built, switched off","partial":"Partly built","unknown":"State unknown","discussed":"Discussed only","specified":"Designed, not built","paused":"Paused","in-progress":"In progress","live":"Live","done":"Done","blocked":"Blocked","mapped":"Priority"};
+function cat(n){ if(n.kind==="priority")return "priority"; if(["done","live"].includes(n.state))return "ok";
+  if(n.state==="awaiting-user")return "dec"; if(["missing","blocked"].includes(n.state))return "gap";
+  if(["in-progress","partial","built-off"].includes(n.state))return "wip"; return "idle"; }
+const parents = new Map(DATA.nodes.map(n => [n.id, []]));
+DATA.nodes.forEach(n => n.needs.forEach(c => parents.get(c) && parents.get(c).push(n.id)));
+function closure(id, next){ const out=new Set(), st=[id]; while(st.length){ for(const k of next(st.pop())) if(N.has(k)&&!out.has(k)){out.add(k);st.push(k);} } return out; }
+const down = id => closure(id, k => N.get(k).needs);
+const up = id => closure(id, k => parents.get(k));
+const W=220,H=50,PH=64,CX=300,RY=62,PAD=60;
+const world=document.getElementById("world"), svg=document.getElementById("edges"), stage=document.getElementById("stage");
+let loose=new Map(), view="all", sel=null, pos=new Map(), vis=new Set(), T={x:0,y:0,k:1}, size={w:0,h:0}, plan;
+
+function layout(){
+  vis = view==="all" ? new Set(N.keys()) : new Set([view, ...down(view)]);
+  if(view!=="all") for(const i of [...vis]) for(const r of N.get(i).related) if(N.has(r) && N.get(r).kind!=="priority") vis.add(r);
+  plan = schedule();
+  if(plan.cycle) return 0;
+  loose = new Map();
+  for(const i of vis){ const n=N.get(i); if(n.kind==="priority" || parents.get(i).some(x=>vis.has(x))) continue;
+    loose.set(i, [...vis].filter(x => N.get(x).related.includes(i))); }
+  const kids = i => N.get(i).needs.concat([...loose].filter(([k,ps]) => ps.includes(i)).map(([k]) => k));
+  const pars = i => parents.get(i).concat(loose.get(i)||[]);
+  const roots = view==="all" ? DATA.order : [view];
+  const depth = new Map([...vis].map(i => [i, 0]));
+  let ch=true, guard=0;
+  while(ch && guard++<200){ ch=false; for(const i of vis) for(const c of kids(i)) if(vis.has(c) && depth.get(c) < depth.get(i)+1){ depth.set(c, depth.get(i)+1); ch=true; } }
+  for(const i of vis) if(N.get(i).kind!=="priority" && depth.get(i)===0) depth.set(i,1);
+  const L=[]; for(const i of vis){ const d=depth.get(i); (L[d]=L[d]||[]).push(i); }
+  L[0] = roots.filter(r => vis.has(r));
+  const idx = new Map(); const setIdx = () => L.forEach(l => l.forEach((i,k) => idx.set(i, k/Math.max(1,l.length-1||1))));
+  L.forEach(l => l.sort()); L[0] = roots.filter(r => vis.has(r)); setIdx();
+  const bary = (i, f) => { const a=f(i).filter(x => vis.has(x)); return a.length ? a.reduce((s,x)=>s+idx.get(x),0)/a.length : idx.get(i); };
+  for(let s=0;s<6;s++){
+    for(let d=1;d<L.length;d++){ const b=new Map(L[d].map(i=>[i,bary(i,pars)])); L[d].sort((a,c)=>b.get(a)-b.get(c)); setIdx(); }
+    for(let d=L.length-2;d>=1;d--){ const b=new Map(L[d].map(i=>[i,bary(i,kids)])); L[d].sort((a,c)=>b.get(a)-b.get(c)); setIdx(); }
+  }
+  const maxN = Math.max(...L.map(l=>l.length)); const total = Math.max(maxN*RY, roots.length*150);
+  pos = new Map();
+  L[0].forEach((i,k) => pos.set(i, {x:PAD, y:PAD + (k+0.5)*total/L[0].length - PH/2, h:PH}));
+  for(let d=1; d<L.length; d++){
+    const want = L[d].map(i => { const p=pars(i).filter(x=>pos.has(x)); return p.length ? p.reduce((s,x)=>s+pos.get(x).y+pos.get(x).h/2,0)/p.length - H/2 : PAD; });
+    const ord = L[d].map((i,k)=>k).sort((a,b)=>want[a]-want[b] || a-b);
+    let y=-1e9; const ys=[];
+    ord.forEach(k => { y = Math.max(want[k], y+RY); ys[k]=y; });
+    const over = Math.max(...ys)+H - (PAD+total); if(over>0) for(const k of ord) ys[k]-=over/2;
+    let m=1e9; ord.slice().reverse().forEach(k => { m = Math.min(ys[k], m-RY); ys[k]=Math.max(m, PAD); m=ys[k]; });
+    y=-1e9; ord.forEach(k => { y=Math.max(ys[k], y+RY); ys[k]=y; });
+    L[d].forEach((i,k) => pos.set(i, {x:PAD+d*CX, y:ys[k], h:H}));
+  }
+  size = {w: PAD*2 + (L.length-1)*CX + W, h: Math.max(PAD, ...[...pos.values()].map(p=>p.y+p.h)) + PAD};
+  return L.length;
+}
+function draw(){
+  const cols = layout();
+  world.querySelectorAll(".nd,.col").forEach(e => e.remove());
+  if(plan.cycle){ svg.innerHTML = ""; panel(); return; }
+  svg.setAttribute("width", size.w); svg.setAttribute("height", size.h);
+  let paths="";
+  for(const i of vis) for(const c of N.get(i).needs) if(vis.has(c)){
+    const a=pos.get(i), b=pos.get(c), x1=a.x+W, y1=a.y+a.h/2, x2=b.x, y2=b.y+b.h/2, dx=Math.max(40,(x2-x1)*0.5);
+    paths += `<path data-a="${i}" data-b="${c}" d="M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}"/>`;
+  }
+  for(const i of vis) for(const c of N.get(i).related) if(vis.has(c) && N.get(c).kind!=="priority" && N.get(i).kind!=="priority" || (vis.has(c) && (loose.get(c)||[]).includes(i))){
+    const a=pos.get(i), b=pos.get(c); if(!a||!b||a.x===b.x) continue; const [l,r]=a.x<b.x?[a,b]:[b,a];
+    const x1=l.x+W, y1=l.y+l.h/2, x2=r.x, y2=r.y+r.h/2, dx=Math.max(40,(x2-x1)*0.5);
+    paths += `<path class="rel" data-rel="1" data-a="${i}" data-b="${c}" d="M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}"/>`;
+  }
+  svg.innerHTML = paths;
+  for(let d=0; d<cols; d++){ const e=document.createElement("div"); e.className="col"; e.style.left=(PAD+d*CX)+"px"; e.style.top=(PAD-36)+"px";
+    e.textContent = d===0 ? "Priority" : d===cols-1 ? "Needed first" : d===1 ? "Depends on \u2192" : ""; world.appendChild(e); }
+  for(const i of vis){ const n=N.get(i), p=pos.get(i), e=document.createElement("div");
+    e.className="nd "+cat(n); e.dataset.id=i; e.style.left=p.x+"px"; e.style.top=p.y+"px"; e.title=n.title+": "+(STATE[n.state]||n.state);
+    e.innerHTML="<b></b>"; e.firstChild.textContent = n.kind==="priority" ? DATA.short[i]||n.title : n.title; world.appendChild(e); }
+  mark(); fit();
+}
+function mark(){
+  const U = sel && vis.has(sel) ? up(sel) : null, D = sel && vis.has(sel) ? down(sel) : null;
+  world.querySelectorAll(".nd").forEach(e => { const i=e.dataset.id; e.classList.toggle("sel", i===sel); e.classList.toggle("off", !!U && i!==sel && !U.has(i) && !D.has(i)); });
+  svg.querySelectorAll("path").forEach(p => { const a=p.dataset.a, b=p.dataset.b, rel=p.dataset.rel; let c="";
+    if(U){ if(rel) c = (a===sel||b===sel) ? "" : "off"; else if((a===sel||D.has(a)) && D.has(b)) c="down"; else if((b===sel||U.has(b)) && U.has(a)) c="up"; else c="off"; }
+    p.setAttribute("class", (rel?"rel ":"")+c); });
+  if(U) world.querySelectorAll(".nd.off").forEach(e => { const i=e.dataset.id; if(N.get(sel).related.includes(i) || N.get(i).related.includes(sel)) e.classList.remove("off"); });
+  panel();
+}
+function apply(){ world.style.transform=`translate(${T.x}px,${T.y}px) scale(${T.k})`; }
+function fit(){ const r=stage.getBoundingClientRect(); const kw=r.width/size.w, kh=r.height/size.h;
+  T.k = Math.min(1.2, Math.max(Math.min(kw,kh), 0.34)); T.x = Math.max(0,(r.width-size.w*T.k)/2); T.y = Math.max(0,(r.height-size.h*T.k)/2); apply(); }
+function zoom(f, cx, cy){ const r=stage.getBoundingClientRect(); cx=cx??r.width/2; cy=cy??r.height/2; const k=Math.min(2.2,Math.max(0.15,T.k*f));
+  T.x = cx-(cx-T.x)*k/T.k; T.y = cy-(cy-T.y)*k/T.k; T.k=k; apply(); }
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function li(ids){ return ids.filter(i=>N.has(i)).map(i => `<li data-go="${i}"><i style="background:var(--${cat(N.get(i))==="priority"?"pri":cat(N.get(i))})"></i>${esc(N.get(i).title)} <span style="color:var(--dim)">· ${esc(STATE[N.get(i).state]||N.get(i).state)}</span></li>`).join(""); }
+function schedule(){
+  // Work can proceed in parallel. Count only visible hard prerequisites.
+  const before = new Map(), after = new Map(), next = new Map();
+  const visiting = new Set();
+  let cycle;
+  const days = i => ["done","live"].includes(N.get(i).state) ? 0 : (N.get(i).daysLeft ?? 0);
+  function longest(i, cache, adjacent, track){
+    if(cache.has(i)) return cache.get(i);
+    if(visiting.has(i)){
+      const chain = [...visiting];
+      cycle = chain.slice(chain.indexOf(i)).concat(i);
+      return null;
+    }
+    visiting.add(i);
+    let best = null;
+    for(const j of adjacent(i)) if(vis.has(j)){
+      const length = longest(j, cache, adjacent, track);
+      if(cycle) return null;
+      if(!best || length > best.length) best = {id:j, length};
+    }
+    visiting.delete(i);
+    if(track && best) next.set(i, best.id);
+    const length = days(i) + (best?.length ?? 0);
+    cache.set(i, length);
+    return length;
+  }
+  let start = null, total = 0;
+  for(const i of vis){
+    const length = longest(i, before, j => N.get(j).needs, true);
+    if(cycle) return {cycle};
+    if(length > total){ start=i; total=length; }
+  }
+  const path = [];
+  for(let i=start; i; i=next.get(i)) if(N.get(i).kind!=="priority") path.unshift(i);
+  return {total, path, slack: i => Math.max(0, total - (before.get(i) + longest(i, after, j => parents.get(j), false) - days(i)))};
+}
+function panel(){
+  const P=document.getElementById("panel");
+  if(plan.cycle){
+    P.innerHTML = `<p role="alert"><strong>Dependency cycle:</strong> ${esc(plan.cycle.join(" → "))}. Fix the prerequisites in the source notes, then refresh this view.</p>`;
+    return;
+  }
+  if(!sel){
+    const ids=[...vis].filter(i=>N.get(i).kind!=="priority"), c=k=>ids.filter(i=>cat(N.get(i))===k).length;
+    const decs=ids.filter(i=>cat(N.get(i))==="dec").map(i=>[i,[...up(i)].filter(x=>vis.has(x)).length]).sort((a,b)=>b[1]-a[1]);
+    P.innerHTML = `<h2>${view==="all"?"The whole roadmap":esc(N.get(view).title)}</h2>
+      <p>${view==="all"?"Priorities sit on the left. Solid lines point to prerequisites. Dashed lines indicate related work.":esc(N.get(view).body)}</p>
+      <div class="stats"><div class="stat big"><b>${ids.length}</b><span>work items in this view</span></div>
+      <div class="stat"><b style="color:var(--dec)">${c("dec")}</b><span>need your decision</span></div><div class="stat"><b style="color:var(--gap)">${c("gap")}</b><span>missing or blocked</span></div>
+      <div class="stat"><b style="color:var(--idle)">${c("idle")}</b><span>paused or not started</span></div><div class="stat"><b style="color:var(--wip)">${c("wip")}</b><span>partly built or under way</span></div>
+      <div class="stat"><b style="color:var(--ok)">${c("ok")}</b><span>done or live</span></div></div>
+      <h3>Critical path: ${plan.total} workdays</h3>
+      ${plan.path.length ? `<ul>${li(plan.path)}</ul>` : "<p>No remaining work estimated.</p>"}
+      <p>Uses estimates and hard dependencies in this view. Excludes unestimated waits and assumes parallel work is possible.</p>
+      <h3>Your decisions, most blocking first</h3><ul>${decs.map(([i,k])=>`<li data-go="${i}"><i style="background:var(--dec)"></i>${esc(N.get(i).title)} <span style="color:var(--dim)">· ${k} behind it</span></li>`).join("")}</ul>`;
+  } else {
+    const n=N.get(sel), k=cat(n), col=k==="priority"?"pri":k;
+    P.innerHTML = `<span class="tag" style="border-color:var(--${col});color:var(--${col})">${esc(STATE[n.state]||n.state)}</span>
+      <h2>${esc(n.title)}</h2>
+      ${n.owner?`<div class="kv"><strong>Owner</strong> ${esc(n.owner)}</div>`:""}${n.serves?`<div class="kv"><strong>Serves</strong> ${esc(n.serves.split(",").map(s=>DATA.short[s.trim()]||s.trim()).join(", "))}</div>`:""}
+      ${n.by?`<div class="kv"><strong>Reported by</strong> ${esc(n.by)}</div>`:""}${n.source?`<div class="kv"><strong>Source</strong> ${esc(n.source)}</div>`:""}
+      <p>${esc(n.body)}</p>
+      <div class="kv"><strong>Workdays left</strong> ${["done","live"].includes(n.state) ? 0 : (n.daysLeft ?? "Not estimated")}</div>
+      <div class="kv"><strong>Slack</strong> ${Number(plan.slack(sel).toFixed(2))} workdays in this view</div>
+      ${n.needs.length||n.ext.length?`<h3>Needs</h3><ul>${li(n.needs)}${n.ext.map(e=>`<li style="cursor:default"><i style="background:var(--dec)"></i>User action: ${esc(e)}</li>`).join("")}</ul>`:""}
+      ${parents.get(sel).length?`<h3>Needed by</h3><ul>${li(parents.get(sel))}</ul>`:""}
+      ${n.related.length?`<h3>Related, not a hard prerequisite</h3><ul>${li(n.related)}</ul>`:""}
+      <h3>Reach</h3><div class="kv">${down(sel).size} items sit behind this one; ${up(sel).size} depend on it.</div>
+      <p><button class="chip" id="clr">Clear selection</button></p>`;
+  }
+}
+function pick(id){ if(id && !vis.has(id)){ view="all"; chips(); sel=id; draw(); return; } sel=id; mark(); }
+function chips(){ const C=document.getElementById("chips"); C.innerHTML = [["all","All"],...DATA.order.map(o=>[o,DATA.short[o]])].map(([v,t])=>`<button class="chip" data-v="${v}" aria-pressed="${v===view}">${esc(t)}</button>`).join(""); }
+document.getElementById("chips").addEventListener("click", e => { const b=e.target.closest("[data-v]"); if(!b)return; view=b.dataset.v; sel=null; chips(); draw(); });
+document.getElementById("panel").addEventListener("click", e => { if(e.target.id==="clr") return pick(null); const l=e.target.closest("[data-go]"); if(l) pick(l.dataset.go); });
+let drag=null, moved=false;
+stage.addEventListener("pointerdown", e => { if(e.target.closest(".zoom"))return; drag={x:e.clientX-T.x,y:e.clientY-T.y}; moved=false; stage.setPointerCapture(e.pointerId); });
+stage.addEventListener("pointermove", e => { if(!drag)return; const nx=e.clientX-drag.x, ny=e.clientY-drag.y; if(Math.abs(nx-T.x)+Math.abs(ny-T.y)>3){moved=true;stage.classList.add("drag");} T.x=nx;T.y=ny;apply(); });
+stage.addEventListener("pointerup", e => { stage.classList.remove("drag"); const was=drag; drag=null; if(!was||moved)return;
+  const el=document.elementFromPoint(e.clientX,e.clientY), nd=el&&el.closest(".nd"); if(el&&el.closest(".zoom"))return; pick(nd?(nd.dataset.id===sel?null:nd.dataset.id):null); });
+stage.addEventListener("wheel", e => { e.preventDefault(); const r=stage.getBoundingClientRect(); zoom(Math.exp(-e.deltaY*0.0016), e.clientX-r.left, e.clientY-r.top); }, {passive:false});
+document.getElementById("zi").onclick=()=>zoom(1.25); document.getElementById("zo").onclick=()=>zoom(0.8); document.getElementById("zf").onclick=fit;
+addEventListener("resize", fit);
+document.getElementById("sub").textContent = `Derived view generated ${DATA.generated}. The notes are the source.`;
+document.getElementById("legend").innerHTML = Object.entries(CAT).map(([k,[c,t]])=>`<span><i class="sw" style="background:var(--${k==="priority"?"pri":k+"-bg"});border-color:var(--${k==="priority"?"pri":k});${k==="gap"?"border-style:dashed":""}"></i>${t}</span>`).join("") + `<span><svg width="30" height="10"><path d="M0,5 H30" stroke="currentColor" stroke-width="1.5"/></svg>needs</span><span><svg width="30" height="10"><path d="M0,5 H30" stroke="currentColor" stroke-width="1.5" stroke-dasharray="5 5"/></svg>related</span>`;
+const [hv,hs]=location.hash.slice(1).split("/"); if(hv && (hv==="all"||DATA.order.includes(hv))) view=hv; if(hs && N.has(hs)) sel=hs;
+chips(); draw();
+</script>
+</body>
+</html>

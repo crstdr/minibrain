@@ -23,6 +23,10 @@ Open the folder you want to equip with minibrain in your preferred coding-agent 
 - **Collections primitive.** Scales a brain to support large sets of related items: dependencies, shared assessments, governed priorities. Optional; still plain local files.
 - **[RepoPrompt CE](https://github.com/repoprompt/repoprompt-ce) bonus.** Optional overseer guidance helps coordinate multiple agent lanes while preserving responsibilities, progress and pending decisions across sessions.
 
+## Plugins (beta)
+
+Add an optional [roadmap](plugins/roadmap/SETUP.md) to see dependencies and decisions, or see the [Agents Map draft](plugins/map/SETUP.md) for RepoPrompt CE activity. The map demo is not included yet. Neither plugin is required. See [plugins](plugins/README.md).
+
 ## For agents
 
 - Install/adapt: [SETUP.md](SETUP.md).

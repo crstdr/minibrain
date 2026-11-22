@@ -97,6 +97,10 @@ describe observed equivalents for adapted mechanisms. Unfinished checks
 mean partial acceptance. Structural checks do not prove agent compliance
 or comparative benefit.
 
+## Optional plugins (beta)
+
+The core install never requires plugins. Add one only on request: [Roadmap](plugins/roadmap/SETUP.md) or [Agents Map](plugins/map/SETUP.md) (draft; demo pending).
+
 ## Upgrading
 
 1. Read the destination's instructions and adoption record: note the adopted ref and its local adaptations. Obtain upgrade authority; preserve unfinished work and keep other writers read-only during protocol changes.

@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [0.9-alpha.1](https://github.com/crstdr/minibrain/compare/v0.8...v0.9-alpha.1) | nothing. Optional beta plugins are outside `starter/`. |
 | [0.8](https://github.com/crstdr/minibrain/compare/v0.7.0...v0.8) | Since 0.7.0: `AGENTS.md` opening block (IMPROVE) and Checkpoint step 2; `CLAUDE.md` mirrors the opening block; `.agents/skills/reflect/SKILL.md` description and Principles; new `tools/upgrade_diff.py` (run from a clone, not installed). |
 | [0.8-alpha.2](https://github.com/crstdr/minibrain/compare/v0.8-alpha.1...v0.8-alpha.2) | nothing; new `tools/upgrade_diff.py` (run from a clone, not installed) and SETUP → Upgrading step 2. |
 | [0.8-alpha.1](https://github.com/crstdr/minibrain/compare/v0.7.0...v0.8-alpha.1) | `AGENTS.md` opening block (IMPROVE) and Checkpoint step 2; `CLAUDE.md` mirrors the opening block; `.agents/skills/reflect/SKILL.md` description and Principles. |
@@ -25,6 +26,11 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.4.2](https://github.com/crstdr/minibrain/compare/v0.3.1...v0.4.2) | nothing |
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
+
+## 0.9-alpha.1
+
+- Added an optional beta roadmap with a standalone HTML demo and setup guide.
+- Added draft setup for the Agents Map beta. The demo snapshot will follow.
 
 ## 0.8
 
