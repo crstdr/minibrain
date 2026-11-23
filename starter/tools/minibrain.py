@@ -24,8 +24,6 @@ never both. Explicit .md = exact file; bare names = legacy non-space targets.
 Register spaces once: top-level in MAP_FILE, children under parent ## Spaces,
 using leading "- [[path]]" bullets. Assets aren't registered spaces.
 
-Staged managed Markdown or space paths require staged CHANGELOG.md.
-Collection records and archives alone do not trigger this gate.
 A staged path edited again after staging is a PROBLEM in check --staged.
 Relevant .gitignore files must match the index, except CRLF/LF endings.
 
@@ -52,13 +50,11 @@ import sys
 
 ROOT = Path(__file__).resolve().parent.parent
 MAP_FILE = "MAP.md"
-REQUIRED_FILES = ("AGENTS.md", "MEMORY.md", "CHANGELOG.md", MAP_FILE)
+REQUIRED_FILES = ("AGENTS.md", "MEMORY.md", MAP_FILE)
 MANAGED_DIRS = {"topics", "spaces"}  # legacy topics stay supported; root *.md is managed too
 RESERVED = {"AGENTS", "CLAUDE", "MEMORY", "CHANGELOG", Path(MAP_FILE).stem, "README"}
 ROOT_ONLY = {"AGENTS.md", "CLAUDE.md", "MEMORY.md", "CHANGELOG.md", MAP_FILE}
 MEMORY_REVIEW_LINES = 150  # advisory reflection threshold, not a cap
-THREADS_MAX = 12
-THREAD_SOFT_CHARS = 400     # warning only: line count alone hides long bullets' reading cost
 REQUIRE_LOCAL_REMOTES = False  # True: every Git remote must be an absolute filesystem path
 LOCK = ROOT / ".git" / "kb-writer.lock"  # Keep compatible with older installed helpers.
 NAME = re.compile(r"[A-Za-z][A-Za-z0-9_-]*\Z")  # lock takes a bare writer name; the tool issues the label
@@ -319,7 +315,7 @@ def status_paths():
 
 
 def staged_paths(base="HEAD"):
-    """Paths the prospective commit changes against base; HEAD^ while amending, so the gate sees the whole commit."""
+    """Paths the prospective commit changes against base; HEAD^ while amending, so the staged-path checks cover the whole amended commit."""
     result = git("diff", "--cached", "--name-status", "-z", "-M", *([base] if base != "HEAD" else []))
     if result.returncode != 0:
         return set(), result.stderr.strip() or "git diff --cached failed"
@@ -629,17 +625,6 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
             focus_at, threads_at = seen["Focus"][0], seen["Open threads"][0]
             if not focus_at < threads_at:
                 problems.append("MEMORY.md headings must be ordered: Focus, then Open threads")
-            later = [pos for pos, _ in headings if pos > threads_at]
-            block = memory[threads_at:min(later) if later else len(memory)]
-            bullets = re.findall(r"^[-*+] .*(?:\n(?![-*+] |## |\s*$).*)*", block, re.MULTILINE)  # an item runs to the next bullet, heading or blank line
-            if len(bullets) > THREADS_MAX:
-                problems.append(f"MEMORY.md has {len(bullets)} open threads; maximum is {THREADS_MAX}")
-            for bullet in bullets:
-                if len(bullet) > THREAD_SOFT_CHARS:
-                    warnings.append(
-                        f"thread over {THREAD_SOFT_CHARS} characters (an index line cites, it does not store): "
-                        f"{bullet[:60]}…"
-                    )
 
     managed = {rel: content for rel, content in documents.items() if is_managed_path(rel)}
     canonical = {rel: content for rel, content in managed.items() if not is_space_asset(rel)}
@@ -669,7 +654,6 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
 
     if records:
         try:
-            # Amend's parent baseline is only for the aggregate changelog gate.
             # Already committed history, including this acquisition's event, is immutable.
             records.check(staged_view, documents, problems, warnings, git, "HEAD")
         except (Exception, SystemExit) as error:
@@ -735,13 +719,6 @@ def check(staged_view=False, allow_unborn=False, base="HEAD"):
     if staged_error:
         problems.append(f"cannot inspect staged changes: {staged_error}")
     else:
-        # All space changes; only managed Markdown elsewhere. Presence does not prove a meaningful outcome.
-        staged_managed = {p for p in staged if (is_managed_path(p) or is_space_path(p))
-                          and p != "CHANGELOG.md" and not in_collection(p) and not is_collection_archive(p)}
-        if staged_managed and "CHANGELOG.md" not in staged:
-            problems.append("staged memory requires staged CHANGELOG.md: "
-                            + ", ".join(sorted(staged_managed))
-                            + ". Keep your changes: add a CHANGELOG.md line for them and stage it.")
         if staged and LOCK.is_dir():
             shown = ", ".join(sorted(staged)[:8]) + (" …" if len(staged) > 8 else "")
             warnings.append(f"{len(staged)} staged paths while the writer lock is held: {shown} "

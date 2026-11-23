@@ -1,3 +1,0 @@
-# Changelog
-
-[date] - [durable outcome].

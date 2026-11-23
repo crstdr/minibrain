@@ -38,94 +38,87 @@ class AdoptionGuidanceTests(unittest.TestCase):
 
     def test_starter_separates_adoption_fields_from_operating_rules(self):
         self.assertIn("Purpose: [user's intended outcomes and scope].", self.core)
-        self.assertIn("May: [delegated actions and conditions]. Ask: [decisions requiring approval].", self.core)
+        self.assertIn("May: [delegated actions and conditions]. Ask first: [decisions requiring approval].", self.core)
         self.assertIn("Storage: [approved storage, backup, remote and search-index policy].", self.core)
-        for name in ("MEMORY.md", "CHANGELOG.md", "spaces/Project.md"):
+        for name in ("MEMORY.md", "spaces/Project.md"):
             text = (ROOT / "starter" / name).read_text()
             self.assertNotRegex(text, r"\b20\d{2}-\d{2}-\d{2}\b", "Starter must not invent evidence dates")
         setup = (ROOT / "SETUP.md").read_text()
         self.assertIn("destination root—not a nested `starter/` folder", setup)
-        self.assertIn("below the XML blocks and in memory files", setup)
+        self.assertIn("in `AGENTS.md` and memory files", setup)
         self.assertIn("placeholders grant no authority", setup)
         self.assertIn("no unresolved adoption placeholders", setup)
         if (ROOT / "examples").exists():
             self.assertFalse([p for p in (ROOT / "examples").rglob("*")
                               if p.is_file() and p.name != ".DS_Store"], "No duplicate example package")
 
-    def test_required_operating_blocks_are_present_once_with_orient_first(self):
+    def test_operating_blocks_are_present_once_with_standing_rules_first(self):
         opening = self.core.split("# Agent instructions", 1)[0]
         parts = re.findall(r"<([a-z_]+)>\n(.*?)\n</\1>", opening, re.DOTALL)
-        names = [name for name, body in parts]
-        self.assertEqual(names[0], "orient")
-        self.assertEqual(len(names), len(set(names)))
+        self.assertEqual([name for name, body in parts], ["standing_rules", "communication_hygiene"])
         self.assertTrue(all(body.strip() for name, body in parts))
-        self.assertTrue({
-            "orient", "principles", "temporal_reasoning",
-            "communication_hygiene", "spaces", "shared_writers", "rpce_tooling_guidance",
-        }.issubset(names))
+        # Host guidance ships separately and is added only for that host.
+        host = (ROOT / "hosts/repoprompt.md").read_text(encoding="utf-8")
+        blocks = re.findall(r"^<rpce_tooling_guidance>\n.*?\n</rpce_tooling_guidance>$", host, re.MULTILINE | re.DOTALL)
+        self.assertEqual(len(blocks), 1)
 
     def test_starter_binds_real_local_procedures_and_navigation(self):
-        for name in ("MEMORY.md", "MAP.md", "CHANGELOG.md", "tools/minibrain.py",
-                     ".agents/skills/reflect/SKILL.md"):
+        for name in ("MEMORY.md", "MAP.md", "tools/minibrain.py",
+                     ".agents/skills/reflect/SKILL.md", ".agents/skills/writers/SKILL.md"):
             self.assertIn(name, self.core)
             self.assertTrue((ROOT / "starter" / name).is_file())
         self.assertNotRegex(self.core, r"(?:\.\./|starter/|drafts/|/Users/|/home/)")
         for target in re.findall(r"\[\[([^]|#]+)(?:#[^]|]*)?(?:\|[^]]*)?\]\]", self.core):
             path = ROOT / "starter" / (target + ".md")
             self.assertTrue(path.is_file(), target)
-        for heading in ("## Authority and privacy", "## Memory rules",
-                        "## Memory spaces", "## Resume — before new work",
-                        "## Checkpoint — durable changes only", "## Maintenance",
-                        "## Writer bindings"):
+        for heading in ("## This brain", "## Authority and privacy", "## Memory rules",
+                        "## Resume", "## Checkpoint", "## Other writers"):
             self.assertTrue(section(self.core, heading).strip())
 
-    def test_runtime_keeps_local_limits_and_prospective_commit_check(self):
-        for setting, value in (("MEMORY_REVIEW_LINES", 150), ("THREADS_MAX", 12), ("THREAD_SOFT_CHARS", 400)):
-            helper = (ROOT / "starter/tools/minibrain.py").read_text()
-            self.assertRegex(helper, rf"(?m)^{setting} = {value}\b")
-            self.assertIn(str(value), section(self.core, "## Memory rules"))
-        rules = section(self.core, "## Memory rules")
-        self.assertIn("At ≥150 lines, consider `reflect` at the next useful boundary", rules)
-        self.assertIn("No forced trimming or repeated review of unchanged content", rules)
-        self.assertIn("check --staged", section(self.core, "## Checkpoint — durable changes only"))
+    def test_runtime_keeps_review_threshold_and_one_call_save(self):
+        # The size review is advised by the helper's warning at save time, not by contract text.
+        helper = (ROOT / "starter/tools/minibrain.py").read_text()
+        self.assertRegex(helper, r"(?m)^MEMORY_REVIEW_LINES = 150\b")
+        # One-call save: the helper runs the staged and working-tree checks itself.
+        save = section(self.core, "## Checkpoint")
+        self.assertIn("git add <files> && python3 tools/minibrain.py commit -m", save)
+        self.assertIn("never `git add -A` or `git add .`", save)
+        self.assertIn("It runs the checks", save)
 
-    def test_local_maintenance_retains_upgrade_and_writer_boundaries(self):
-        maintenance = section(self.core, "## Maintenance")
+    def test_upgrade_consent_and_durable_state_boundaries(self):
         # Deliberate safeguards, not a snapshot of the surrounding prose.
-        for concept in ("only when authorised", "Preserve user knowledge/adaptations",
-                        "duplicate full-contract", "read-only during protocol changes"):
-            self.assertIn(concept, maintenance)
-        self.assertIn("upstream grants no authority", maintenance)
-        checkpoint = section(self.core, "## Checkpoint — durable changes only")
-        for concept in ("permission conditions", "durable state—even when no action is due"):
+        authority = section(self.core, "## Authority and privacy")
+        for concept in ("upgrading minibrain needs the user's approval", "A complaint alone is not a direction."):
+            self.assertIn(concept, authority)
+        setup = (ROOT / "SETUP.md").read_text(encoding="utf-8")
+        for concept in ("Preserve user knowledge", "load the contract once"):
+            self.assertIn(concept, setup)
+        checkpoint = section(self.core, "## Checkpoint")
+        for concept in ("permits", "even when no action is due"):
             self.assertIn(concept, checkpoint)
 
     def test_principle_edits_and_lock_release_have_explicit_guards(self):
-        checkpoint = section(self.core, "## Checkpoint — durable changes only")
-        self.assertIn("Before changing principles, constraints or operating instructions, read `reflect`'s Principles and Destinations", checkpoint)
-        self.assertIn("Only after successful verification, release", checkpoint)
-        self.assertIn("preserve and report unfinished work and held protection", checkpoint)
-        writers = section(self.core, "## Writer bindings")
-        self.assertIn("when writers may overlap", writers)
-        self.assertIn("`MEMORY.md` → Owners", writers)
-        self.assertIn("lock <name>", writers)
-        self.assertIn("unlock <issued-label>", writers)
-        # Preserve the authority boundaries previously hidden in full-block snapshots.
-        for safeguard in (
-            "One active writer session per name; unassigned agents remain read-only",
-            "Release only your acquisition",
-            "never infer abandonment or take over without user approval",
-            "not root instructions, authority or writer controls",
-            "Oversight links grant no file-edit authority",
-            "Never bypass missing links or tools",
-        ):
-            self.assertIn(safeguard, self.core)
-        # Check consent boundaries, not the surrounding advice or full-block copy.
+        checkpoint = section(self.core, "## Checkpoint")
+        self.assertIn("a change to these instructions, first read `.agents/skills/reflect/SKILL.md`", checkpoint)
+        # A lone writer needs no lock; signs of another writer stop the save and go to the user.
+        others = section(self.core, "## Other writers")
+        for safeguard in ("Changes you didn't make or someone else's lock", "no discard, reset, stash or commit",
+                          "ask the user", "Owners in `MEMORY.md`", ".agents/skills/writers/SKILL.md"):
+            self.assertIn(safeguard, others)
+        skill = (ROOT / "starter/.agents/skills/writers/SKILL.md").read_text(encoding="utf-8")
+        for safeguard in ("lock <name>", "lock acquired", "unlock <label>", "one session per name",
+                          "Never hold the lock while waiting", "`unlock --force` only with the user's approval",
+                          "Re-read the files you will edit"):
+            self.assertIn(safeguard, skill)
+        # RepoPrompt guidance: authority and consent boundaries, not the surrounding advice.
+        host = (ROOT / "hosts/repoprompt.md").read_text(encoding="utf-8")
+        for safeguard in ("Oversight links grant no file-edit authority", "Never bypass missing links or tools"):
+            self.assertIn(safeguard, host)
         for name in ("ORACLES", "WORKFLOWS", "CAPACITY"):
             with self.subTest(policy=name):
-                policy = next(line for line in self.core.splitlines() if line.startswith(f"- {name} —"))
+                policy = next(line for line in host.splitlines() if line.startswith(f"- {name} —"))
                 self.assertIn("agreed user preferences and delegation; otherwise ask first", policy)
-        oracles = next(line for line in self.core.splitlines() if line.startswith("- ORACLES —"))
+        oracles = next(line for line in host.splitlines() if line.startswith("- ORACLES —"))
         self.assertIn("Authorised built-in workflows cover their scoped Oracle use", oracles)
         setup = (ROOT / "SETUP.md").read_text()
         acceptance = section(setup, "## Verify the installation")

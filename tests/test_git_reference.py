@@ -157,32 +157,31 @@ class GitReferenceTests(unittest.TestCase):
                 self.git("update-index", "--no-" + flag, "--", "topics/Project.md")
                 self.assertNotIn("PROBLEM", self.tool("check"))
 
-    def test_mixed_thread_markers_count_as_separate_items_in_both_views(self):
+    def test_open_threads_have_no_count_or_length_limit(self):
         self.stage_outcome()
-        for count in (12, 13):
-            memory = "## Focus\n## Open threads\n" + "".join(
-                "-*+"[i % 3] + " item\n  continuation\n" for i in range(count))
-            self.write("MEMORY.md", memory)
-            self.git("add", "--", "MEMORY.md")
-            for args in (("check",), ("check", "--staged")):
-                with self.subTest(count=count, args=args):
-                    out = self.tool(*args, expected=int(count > 12))
-                    self.assertEqual("13 open threads" in out, count > 12)
-                    self.assertNotIn("thread over 400 characters", out)
+        memory = ("## Focus\n## Open threads\n"
+                  + "".join("-*+"[i % 3] + " item\n  continuation\n" for i in range(40))
+                  + "- " + "x" * 1000 + "\n")
+        self.write("MEMORY.md", memory)
+        self.git("add", "--", "MEMORY.md")
+        for args in (("check",), ("check", "--staged")):
+            with self.subTest(args=args):
+                out = self.tool(*args)
+                self.assertNotIn("PROBLEM:", out)
+                self.assertNotIn("thread", out)
 
-    def test_acknowledgments_are_not_threads_but_their_links_are_checked(self):
+    def test_acknowledgment_links_are_checked(self):
         self.stage_outcome()
-        for count, target in ((12, "Project"), (13, "Project"), (12, "Missing")):
-            with self.subTest(threads=count, target=target):
-                memory = ("## Focus\n## Open threads\n" + "- task\n" * count
+        for target in ("Project", "Missing"):
+            with self.subTest(target=target):
+                memory = ("## Focus\n## Open threads\n" + "- task\n" * 13
                           + "\n## Awaiting acknowledgment\n"
                           + f"- 2026-01-02 — Outcome. Source: [[{target}]].\n" * 14)
                 self.write("MEMORY.md", memory)
                 self.git("add", "--", "MEMORY.md")
-                expected = int(count > 12 or target == "Missing")
+                expected = int(target == "Missing")
                 for args in (("check",), ("check", "--staged")):
                     out = self.tool(*args, expected=expected)
-                    self.assertEqual("13 open threads" in out, count > 12)
                     self.assertEqual("broken wikilink" in out, target == "Missing")
 
     def test_fenced_memory_examples_do_not_count_but_raw_lines_and_links_do(self):
@@ -215,17 +214,14 @@ class GitReferenceTests(unittest.TestCase):
                         out = self.tool(*args, expected=int(not real))
                         self.assertEqual("not registered" in out, not real)
 
-    def test_a5_topic_requires_staged_changelog_then_one_commit(self):
+    def test_a5_topic_change_commits_without_a_changelog(self):
         self.write("topics/Project.md", "# Project\n\n## Current status\nChanged.\n")
         self.git("add", "--", "topics/Project.md")
-        self.assertIn("requires staged CHANGELOG", self.tool("check", expected=1))
-        self.write("CHANGELOG.md", "# Changelog\n\n2026-01-02 - Changed synthetic state.\n")
-        self.git("add", "--", "CHANGELOG.md")
         self.assertNotIn("PROBLEM", self.tool("check"))
         self.assertNotIn("PROBLEM", self.tool("check", "--staged"))
         self.git("commit", "-qm", "Synthetic coherent checkpoint")
         paths = set(self.git("diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD").stdout.splitlines())
-        self.assertEqual(paths, {"topics/Project.md", "CHANGELOG.md"})
+        self.assertEqual(paths, {"topics/Project.md"})
         self.assertIn("clean", self.tool("check"))
 
     def test_a8_staged_path_edited_after_staging_is_a_problem_in_staged_view_only(self):
@@ -240,11 +236,9 @@ class GitReferenceTests(unittest.TestCase):
         self.git("add", "--", "topics/Project.md")
         self.assertNotIn("PROBLEM", self.tool("check", "--staged"))
 
-    def test_a6_reports_broken_link_and_thirteenth_thread(self):
+    def test_a6_reports_broken_link(self):
         self.write("MEMORY.md", "# Memory\n## Focus\n[[Nowhere]]\n## Open threads\n" + "- item\n" * 13)
-        out = self.tool("check", expected=1)
-        self.assertIn("broken wikilink", out)
-        self.assertIn("13 open threads", out)
+        self.assertIn("broken wikilink", self.tool("check", expected=1))
 
     def memory_with_lines(self, count):
         return "# Memory\n## Focus\n## Open threads\n" + "\n" * (count - 3)
@@ -295,21 +289,6 @@ class GitReferenceTests(unittest.TestCase):
                 out = self.tool(*args, expected=1)
                 self.assertIn("warning: MEMORY.md has 150 lines", out)
                 self.assertIn("broken wikilink", out)
-                self.assertIn("13 open threads", out)
-
-    def test_thread_limits_stay_independent_of_memory_review(self):
-        self.stage_outcome()
-        for length in (400, 401):
-            long_thread = "- " + "x" * (length - 2)
-            memory = "# Memory\n## Focus\n## Open threads\n" + "- item\n" * 11 + long_thread + "\n"
-            self.write("MEMORY.md", memory)
-            self.git("add", "--", "MEMORY.md")
-            for args in (("check",), ("check", "--staged")):
-                with self.subTest(length=length, args=args):
-                    out = self.tool(*args)
-                    self.assertNotIn("PROBLEM:", out)
-                    self.assertNotIn("review threshold", out)
-                    self.assertEqual("warning: thread over 400 characters" in out, length > 400)
 
     def test_duplicate_and_reordered_headings(self):
         self.write("MEMORY.md", "## Open threads\n## Focus\n## Focus\n")
@@ -602,7 +581,6 @@ class GitReferenceTests(unittest.TestCase):
         self.assertEqual(self.git("diff", "--cached").stdout, before)
         self.assertEqual(self.git("rev-parse", "HEAD").stdout, head)
         label = re.search(r"lock acquired: (\S+)", out)[1]
-        self.assertIn("requires staged CHANGELOG.md", self.tool("commit", "--label", label, "-m", "x", expected=1))
         self.tool("unlock", label)
 
     def test_unreadable_owner_is_preserved(self):
@@ -715,8 +693,8 @@ class GitReferenceTests(unittest.TestCase):
         self.assertIn("broken wikilink", self.tool("check", expected=1))
 
     def test_staged_deletion_of_control_is_not_an_outcome(self):
-        self.git("rm", "--cached", "CHANGELOG.md")
-        self.assertIn("CHANGELOG.md missing", self.tool("check", "--staged", expected=1))
+        self.git("rm", "--cached", "MAP.md")
+        self.assertIn("MAP.md missing", self.tool("check", "--staged", expected=1))
 
     def test_symlinked_control_is_rejected(self):
         target = Path(self.temp.name) / "outside.md"
@@ -789,7 +767,7 @@ class GitReferenceTests(unittest.TestCase):
 
     def test_commit_refuses_on_a_staged_problem_and_commits_only_the_index(self):
         label = self.acquire()
-        self.write("topics/Project.md", "# Project\n\n## Current status\n\nNo changelog line.\n\n## History\n")
+        self.write("topics/Project.md", "# Project\n\n## Current status\n\n[[Missing]]\n\n## History\n")
         self.git("add", "--", "topics/Project.md")
         out = self.tool("commit", "--label", label, "-m", "Alpha: x", expected=1)
         self.assertIn("PROBLEM", out)
@@ -1513,12 +1491,12 @@ class GitReferenceTests(unittest.TestCase):
         for args in [("check",), ("check", "--staged")]:
             self.assertNotIn("PROBLEM", self.tool(*args))
 
-    def test_spaces_binary_only_change_requires_outcome(self):
+    def test_spaces_binary_only_change_needs_no_outcome(self):
         self.write("spaces/Photo/index.md", "# Photo\n")
         self.write("MAP.md", "- [[Project]]\n- [[spaces/Photo/index]]\n")
         self.write("spaces/Photo/assets/image.bin", "synthetic non-secret asset")
         self.git("add", "--", "spaces/Photo/assets/image.bin")
-        self.assertIn("requires staged CHANGELOG", self.tool("check", expected=1))
+        self.assertNotIn("PROBLEM", self.tool("check"))
 
     def test_spaces_do_not_clone_root_controls(self):
         self.add_spaces()

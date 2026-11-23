@@ -31,6 +31,7 @@ Add an optional [roadmap](plugins/roadmap/SETUP.md) to see dependencies and deci
 
 - Install/adapt: [SETUP.md](SETUP.md).
 - Upgrade: read local instructions and adoption record, then [Upgrading](SETUP.md#upgrading).
+- Add a plugin: [plugins/README.md](plugins/README.md).
 - Read source online or in a temporary checkout outside the destination.
 - After installation, follow local instructions—not this repository.
 

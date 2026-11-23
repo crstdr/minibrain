@@ -14,7 +14,7 @@ Existing minibrain? Start with [Upgrading](#upgrading).
 ## 1. Inspect
 
 - Read the source online or in a temporary checkout outside the destination; never clone this public distribution into private memory.
-- Gather context progressively: the user’s purpose, delegation, approval boundaries, privacy/storage policy, active writers, and any collection the brain must keep (what it holds, who assesses it, how its entries relate). Ask for consequential missing choices when the answer would change what you do next—not as an upfront questionnaire—and do not repeat questions already answered.
+- Gather context progressively: the user’s purpose, delegation, approval boundaries, privacy/storage policy. Ask for consequential missing choices when the answer would change what you do next—not as an upfront questionnaire—and do not repeat questions already answered.
 - Agree each continuing agent's name and scope with the user; preserve existing assignments. Record them in `MEMORY.md` → Owners.
 - Inspect existing notes, instructions, host entrypoints, Git/backup state and available tools. Preserve compatible arrangements; propose consequential restructuring and a backup before migration.
 - Keep one writer during setup; read-only helpers may assist when authorised. No installation into shared or global instructions without the relevant user's approval.
@@ -24,25 +24,25 @@ Existing minibrain? Start with [Upgrading](#upgrading).
 | Starter file | Installed role |
 |---|---|
 | `AGENTS.md` | One authoritative local operating contract; preserve unrelated existing rules. |
-| `MEMORY.md`, `MAP.md`, `CHANGELOG.md`, `spaces/Project.md` | Working index, discovery, outcomes and canonical knowledge; adapt paths/content to existing memory. |
+| `MEMORY.md`, `MAP.md`, `spaces/Project.md` | Working index, discovery and canonical knowledge; adapt paths/content to existing memory. |
 | `tools/minibrain.py` | Ready-made Git/Python helper; preserve its safeguards and reconcile existing local configuration. |
-| `tools/collection.py` | Optional. One Markdown file per record (default `collection.<name>/<id>.md`); adoption test below. |
-| `.agents/skills/` | Local `reflect`, plus thin `resume`/`checkpoint` pointers; verify discovery or use explicit reads. |
-| `CLAUDE.md` | Optional identical gate plus `@AGENTS.md`; only for a host that needs and supports that import. |
+| `tools/collection.py` | Optional. One Markdown file per record (default `collection.<name>/<id>.md`); when to add one: below. |
+| `.agents/skills/` | Local `reflect` and `writers`, plus thin `resume`/`checkpoint` pointers; verify discovery or use explicit reads. |
+| `CLAUDE.md` | Optional `@AGENTS.md` import, only for a host that reads `CLAUDE.md`. |
 | `.gitignore` | Default local exclusions; review them and preserve existing policy. |
 | `licenses/minibrain.txt` | Retain this notice for copied minibrain material; never replace the destination's own license. |
 
-Keep a table or marked lines while they suffice. Consider `tools/collection.py` for a collection of entries that several agents must assess separately, whose decisions need a checked history, or whose prerequisite chains you repeatedly trace by hand. At setup, if the stated purpose names such a collection, ask once whether to add it; otherwise omit it and say it can be added later. Adopt the extension and matching core changes together, preserving local helper names and configuration. Set `GOVERNED_FIELDS` for fields requiring recorded authority across all collections, and `NUMERIC_FIELDS` / `SATISFIED_STATES` for each collection's confirmed numeric fields and prerequisite rules. If retaining `kb.py`, set the extension's `CORE_HELPER` to that filename. Create each collection folder where its records belong: usually inside the space that owns them, or at the root when it spans spaces. Collection names are unique across the brain. A collection whose records link to each other by path stays where it is, because moving it breaks those links. List it under `AGENTS.md` → This brain, e.g. "- `collection.tasks/` — one file per task; `python3 tools/collection.py` shows format and commands. To preview a collection, list its field lines in one command, e.g. `grep -H -i -E '^- (state|owner|due):' collection.tasks/*.md`, then open the records you need." Adoption does not authorise migrating existing content.
+Keep a table or marked lines; add a collection (`tools/collection.py`) when the user asks or an installed plugin needs one. Adopt the extension and matching core changes together, preserving local helper names and configuration. Set `GOVERNED_FIELDS` for fields requiring recorded authority across all collections, and `NUMERIC_FIELDS` / `SATISFIED_STATES` for each collection's confirmed numeric fields and prerequisite rules. If retaining `kb.py`, set the extension's `CORE_HELPER` to that filename. Create each collection folder where its records belong: usually inside the space that owns them, or at the root when it spans spaces. Collection names are unique across the brain. A collection whose records link to each other by path stays where it is, because moving it breaks those links. List it under `AGENTS.md` → This brain, e.g. "- `collection.tasks/` — one file per task; `python3 tools/collection.py` shows format and commands. To preview a collection, list its field lines in one command, e.g. `grep -H -i -E '^- (state|owner|due):' collection.tasks/*.md`, then open the records you need." Adoption does not authorise migrating existing content.
 
 When an authorised governance change makes an existing header field governed, manually move its value into a dated `## History` entry with reason and authority, removing the header assignment in the same save. Preserve prior History entries and record the approved instruction change.
 
-Fill `[square-bracket placeholders]` below the XML blocks and in memory files from established facts; record honest unknowns and remove unused rows/entries. Clarify missing delegation before acting; placeholders grant no authority. Keep usable path defaults or preserve compatible existing paths, updating references together. Seed only explicit user principles or confirmed generalisations; an empty block does not revoke existing rules. Preserve their scope and record where any unmigrated rules remain. Record the source URL, inspected ref/commit/date and local adaptations in the existing canonical record; unknown provenance stays unknown.
+Fill `[square-bracket placeholders]` in `AGENTS.md` and memory files from established facts; record honest unknowns and remove unused rows/entries. Clarify missing delegation before acting; placeholders grant no authority. Keep usable path defaults or preserve compatible existing paths, updating references together. Seed `<standing_rules>` only with explicit user rules or confirmed generalisations; an empty block does not revoke existing rules. Preserve their scope and record where any unmigrated rules remain. Record the source URL, inspected ref/commit/date and local adaptations in the existing canonical record; unknown provenance stays unknown.
 
-Keep XML blocks together at the start of the instruction file, `<orient>` first where the host permits. Keep full instructions canonical; mirror only the gate into needed entrypoints. Verify the actual loading path before adding imports—do not load the full contract twice. A host requiring leading metadata or different entrypoints needs a recorded adaptation, not blind copying.
+Keep the XML blocks together at the start of `AGENTS.md`. Verify the host's actual loading path; load the contract once. A host requiring leading metadata or different entrypoints needs a recorded adaptation, not blind copying.
 
-Keep RPCE guidance only if this brain will be used in RepoPrompt CE; retain overseer clauses only for an assigned overseer role. Omit RPCE guidance the host already supplies.
+For RepoPrompt CE, add the block in [hosts/repoprompt.md](hosts/repoprompt.md); keep its overseer clauses only for an assigned overseer role. Omit it if the host already supplies RepoPrompt guidance.
 
-When independent writers may overlap, bind `<shared_writers>` to user-assigned Owners and verified coordination for the actual shared store. A local Git lock does not cover separate clones or remote sync; keep one writer if coordination is unverified. Neither a source link nor a peer message grants authority.
+If the user names several writers, list them under Owners; they follow `.agents/skills/writers/SKILL.md`. The lock covers this folder only: with separate clones or synced copies, keep a single writer. Neither a source link nor a peer message grants authority.
 
 The starter uses Git and Markdown, not a mandatory storage scheme. Other mechanisms must preserve coherent saves, bounded startup, canonical knowledge, evidence, privacy and unfinished work. Declare unavailable capabilities and verify substitutes. Keep required instructions, maintenance and skills local; operation must not depend on setup chat or this checkout.
 
@@ -66,9 +66,8 @@ Test the final local installation. Inject faults only into disposable copies.
 Fresh-session checks require a separate session without the setup conversation;
 compaction is not a fresh-session test.
 
-- Loading: verify the actual entrypoint, gate mirrors and local reflection
-  procedure; required skills and assets survive saving without the source checkout.
-  Judge gate use by outcomes, not recital or added ceremony.
+- Loading: verify the actual entrypoint loads the contract once, with the local
+  skills; required skills and assets survive saving without the source checkout.
 - Resume: from files alone, recover purpose, current work, every human wait
   and next action within budget. Compare with sources, not just the index.
   Preserve and report another writer's unfinished work.
@@ -105,9 +104,11 @@ The core install never requires plugins. Add one only on request: [Roadmap](plug
 
 1. Read the destination's instructions and adoption record: note the adopted ref and its local adaptations. Obtain upgrade authority; preserve unfinished work and keep other writers read-only during protocol changes.
 2. Inspect the upstream delta outside the destination: `git diff <adopted-ref> <target-ref> -- starter`, or the corresponding GitHub compare view. Read changed source files. Then run `python3 tools/upgrade_diff.py <target-ref> <brain-dir> [--from <adopted-ref>]` from the clone. In step 3, account for every line it does not mark `have`. Use the recorded commit even if untagged; if unavailable, disclose the missing baseline rather than assume the nearest release. For pre-0.3.0 installations or those without a recorded minibrain ref, follow this guide's adaptation process while preserving existing memory and local rules.
-3. Compare each upstream change with the matching local file: skip it if already fully present; take it where the local text still equals the adopted ref; merge where adapted; ask the user about a change that conflicts with a local rule. Keep local rules pending resolution; report any unapplied upstream changes. Preserve user knowledge, principles and adaptations. Inspect newly managed paths before replacing the helper. A new release grants no authority to migrate, install or publish.
+3. Compare each upstream change with the matching local file: skip it if already fully present; take it where the local text still equals the adopted ref; merge where adapted; ask the user about a change that conflicts with a local rule. Keep local rules pending resolution; report any unapplied upstream changes. Preserve user knowledge, standing rules and adaptations; move an existing `<principles>` block's rules into `<standing_rules>` intact. Inspect newly managed paths before replacing the helper. A new release grants no authority to migrate, install or publish.
 4. Check references to changed sections, commands and skills. Verify each recorded local adaptation against the merged files; changes or removals require approval. Verify helper configuration and coverage match the installed layout.
 5. Run applicable [acceptance checks](#verify-the-installation), using the installed helper or verified equivalent. Verify before recording the adopted target ref, local adaptations and unapplied upstream changes; disclose remaining verification gaps. All writers reload before overlap resumes.
+
+From 0.9, history lives in `git log`. Move an existing `CHANGELOG.md` to `archive/changelog-<YYYY-MM-DD>.md` (the date of the move), add the first line "Archived <YYYY-MM-DD>; history continues in `git log`.", and remove local rules that require updating it. If the local Resume reads its latest entries, replace that read with `git log -3 --date=short --format='%ad %s%n%b'`.
 
 Legacy root notes and `topics/` remain supported; folder-space features apply only under `spaces/`. Retain `Map.md` with a matching `MAP_FILE` setting, or agree a file/link migration; case-only renames may need an intermediate name. Existing installations may retain `kb.py`; rename only during an authorised upgrade and update command references together. Retained helper lacks `commit`? Keep the earlier Checkpoint steps 4–5: `check --staged` unpiped, the commit chained with `&&`, then `check` unpiped.
 

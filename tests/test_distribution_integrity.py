@@ -126,8 +126,6 @@ class CopiedTemplateSmokeTests(unittest.TestCase):
                 "owner": "TestWriter",
                 "next action": "obtain the task choice",
                 "hold and reopening condition, or none": "await user choice; reopen on response",
-                "date": "2026-01-01",
-                "durable outcome": "Established synthetic memory; task choice awaits the user",
                 "current state, decisions and constraints": "The synthetic user has not chosen a task; no implementation is authorised",
                 "owner, next action, decision-maker and reopening condition where applicable": "TestWriter requests the user's task choice; reopen on response",
                 "ref or commit; note uncommitted source changes": "disposable test fixture; no published source revision claimed",
@@ -163,8 +161,7 @@ class CopiedTemplateSmokeTests(unittest.TestCase):
                 self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
                 return result.stdout
 
-            gate = (brain / "AGENTS.md").read_text().split("</orient>", 1)[0] + "</orient>\n"
-            self.assertEqual((brain / "CLAUDE.md").read_text(), gate + "\n@AGENTS.md\n")
+            self.assertEqual((brain / "CLAUDE.md").read_text(), "@AGENTS.md\n")
             self.assertEqual(
                 (brain / "AGENTS.md").read_text().split("# Agent instructions", 1)[0],
                 (source / "AGENTS.md").read_text().split("# Agent instructions", 1)[0],
@@ -182,7 +179,7 @@ class CopiedTemplateSmokeTests(unittest.TestCase):
             self.assertIn("no commits yet", problems[0])
             run("git", "commit", "-qm", "Create synthetic copied-template brain")
             self.assertEqual(run("git", "show", "HEAD:licenses/minibrain.txt"), (ROOT / "LICENSE").read_text())
-            for name in ("reflect", "resume", "checkpoint"):
+            for name in ("reflect", "resume", "checkpoint", "writers"):
                 skill = f".agents/skills/{name}/SKILL.md"
                 run("git", "cat-file", "-e", "HEAD:" + skill)
                 run("git", "check-ignore", "--no-index", "--", skill, expected=1)

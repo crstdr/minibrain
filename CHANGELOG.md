@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [0.9-alpha.2](https://github.com/crstdr/minibrain/compare/v0.9-alpha.1...v0.9-alpha.2) | `AGENTS.md` throughout; `CLAUDE.md` is `@AGENTS.md` only; new `.agents/skills/writers/SKILL.md`; `.agents/skills/reflect/SKILL.md` Standing rules and Destinations; `tools/minibrain.py`: take the helper whole; `tools/collection.py` wording; `licenses/minibrain.txt` holder name; `CHANGELOG.md` removed. RepoPrompt CE guidance moves to `hosts/repoprompt.md`. Follow [Upgrading](SETUP.md#upgrading). |
 | [0.9-alpha.1](https://github.com/crstdr/minibrain/compare/v0.8...v0.9-alpha.1) | nothing. Optional beta plugins are outside `starter/`. |
 | [0.8](https://github.com/crstdr/minibrain/compare/v0.7.0...v0.8) | Since 0.7.0: `AGENTS.md` opening block (IMPROVE) and Checkpoint step 2; `CLAUDE.md` mirrors the opening block; `.agents/skills/reflect/SKILL.md` description and Principles; new `tools/upgrade_diff.py` (run from a clone, not installed). |
 | [0.8-alpha.2](https://github.com/crstdr/minibrain/compare/v0.8-alpha.1...v0.8-alpha.2) | nothing; new `tools/upgrade_diff.py` (run from a clone, not installed) and SETUP → Upgrading step 2. |
@@ -26,6 +27,14 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.4.2](https://github.com/crstdr/minibrain/compare/v0.3.1...v0.4.2) | nothing |
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
+
+## 0.9-alpha.2
+
+- **Shorter instructions.** Agents read less than a third as much before they start work.
+- **One-step saves.** An agent working alone saves in a single step. Coordination rules apply only when several agents share a brain.
+- **Less bookkeeping.** Git keeps the history, so there's no separate changelog to maintain. Open work has no fixed limit.
+- **Still tracks what needs you.** Priorities, decisions waiting on you and outcomes you haven't acknowledged stay in view.
+- **Clearer reports.** Agents mark each claim as checked, reported by someone else, or inferred.
 
 ## 0.9-alpha.1
 

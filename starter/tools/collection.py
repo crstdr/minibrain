@@ -40,8 +40,8 @@ Promote within a collection by changing its locally defined state. Across
 collections, create the destination record and close the source with a
 wikilink to the destination's root-relative path, e.g.
 [[spaces/Sorrel/collection.tasks/T-1]] for the ref tasks/T-1. Retain the
-committed source. Keep one canonical home. Records require neither map
-registration nor a routine collection-only changelog entry. Follow the brain's
+committed source. Keep one canonical home. Records require no map
+registration. Follow the brain's
 Checkpoint procedure for durable outcomes.
 
 Follow the brain's writer/delegation rules, edit only your own assessments,
