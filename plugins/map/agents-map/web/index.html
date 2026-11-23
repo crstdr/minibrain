@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agents Map</title>
+<!-- Served by agents_map.py. No libraries, no network: the page talks only to that server. -->
+<link rel="stylesheet" href="/static/map.css">
+<link rel="manifest" href="/static/app.webmanifest">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<meta name="theme-color" id="theme-color" content="#1a1a19">
+</head>
+<body>
+<header id="bar" class="collapsed">
+  <div id="bar-items">
+    <button id="btn-layouts" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="popover" disabled>Layout ▾</button>
+    <button id="btn-attention" type="button" hidden></button>
+    <button id="btn-active" type="button" aria-pressed="false" hidden></button>
+    <input id="search" type="search" placeholder="Filter   /" aria-label="Filter agents">
+    <span id="match" aria-live="polite"></span>
+    <button id="btn-refresh" type="button" title="R">Refresh</button>
+    <span class="pair">
+      <button id="btn-undo" type="button" disabled aria-label="Undo" title="Nothing to undo">&#9664;</button>
+      <button id="btn-redo" type="button" disabled aria-label="Redo" title="Nothing to redo">&#9654;</button>
+    </span>
+    <button id="btn-save" type="button">Save</button>
+    <button id="btn-saves" type="button">Saves &#9662;</button>
+    <button id="btn-table" type="button" aria-pressed="false" title="T">Table</button>
+    <button id="btn-fit" type="button" title="F">Fit</button>
+    <button id="btn-layout" type="button">Re-layout</button>
+    <span id="stats"></span>
+    <span id="age"></span>
+  </div>
+  <div id="bar-alerts">
+    <span id="sample-data" hidden>Sample data</span>
+    <span id="status" hidden></span>
+  </div>
+  <button id="bar-toggle" type="button" aria-expanded="false" aria-controls="bar-items" aria-label="Toolbar">▾</button>
+</header>
+<main id="stage">
+  <div id="world">
+    <div id="dots" hidden></div>
+    <div id="layer-frames"></div>
+    <div id="layer-bg"></div>
+    <svg id="edges" aria-hidden="true">
+      <defs>
+        <marker id="arr" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path class="arr" d="M0,0.9 L7.6,4 L0,7.1 Z"/></marker>
+        <marker id="arr-hl" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path class="arr-hl" d="M0,0.9 L7.6,4 L0,7.1 Z"/></marker>
+        <marker id="arr-c1" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path class="arr-c1" d="M0,0.9 L7.6,4 L0,7.1 Z"/></marker>
+        <marker id="arr-c2" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path class="arr-c2" d="M0,0.9 L7.6,4 L0,7.1 Z"/></marker>
+        <marker id="arr-c3" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path class="arr-c3" d="M0,0.9 L7.6,4 L0,7.1 Z"/></marker>
+      </defs>
+      <g id="edge-g"></g>
+    </svg>
+    <div id="layer-fg"></div>
+    <div id="landing" hidden></div>
+  </div>
+  <nav id="index" class="card" aria-label="Groups and windows">
+    <div id="index-head"><b>Map</b><button id="btn-group-prefix" class="tool" type="button" hidden>Group by name</button><button id="index-toggle" type="button" aria-expanded="true" title="Collapse or expand this list">&#9666;</button></div>
+    <div id="index-body"></div>
+  </nav>
+  <div id="view">
+    <div id="view-panel" class="card" role="group" aria-label="View" hidden>
+      <label><input type="checkbox" id="opt-links"> All links <kbd>L</kbd></label>
+      <label><input type="checkbox" id="opt-counts"> Counts after names</label>
+      <label><input type="checkbox" id="opt-wake"> Auto-wake settings <kbd>W</kbd></label>
+      <label><input type="checkbox" id="opt-recent"> Agents without links (24 h)</label>
+      <label><input type="checkbox" id="opt-live"> Live (every 5 s)</label>
+      <label><input type="checkbox" id="opt-obfuscate"> Obfuscate names</label>
+      <label><input type="checkbox" id="opt-dark"> Dark theme</label>
+    </div>
+    <button id="btn-view" class="pill" type="button" aria-expanded="false" aria-controls="view-panel">View</button>
+  </div>
+  <aside id="table-panel" class="card" hidden aria-label="Agents table">
+    <div id="table-head"><b>Agents</b><span id="table-count"></span></div>
+    <div id="table-scroll"><table><thead><tr id="thead-row"></tr></thead><tbody id="tbody"></tbody></table></div>
+  </aside>
+</main>
+<footer id="legend">
+<div id="lg-items">
+  <span class="item"><span class="sw codex"></span>Codex (CX)</span>
+  <span class="item"><span class="sw claude"></span>Claude Code (CC)</span>
+  <span class="item"><span class="sw other"></span>other CLI, named by its letters</span>
+  <span class="sep"></span>
+  <span class="item"><span class="ringk"></span>ring = context used</span>
+  <span class="item"><span class="ringk warn"></span><span id="lg-warn"></span></span>
+  <span class="item"><span class="ringk crit"></span><span id="lg-crit"></span></span>
+  <span class="sep"></span>
+  <span class="item"><span class="sw run"></span>running</span>
+  <span class="item"><span class="sw wait"></span>waiting for you</span>
+  <span class="item"><span class="sw fail"></span>last run failed</span>
+  <span class="sep"></span>
+  <span id="lg-kinds"></span>
+  <span class="sep"></span>
+  <span class="item"><b>bold outline</b> = overseer</span>
+  <span class="item"><span class="sw dash"></span>no links</span>
+  <span class="item"><svg class="pin" viewBox="0 0 12 12" aria-hidden="true"><path d="M7.4 0.8 11.2 4.6 10.1 5.2 8 7.3 8.3 9.9 7.5 10.7 5.1 8.3 1.6 11.8 0.9 11.8 0.9 11.1 4.4 7.6 2 5.2 2.8 4.4 5.4 4.7 7.5 2.6Z"/></svg>pinned in the sidebar</span>
+  <span class="item"><b>&rarr;n</b> oversees n</span>
+  <span class="item"><b>&larr;n</b> overseen by n</span>
+  <span class="item"><span class="ln"></span>oversees</span>
+  <span class="item"><span class="ln in"></span>overseen by (on hover)</span>
+</div>
+  <span id="notes"></span>
+  <button id="legend-toggle" type="button" aria-expanded="false" aria-label="Legend">&#9662;</button>
+</footer>
+<div id="tip" class="card" role="region" aria-labelledby="tip-name" hidden></div>
+<div id="menu" class="card" role="menu" hidden></div>
+<div id="popover" class="card" hidden></div>
+<script type="module" src="/static/main.js"></script>
+<script src="/static/check.js" defer></script>
+</body>
+</html>

@@ -106,7 +106,7 @@ assert.equal(document.getElementById("sub").textContent,
     def test_plugin_copy_has_no_local_paths_or_banned_wording(self):
         sources = {
             path.relative_to(ROOT): path.read_text(encoding="utf-8")
-            for path in PLUGINS.rglob("*") if path.is_file()
+            for path in PLUGINS.rglob("*") if path.is_file() and path.suffix != ".png"  # icons are binary
         }
         for filename, heading in (("README.md", "Plugins"), ("SETUP.md", "Optional plugins")):
             match = re.search(

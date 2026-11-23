@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [0.9.1-alpha.1](https://github.com/crstdr/minibrain/compare/v0.9...v0.9.1-alpha.1) | nothing. The Agents Map demo is outside `starter/`. |
 | [0.9](https://github.com/crstdr/minibrain/compare/v0.8...v0.9) | Since 0.8: the 0.9-alpha.2 changes (0.9-alpha.1 changed nothing in `starter/`). Follow [Upgrading](SETUP.md#upgrading). |
 | [0.9-alpha.2](https://github.com/crstdr/minibrain/compare/v0.9-alpha.1...v0.9-alpha.2) | `AGENTS.md` throughout; `CLAUDE.md` is `@AGENTS.md` only; new `.agents/skills/writers/SKILL.md`; `.agents/skills/reflect/SKILL.md` Standing rules and Destinations; `tools/minibrain.py`: take the helper whole; `tools/collection.py` wording; `licenses/minibrain.txt` holder name; `CHANGELOG.md` removed. RepoPrompt CE guidance moves to `hosts/repoprompt.md`. Follow [Upgrading](SETUP.md#upgrading). |
 | [0.9-alpha.1](https://github.com/crstdr/minibrain/compare/v0.8...v0.9-alpha.1) | nothing. Optional beta plugins are outside `starter/`. |
@@ -28,6 +29,10 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.4.2](https://github.com/crstdr/minibrain/compare/v0.3.1...v0.4.2) | nothing |
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
+
+## 0.9.1-alpha.1
+
+- Added the Agents Map beta: a local map of RepoPrompt CE agents and who oversees whom, with a demo on sample data.
 
 ## 0.9
 
