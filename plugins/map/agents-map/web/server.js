@@ -67,9 +67,9 @@ function same(a, b) {
     && Object.keys(b).every(k => same(a[k] ?? null, b[k] ?? null));
 }
 
-function handleWriteError(e, label) {
+function handleWriteError(e, label, firstSave = null) {
   if (e.status === 409 && e.data?.version === 2) { adopt(e.data); return 'conflict'; }
-  app.unsaved = { reason: e.message, label };
+  app.unsaved = { reason: e.message, label, firstSave };
   return 'failed';
 }
 
@@ -85,7 +85,7 @@ function mutation(body, label) {
     if (made !== generation) return 'dropped';
     if (app.unsaved) return 'failed';
     try { await write(payload); return 'ok'; }
-    catch (e) { return handleWriteError(e, label); }
+    catch (e) { return handleWriteError(e, label, payload.op === 'save' && !payload.amend ? payload : null); }
   });
 }
 
@@ -158,14 +158,17 @@ export function retryUnsaved() {
   const seeds = {main_windows: {...pendingDiscovery}};
   return enqueue(async () => {
     if (made !== generation || !app.unsaved) return 'dropped';
+    let firstSave = app.unsaved.firstSave;
     try {
+      // Retry a failed undoable step before amending it with later local edits.
+      if (firstSave) { await write(firstSave); firstSave = null; }
       await write({ op: 'save', layout_id: id, save, label: label.slice(0, 120), amend: true, mode: 'edit', seeds });
       forgetDiscovery(seeds.main_windows);
       await write({ op: 'layout', layout_id: id, patch });
       if (Object.keys(settings).length) { await write({ op: 'settings', patch: settings }); settingsSaved(); }
       app.unsaved = null;
       return 'ok';
-    } catch (e) { return handleWriteError(e, label); }
+    } catch (e) { return handleWriteError(e, label, firstSave); }
   });
 }
 

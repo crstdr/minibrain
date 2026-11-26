@@ -45,18 +45,18 @@ function mainOverseer(a) {
 }
 
 // Sets a box's column count, pixel and cell size, and each chip's place inside it.
-// The stored column count is a high-water mark: a box that loses agents keeps its width
-// (only rows change), and one that outgrows it gets wider. Columns the user fixed stay.
+// Automatic columns follow the agents currently drawn, so boxes grow and shrink.
+// Columns the user fixed stay as set.
 export function sizeBox(w, arr, shared) {
   const stored = (arr.windows[w.id] || shared?.windows[w.id]);
   const n = w.agents.length;
   const kept = stored && stored.cols ? stored.cols : 0;
   const fixed = !!(kept && stored.fixed);
   const linked = w.agents.filter(function (a) { return a.linked || a.pinned; }).length;   // always drawn
-  const cols = fixed ? kept : Math.max(kept, colsFor(n));
+  const cols = fixed ? kept : colsFor(n);
   // What the arrangement should remember. Agents without links are a view option, so
   // they may widen the box while shown but never change what is remembered.
-  w.colsKeep = fixed ? kept : linked ? Math.max(kept, colsFor(linked)) : kept;
+  w.colsKeep = fixed ? kept : colsFor(linked);
   const emptyCells = clamp(Math.ceil((titleWidth(windowTitle(w.sourceName, w.count)) * 1.7 + 16 + GAPX) / CW), 4, 8);
   const s = boxSize(n, cols, emptyCells);
   w.cols = s.cols; w.w = s.w; w.h = s.h; w.wc = s.wc; w.hc = s.hc;
@@ -129,7 +129,7 @@ export function buildModel(graph, arr, layout, shared) {
     const count = w.count || 1;
     const sourceName = String(w.name), name = windowNames ? windowNames.get(w.id) : sourceName;
     const o = { id: w.id, name, sourceName, count, title: windowTitle(name, count),
-      tab: w.tab || null, session: w.session || null, closed: w.closed === true,
+      workspaceColor: w.color, tab: w.tab || null, session: w.session || null, closed: w.closed === true,
       agents: [], peers: new Map(), px: 0, py: 0 };
     allWinById.set(o.id, o);
     return o;

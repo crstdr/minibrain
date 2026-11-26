@@ -230,9 +230,19 @@ function moveBlocks(positions) {
   return patch;
 }
 
-export function autoLayout(viewW, viewH) {
-  const boxes = scene();
-  return moveBlocks(forcePositions(app.model.wins.filter(w => boxes.has(w.id)), boxes, viewW, viewH));
+export function tidyMembers() {
+  const groups = new Map();
+  for (const b of scene().values()) {
+    if (!b.g) continue;
+    if (!groups.has(b.g)) groups.set(b.g, new Map());
+    // Treat siblings as standalone boxes so only their own rectangles constrain placement.
+    groups.get(b.g).set(b.id, {...b, g: null});
+  }
+  let changed = false;
+  for (const members of groups.values()) {
+    if (applyPositions(tidy(members, true))) changed = true;
+  }
+  return changed;
 }
 
 export function tidyAll() { return moveBlocks(tidy(scene())); }

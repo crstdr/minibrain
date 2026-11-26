@@ -8,7 +8,7 @@ import { duration, groupName, layoutName, stateText, wakingLanes } from './model
 import { addSave, deleteSave, listSaves } from './server.js';
 import { CRIT, WARN, centerOn, fit, fitGroup, fitWindow, frames, workspaceLink } from './render.js';
 import { OLD_LIST, itemMeta, kindIcon, setSnooze } from './attention.js';
-import { canEdit, changeLayout, changed, doTidy, flash, rebuild, restoreNamedSave, retry, setBoxHidden, setHover, setPin } from './actions.js';
+import { canEdit, changeLayout, changed, flash, rebuild, restoreNamedSave, retry, setBoxHidden, setHover, setPin } from './actions.js';
 
 const STALE_MINUTES = 15;
 
@@ -384,7 +384,7 @@ export function renderStatus() {
   let text = null, action = null;
   if (app.unsaved) { text = 'Not saved: ' + app.unsaved.reason; action = ['Retry', retry]; }
   else if (app.flash) text = app.flash;
-  else if (app.tooClose) { text = plural(app.tooClose, 'box is', 'boxes are') + ' too close'; if (app.externalConflicts) action = ['Tidy', doTidy]; }
+  else if (app.tooClose) text = plural(app.tooClose, 'box is', 'boxes are') + ' too close';
   s.textContent = '';
   s.hidden = !text;
   s.classList.toggle('info', !action);   // a plain notice carries no warning mark
@@ -474,6 +474,11 @@ export function renderPanels() {
   const layoutButton = $('btn-layouts');
   layoutButton.textContent = 'Layout: ' + layoutName(currentLayout()) + ' ▾';
   layoutButton.disabled = !!pending;
+  const tidy = $('btn-tidy');
+  tidy.disabled = !app.tooClose;
+  // An available action must not be clipped by the collapsed toolbar.
+  const destination = $(tidy.disabled ? 'bar-items' : 'bar-alerts');
+  if (tidy.parentNode !== destination) destination.insertBefore(tidy, $(tidy.disabled ? 'stats' : 'status'));
   renderView();
   renderStatus();
   renderAge();
@@ -685,17 +690,24 @@ export function openSaveForm() {
 }
 
 export function openSaves() {
-  openPopover($('btn-saves'));
+  const anchor = $('btn-saves');
+  openPopover(anchor);
+  popover.dataset.kind = 'saves';
+  function fit() {
+    popover.style.left = clamp(anchor.getBoundingClientRect().left, 8, window.innerWidth - popover.offsetWidth - 8) + 'px';
+  }
+  fit();
   popover.appendChild(el('div', 'p-title', 'Saved arrangements'));
   const turn = popoverTurn;
   listSaves().then(function (saves) {
     if (turn !== popoverTurn) return;
-    if (!saves.length) { popover.appendChild(el('div', 'p-empty', 'No saved arrangements')); return; }
+    if (!saves.length) popover.appendChild(el('div', 'p-empty', 'No saved arrangements'));
     saves.forEach(function (s) {
       const row = el('div', 'p-row'), restore = el('button', '', 'Restore'), del = el('button', '', 'Delete');
       restore.type = 'button'; del.type = 'button';
       row.appendChild(el('span', 'p-name', s.name));
-      row.appendChild(el('span', 'p-sub', stamp(s.t) + ' · ' + plural(s.windows, 'window', 'windows')));
+      const date = stamp(s.t), count = plural(s.windows, 'window', 'windows');
+      row.appendChild(el('span', 'p-sub', s.name === date ? count : date + ' · ' + count));
       row.appendChild(restore); row.appendChild(del);
       restore.addEventListener('click', function () {
         if (!canEdit() || app.unsaved) return;
@@ -703,12 +715,17 @@ export function openSaves() {
         restoreNamedSave(s.id, s.name);
       });
       del.addEventListener('click', function () {
-        if (del.textContent === 'Delete') { del.textContent = 'Really delete?'; return; }
+        if (del.textContent === 'Delete') { del.textContent = 'Really delete?'; fit(); return; }
         deleteSave(s.id).then(openSaves, function (err) { flash('Not deleted: ' + err.message); });
       });
       popover.appendChild(row);
     });
-  }, function (err) { if (turn === popoverTurn) popover.appendChild(el('div', 'p-empty', 'Could not load: ' + err.message)); });
+    fit();
+  }, function (err) {
+    if (turn !== popoverTurn) return;
+    popover.appendChild(el('div', 'p-empty', 'Could not load: ' + err.message));
+    fit();
+  });
 }
 
 export function initLegend() {

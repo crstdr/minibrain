@@ -3,7 +3,7 @@
 import { app } from './state.js';
 import { $, el, store } from './util.js';
 import { fit, fitWindow } from './render.js';
-import { boot, canEdit, changeLayout, changed, expireSnoozes, flushViewport, history, rebuild, redraw, refresh, refreshFromServer, relayout, syncArrangement, setCounts, setDark, setHover, setLinks, setLive, setPin, setRecent, setWake, syncThemeColor } from './actions.js';
+import { boot, canEdit, changeLayout, changed, expireSnoozes, flushViewport, history, rebuild, redraw, refresh, refreshFromServer, doTidy, syncArrangement, setCounts, setDark, setHover, setLinks, setLive, setPin, setRecent, setWake, syncThemeColor } from './actions.js';
 import { idle } from './server.js';
 import { activeQuery, applyFilter, closePopover, groupByName, isActiveQuery, hideTip, initLegend, openAttention, openLayouts, openSaveForm, openSaves, queryKey, renderIndex, renderView, syncTableSelection, toggleTable } from './panels.js';
 import { cancelDrag, closeMenu } from './interact.js';
@@ -85,7 +85,7 @@ $('btn-layouts').addEventListener('click', ready(() => {
   if ($('popover').dataset.kind === 'layouts') closePopover(true);
   else openLayouts();
 }));
-$('btn-layout').addEventListener('click', ready(relayout));
+$('btn-tidy').addEventListener('click', ready(doTidy));
 $('btn-refresh').addEventListener('click', refreshFromServer);
 $('btn-undo').addEventListener('click', function () { history('undo'); });
 $('btn-redo').addEventListener('click', function () { history('redo'); });

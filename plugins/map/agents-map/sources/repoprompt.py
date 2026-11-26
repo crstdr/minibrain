@@ -28,6 +28,8 @@ APPLE_EPOCH = 978307200  # the app stores dates as seconds since 2001-01-01
 EFFORTS = {"minimal", "low", "medium", "high", "xhigh", "max"}
 RECENT_SECONDS = 24 * 3600  # "recently used" for agents without links
 ACTIVE = {"running", "waitingForUser", "waitingForQuestion", "waitingForApproval"}
+WORKSPACE_COLORS = {"red", "orange", "yellow", "lime", "green", "teal", "aqua",
+                    "blue", "indigo", "violet", "magenta", "pink", "brown", "grey"}
 APP_BINARY = "/RepoPrompt CE.app/Contents/MacOS/RepoPrompt"
 
 
@@ -290,6 +292,9 @@ def collect(base, recent=False, known=()):
             seen[wid] = {"id": wid, "name": name, "count": 0, "closed": True,
                          "tab": None, "session": None}
             windows.append(seen[wid])
+        color = workspace.get("color")
+        if isinstance(color, str) and color in WORKSPACE_COLORS:
+            seen[wid]["color"] = color
         active = seen[wid]["tab"] = upper(workspace.get("activeComposeTabID"))
         for tab in workspace.get("composeTabs") or []:
             sid = upper(tab.get("activeAgentSessionID")) if isinstance(tab, dict) else None

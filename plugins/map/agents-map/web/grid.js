@@ -96,29 +96,31 @@ export function isFree(boxes, moving) { return clear(obstacles(boxes, moving), m
 
 // Smallest shift {dx, dy} in cells that puts the moving boxes on a free spot, by
 // distance on screen. `boxes` is a Map of every placed box; entries with the moving
-// ids are ignored.
+// ids are ignored. Optional bounds and pixel distance limit constrain the search.
 //
 // The search stops at the distance that carries the moving boxes past everything else.
 // A whole box or a whole group is always free there. A single member of a group may
 // have no free spot at all (its frame would stretch over other boxes whichever way it
 // goes): then the result is {dx: 0, dy: 0, stuck: true}.
-export function nearestFree(boxes, moving) {
+export function nearestFree(boxes, moving, within = null, limit = Infinity) {
   const ob = obstacles(boxes, moving);
   const every = bounds(Array.from(boxes.values()).concat(moving)), own = bounds(moving);
   const reach = Math.max(every.x1 - every.x0 + own.x1 - own.x0 + 4, Math.ceil((every.y1 - every.y0 + own.y1 - own.y0 + 8) / 2));
   function test(dx, dy) {
+    if (within && (own.x0 + dx < within.x0 || own.x1 + dx > within.x1 ||
+                   own.y0 + dy < within.y0 || own.y1 + dy > within.y1)) return false;
     return clear(ob, moving.map(function (m) { return { x: m.x + dx, y: m.y + dy, w: m.w, h: m.h }; }));
   }
   if (test(0, 0)) return { dx: 0, dy: 0 };
   let best = null, bestD = Infinity;
   for (let r = 1; r <= reach; r++) {
     const ry = 2 * r;   // a cell is about twice as wide as it is high
-    if (best && Math.min(r * CW, (ry - 1) * CH) > bestD) break;   // nothing nearer further out
+    if (Math.min(r * CW, (ry - 1) * CH) > Math.min(bestD, limit)) break;   // nothing nearer further out
     for (let dy = -ry; dy <= ry; dy++) {
       const step = Math.abs(dy) > ry - 2 ? 1 : 2 * r;   // full rows at the ring's top and bottom, else its two sides
       for (let dx = -r; dx <= r; dx += step) {
         const d = Math.hypot(dx * CW, dy * CH);
-        if (d < bestD && test(dx, dy)) { best = { dx: dx, dy: dy }; bestD = d; }
+        if (d <= limit && d < bestD && test(dx, dy)) { best = { dx: dx, dy: dy }; bestD = d; }
       }
     }
   }
@@ -166,19 +168,56 @@ export function conflicts(boxes) {
   return out;
 }
 
-// Resolves conflicts by moving the smaller things: smallest first, each to its nearest
-// free spot, everything else treated as fixed. Returns Map id -> {x, y} of moved boxes.
-export function tidy(boxes) {
-  const work = new Map(), moved = new Map();
-  boxes.forEach(function (b, id) { work.set(id, Object.assign({}, b)); });
-  function area(e) { return e.reduce(function (s, b) { return s + b.w * b.h; }, 0); }
-  function note(b) { moved.set(b.id, { x: b.x, y: b.y }); }
-  function shift(e) {
-    const off = nearestFree(work, e);
-    if (!off.dx && !off.dy) return;
-    for (const b of e) { b.x += off.dx; b.y += off.dy; note(b); }
+// Move only overlapping entities, treating all other positions as fixed. For the
+// inside-group pass the siblings are supplied as standalone boxes.
+export function tidy(boxes, keepFrame = false) {
+  const list = entitiesOf(boxes).map(e => ({
+    boxes: e,
+    area: e.reduce((sum, b) => sum + b.w * b.h, 0),
+  }));
+  const work = new Map(boxes), moved = new Map();
+  const distance = ({dx, dy}) => Math.hypot(dx * CW, dy * CH);
+  const better = (a, b) => a && (!b || a.d < b.d || (a.d === b.d && a.entity.area < b.entity.area));
+  // Each move lands clear of all other entities; it cannot create a new conflict
+  // in this pass. No entity needs to move twice.
+  for (let remaining = list.length; remaining > 0; remaining--) {
+    const outer = list.map(({boxes: e}) => e[0].g ? frameRect(e) : e[0]);
+    const frame = keepFrame ? bounds([...work.values()]) : null;
+    const candidates = new Map(), contained = new Map();
+    function candidate(entity, limit = Infinity) {
+      const cache = limit === Infinity ? candidates : contained;
+      // A miss at a smaller distance may succeed for a different opponent.
+      if (!cache.has(entity) || cache.get(entity).limit < limit) {
+        const off = nearestFree(work, entity.boxes, limit === Infinity ? null : frame, limit);
+        cache.set(entity, {limit, move: off.stuck || (!off.dx && !off.dy) ? null : {entity, off, d: distance(off)}});
+      }
+      const {move} = cache.get(entity);
+      return move && move.d <= limit ? move : null;
+    }
+    let best = null;
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        if (!hit(outer[i], outer[j])) continue;
+        const a = candidate(list[i]), b = candidate(list[j]);
+        let move = better(a, b) ? a : b;
+        if (frame && move) {
+          const limit = 2 * move.d;
+          const insideA = candidate(list[i], limit), insideB = candidate(list[j], limit);
+          move = (better(insideA, insideB) ? insideA : insideB) || move;
+        }
+        if (better(move, best)) best = move;
+      }
+    }
+    if (!best) break;
+    const {entity, off} = best;
+    entity.boxes = entity.boxes.map(b => {
+      const p = {x: b.x + off.dx, y: b.y + off.dy};
+      moved.set(b.id, p);
+      const shifted = {...b, ...p};
+      work.set(b.id, shifted);
+      return shifted;
+    });
   }
-  for (const e of entitiesOf(work).sort((a, b) => area(a) - area(b))) shift(e);
   return moved;
 }
 

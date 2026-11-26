@@ -4,9 +4,9 @@
 import { app, currentLayout, membership } from './state.js';
 import { store } from './util.js';
 import { buildModel, heatOf, linkActivity } from './model.js';
-import { autoLayout, placeMissing, tidyAll } from './layout.js';
+import { placeMissing, tidyAll, tidyMembers } from './layout.js';
 import { catalogue, commit, commitLayout, commitSettings, discover, fetchGraph, forgetWindow, getSave, idle, loadArrangement, restoreSave, retryUnsaved, step } from './server.js';
-import { fit, fitGroup, fitWindow, refreshHighlight, renderAll, restoreView, sync, targetAgents, visibleArea } from './render.js';
+import { fitGroup, fitWindow, refreshHighlight, renderAll, restoreView, sync, targetAgents, visibleArea } from './render.js';
 import { applyFilter, renderPanels, renderStatus, renderView, refreshTip, closePopover } from './panels.js';
 import { cancelDrag, closeMenu, reconcilePointer } from './interact.js';
 
@@ -293,17 +293,17 @@ export async function history(kind) {
   } finally { historyPending--; }
 }
 
-function moveLayout(patch) {
-  if (Object.keys(patch.groups).length || Object.keys(patch.windows).length) layoutChanged(patch);
-}
-
-export function doTidy() { if (canEdit()) moveLayout(tidyAll()); }
-
-export function relayout() {
-  if (!canEdit()) return;
-  const {w, h} = visibleArea();
-  moveLayout(autoLayout(w, h));
-  fit(true);
+export function doTidy() {
+  if (!canEdit() || !app.tooClose) return;
+  // Capture shared offsets before moving any layout anchors. Both writes use the
+  // same queue; Retry sees the complete optimistic arrangement if either fails.
+  const saved = tidyMembers() ? commit('Tidy', false) : null;
+  const patch = tidyAll();
+  const moved = Object.keys(patch.groups).length || Object.keys(patch.windows).length
+    ? commitLayout(patch) : null;
+  redraw();
+  if (saved) showResult(saved);
+  if (moved) showResult(moved);
 }
 
 export function setPin(pin) {

@@ -149,6 +149,11 @@ export function renderAll() {
     title.draggable = false;
     const run = w.agents.some(function (a) { return a.needs; }) ? 'waiting' : w.agents.some(function (a) { return a.run; }) ? 'running' : null;
     if (run) title.appendChild(el('span', 'live ' + run));
+    if (w.workspaceColor) {
+      const dot = el('span', 'workspace-dot');
+      dot.dataset.color = w.workspaceColor;
+      title.appendChild(dot);
+    }
     title.appendChild(el('span', '', w.title));
     if (w.agents.length) title.appendChild(el('span', 'n', String(w.agents.length)));
     w.fg.appendChild(title);

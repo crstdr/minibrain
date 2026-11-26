@@ -43,6 +43,8 @@ def collect(recent=False, known=()):
                                lane_of=agent_id(bosses[i]) if i in bosses else None,
                                wake=dict(all=i == 0, lanes=[], limit=0, idle=0),
                                out_hidden=0, in_hidden=0, linked=i in linked, pinned=False, stale=False))
+    windows[0]["color"] = "violet"
+    windows[2]["color"] = "teal"
     links = [dict(o=agent_id(o), t=agent_id(t)) for o, t in EDGES]
     for offset, kind in enumerate(("wake", "watch", "attn", "msg")):
         links[(tick + offset * 3) % len(links)][kind] = now - offset * 10
