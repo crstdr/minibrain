@@ -1,10 +1,12 @@
 # Minibrain
 
-**Self-organising working memory for AI agents.**
+**Drop-in, modular working memory for dependable AI agents.**
 
-A lightweight memory system that enables AI agents to function as dependable collaborators over time. It supports continuity of purpose and responsibility across sessions and context compactions by preserving critical knowledge, priorities and decisions, while keeping memory organised and relevant as work evolves.
+Each brain is a plain folder with its own Git history. The agent keeps that memory organised, carries its goals, decisions and unfinished work across sessions and context compactions, and tracks the decisions that need your judgment.
 
-Drop-in, folder-based and environment-agnostic. Minibrain gives your existing agents a structured way to carry work forward, maintain their memory and surface decisions that need your judgment.
+Minibrain is minimal by design. A short instruction set says what memory must preserve and leaves the organising to the model.
+
+One prompt adds a brain to any folder, and there is no server to run. Several agents can share one brain, saving one at a time, and with RepoPrompt CE you can link brains into teams.
 
 ## Installation
 
