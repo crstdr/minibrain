@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/minibrain-logo-dark.svg">
+    <img alt="Minibrain" src="assets/minibrain-logo.svg" width="128">
+  </picture>
+</p>
+
 # Minibrain
 
 **Drop-in, modular working memory for dependable AI agents.**
