@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Show an upgrading agent, change by change, which upstream starter edits a brain already has,
-including its RepoPrompt CE block, and which plugins changed.
+including its RepoPrompt CE block, and which plugins were added, changed or removed.
 
 Run from a minibrain clone, outside the brain:
     python3 tools/upgrade_diff.py <target-ref> <brain-dir> [--from <adopted-ref>|auto]
