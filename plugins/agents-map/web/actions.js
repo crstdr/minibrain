@@ -9,7 +9,7 @@ import { placeMissing, scene, tidyAll, tidyMembers } from './layout.js';
 import { catalogue, commit, commitLayout, commitSettings, discover, fetchGraph, forgetWindow, getSave, idle, loadArrangement, restoreSave, retryUnsaved, step } from './server.js';
 import { fitGroup, fitWindow, refreshHighlight, renderAll, restoreView, sync, targetAgents, visibleArea } from './render.js';
 import { applyFilter, renderPanels, renderStatus, renderView, refreshTip, closePopover } from './panels.js';
-import { cancelDrag, closeMenu, reconcilePointer } from './interact.js';
+import { cancelDrag, closeMenu, reconcilePointer, refreshMenu } from './interact.js';
 
 let transition = false, recovering = false, historyPending = 0, dragTurn = 0, layoutTurn = 0;
 export function canEdit() { return !!app.model && !transition && !recovering && !historyPending; }
@@ -32,7 +32,7 @@ export function flash(text) {
 // The graph or the whole arrangement was replaced: build the model, give new windows
 // a place, redraw everything. The one drawing path, used at start and by Refresh.
 export function rebuild() {
-  if (app.model) { cancelDrag(); closeMenu(); }   // both hold objects of the model being replaced
+  if (app.model) cancelDrag();   // drag holds objects of the model being replaced
   const note = document.getElementById('empty');   // left by a start that could not load
   if (note) note.remove();
   if (applyView()) refresh();   // undo, a restore or another tab changed which agents to fetch (busy: fetched again afterwards)
@@ -62,6 +62,7 @@ export function rebuild() {
   renderAll();
   reconcilePointer();
   refreshTip();
+  refreshMenu();
   applyFilter();
   renderPanels();
   window.dispatchEvent(new Event('agents-map-rebuilt'));

@@ -271,21 +271,55 @@ layerFg.addEventListener('focusout', function (e) {
 });
 
 /* ---------- right-click menu ---------- */
+let menuState = null;   // { kind: 'agent'|'window'|'group', id, x, y }
+
 export function closeMenu() {
+  menuState = null;
   if (menu.hidden) return false;
   menu.hidden = true; menu.textContent = '';
   return true;
 }
 
-function openMenu(x, y, build) {
-  closePopover(); setHover(null);
+function resolveMenuTarget(st) {
+  if (!st || !app.model) return null;
+  if (st.kind === 'agent') return app.model.byId.get(st.id) || null;
+  if (st.kind === 'window') return app.model.winById.get(st.id) || null;
+  if (st.kind === 'group') return groupById(st.id) || null;
+  return null;
+}
+
+function populateMenu(st, target, focusFirst) {
   menu.textContent = '';
-  build();
+  if (st.kind === 'agent') agentMenu(target);
+  else if (st.kind === 'window') windowMenu(target);
+  else groupMenu(target);
   menu.hidden = false;
-  menu.style.left = clamp(x, 8, window.innerWidth - menu.offsetWidth - 8) + 'px';
-  menu.style.top = clamp(y, 8, window.innerHeight - menu.offsetHeight - 8) + 'px';
-  const first = menu.querySelector('button');
-  if (first) first.focus({ preventScroll: true });
+  menu.style.left = clamp(st.x, 8, window.innerWidth - menu.offsetWidth - 8) + 'px';
+  menu.style.top = clamp(st.y, 8, window.innerHeight - menu.offsetHeight - 8) + 'px';
+  if (focusFirst) {
+    const first = menu.querySelector('button');
+    if (first) first.focus({ preventScroll: true });
+  }
+}
+
+function openMenu(kind, id, x, y) {
+  closePopover(); setHover(null);
+  menuState = { kind, id, x, y };
+  const target = resolveMenuTarget(menuState);
+  if (!target) { closeMenu(); return; }
+  populateMenu(menuState, target, true);
+}
+
+export function refreshMenu() {
+  if (!menuState || menu.hidden) return;
+  const target = resolveMenuTarget(menuState);
+  if (!target) { closeMenu(); return; }
+  // Preserve half-typed form text or an armed confirmation; handlers resolve live targets by ID.
+  const input = menu.querySelector('input');
+  if ((input && (document.activeElement === input || input.value !== input.defaultValue))
+      || menu.querySelector('button.confirm')) return;
+  const hadFocus = menu.contains(document.activeElement);
+  populateMenu(menuState, target, hadFocus);
 }
 
 function mHead(text) { menu.appendChild(el('div', 'm-head', text)); }
@@ -324,7 +358,7 @@ function mRow(label, options) {
 
 function mForm(placeholder, value, submit, run) {
   const form = el('form'), input = el('input'), ok = el('button', '', submit);
-  input.type = 'text'; input.maxLength = 80; input.placeholder = placeholder; input.value = value; input.setAttribute('aria-label', placeholder);
+  input.type = 'text'; input.maxLength = 80; input.placeholder = placeholder; input.defaultValue = value; input.value = value; input.setAttribute('aria-label', placeholder);
   ok.type = 'submit';
   form.appendChild(input); form.appendChild(ok);
   form.addEventListener('submit', function (e) {
@@ -391,53 +425,99 @@ function pinItem(pin) {
 }
 
 function agentMenu(a) {
+  const id = a.id;
   mHead(a.name);
-  if (a.needs && !a.seen) { mItem('Seen', function () { markSeen(a); a.el.classList.remove('glow', 'pulse'); a.el.style.animationDelay = ''; }); mSep(); }
-  linkRows('agents', a.id, a.sourceName);
+  if (a.needs && !a.seen) {
+    mItem('Seen', function () {
+      const cur = app.model?.byId.get(id);
+      if (!cur) return;
+      markSeen(cur);
+      cur.el.classList.remove('glow', 'pulse');
+      cur.el.style.animationDelay = '';
+    });
+    mSep();
+  }
+  linkRows('agents', id, a.sourceName);
   mSep();
-  pinItem({ kind: 'agent', id: a.id });
+  pinItem({ kind: 'agent', id: id });
 }
 
 function windowMenu(w) {
-  const g = groupOf(w.id);
+  const id = w.id, g = groupOf(id);
   mHead(w.title);
-  linkRows('windows', w.id, w.sourceName);
+  linkRows('windows', id, w.sourceName);
   if (w.agents.length) {
-    const fixed = !!app.arr.windows[w.id].fixed;
-    mRow('Columns', [['Auto', !fixed, function () { if (fixed) { setCols(w, null); changed('Columns of ' + w.sourceName, true); } }, null]]
-      .concat([1, 2, 3, 4].map(function (n) {
-        return [String(n), fixed && w.cols === n, function () { setCols(w, n); changed('Columns of ' + w.sourceName, true); }, null];
-      })));
+    const fixed = !!app.arr.windows[id].fixed;
+    mRow('Columns', [['Auto', !fixed, function () {
+      const cur = app.model?.winById.get(id);
+      if (cur && app.arr.windows[id]?.fixed) { setCols(cur, null); changed('Columns of ' + cur.sourceName, true); }
+    }, null]].concat([1, 2, 3, 4].map(function (n) {
+      return [String(n), fixed && w.cols === n, function () {
+        const cur = app.model?.winById.get(id);
+        if (cur) { setCols(cur, n); changed('Columns of ' + cur.sourceName, true); }
+      }, null];
+    })));
   }
   mSep();
-  if (g) mItem((app.ui.obfuscate ? 'Remove from ' : 'Remove from group ') + groupName(g), function () { const seeds = removeFromGroup(w); changed('Removed ' + w.sourceName + ' from ' + g.name, true, seeds); });
+  if (g) {
+    mItem((app.ui.obfuscate ? 'Remove from ' : 'Remove from group ') + groupName(g), function () {
+      const cur = app.model?.winById.get(id), curG = groupOf(id);
+      if (!cur || !curG) return;
+      const seeds = removeFromGroup(cur);
+      changed('Removed ' + cur.sourceName + ' from ' + curG.name, true, seeds);
+    });
+  }
   app.arr.groups.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (other) {
     if (g && other.id === g.id) return;
-    mItem((g ? 'Move to ' : 'Add to ') + (app.ui.obfuscate ? '' : 'group ') + groupName(other), function () { addToGroup(other, w); changed('Added ' + w.sourceName + ' to ' + other.name, true); });
+    const otherId = other.id;
+    mItem((g ? 'Move to ' : 'Add to ') + (app.ui.obfuscate ? '' : 'group ') + groupName(other), function () {
+      const cur = app.model?.winById.get(id), dest = groupById(otherId);
+      if (!cur || !dest) return;
+      addToGroup(dest, cur);
+      changed('Added ' + cur.sourceName + ' to ' + dest.name, true);
+    });
   });
-  mForm('New group name', '', 'New group', function (name) { const seeds = createGroup(name, w); changed('Grouped ' + w.sourceName + ' as ' + name, true, seeds); });
+  mForm('New group name', '', 'New group', function (name) {
+    const cur = app.model?.winById.get(id);
+    if (!cur) return;
+    const seeds = createGroup(name, cur);
+    changed('Grouped ' + cur.sourceName + ' as ' + name, true, seeds);
+  });
   mSep();
-  if (!g) mItem('Hide window', () => setBoxHidden('window', w.id, true));
-  if (w.closed) mItem('Remove from map', () => removeWindow(w), 'Really remove?');
-  pinItem({ kind: 'window', id: w.id });
+  if (!g) mItem('Hide window', () => setBoxHidden('window', id, true));
+  if (w.closed) mItem('Remove from map', () => { const cur = app.model?.winById.get(id); if (cur) removeWindow(cur); }, 'Really remove?');
+  pinItem({ kind: 'window', id: id });
 }
 
 function groupMenu(g) {
+  const id = g.id;
   mHead(app.ui.obfuscate ? groupName(g) : 'Group ' + groupName(g));
-  mForm('Group name', app.ui.obfuscate ? '' : groupName(g), 'Rename', function (name) { if (name !== g.name) { g.name = name; changed('Renamed group to ' + name); } });
-  linksRow(linksSetting(g), function (value, what) {
-    if (value) g.links = value; else delete g.links;
-    delete g.hide;
-    setLinkOverride('groups', g.id, value);
+  mForm('Group name', app.ui.obfuscate ? '' : groupName(g), 'Rename', function (name) {
+    const cur = groupById(id);
+    if (cur && name !== cur.name) { cur.name = name; changed('Renamed group to ' + name); }
+  });
+  linksRow(linksSetting(g), function (value) {
+    const cur = groupById(id);
+    if (!cur) return;
+    if (value) cur.links = value; else delete cur.links;
+    delete cur.hide;
+    setLinkOverride('groups', id, value);
   });
   hueRow(groupHue(g), function (value) {
-    if (value) g.hue = value; else delete g.hue;
-    delete g.fill;   // the older colour is superseded: its hue was taken, or None was chosen
-    changed((value ? 'Coloured group ' : 'Removed the colour of group ') + g.name);
+    const cur = groupById(id);
+    if (!cur) return;
+    if (value) cur.hue = value; else delete cur.hue;
+    delete cur.fill;   // the older colour is superseded: its hue was taken, or None was chosen
+    changed((value ? 'Coloured group ' : 'Removed the colour of group ') + cur.name);
   });
-  mItem('Hide group', () => setBoxHidden('group', g.id, true));
-  mItem('Zoom to group', function () { fitGroup(g, true); });
-  mItem('Ungroup', function () { const seeds = ungroup(g); changed('Ungrouped ' + g.name, true, seeds); });
+  mItem('Hide group', () => setBoxHidden('group', id, true));
+  mItem('Zoom to group', function () { const cur = groupById(id); if (cur) fitGroup(cur, true); });
+  mItem('Ungroup', function () {
+    const cur = groupById(id);
+    if (!cur) return;
+    const seeds = ungroup(cur);
+    changed('Ungrouped ' + cur.name, true, seeds);
+  });
 }
 
 stage.addEventListener('contextmenu', function (e) {
@@ -447,12 +527,7 @@ stage.addEventListener('contextmenu', function (e) {
   const t = hoverTarget(e.target);
   if (!t) { closeMenu(); return; }   // background: the browser's own menu
   e.preventDefault();
-  const m = app.model;
-  openMenu(e.clientX, e.clientY, function () {
-    if (t.kind === 'agent') agentMenu(m.byId.get(t.id));
-    else if (t.kind === 'window') windowMenu(m.winById.get(t.id));
-    else groupMenu(groupById(t.id));
-  });
+  openMenu(t.kind, t.id, e.clientX, e.clientY);
 });
 
 document.addEventListener('pointerdown', function (e) {
