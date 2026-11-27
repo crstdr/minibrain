@@ -362,11 +362,18 @@ export function renderTable() {
   body.textContent = ''; rowById.clear();
   rows.forEach(function (a) {
     const tr = el('tr');
-    const name = el('td', 'agent-cell', a.name);
-    if (!app.graph?.demo) {
-      const open = el('a', 'open', 'open'); open.href = a.el.href;
-      name.appendChild(open);
+    const name = el('td', 'agent-cell');
+    const inner = el('div', 'agent-cell-inner');
+    inner.appendChild(el('span', 'agent-cell-name', a.name));
+    const href = workspaceLink(a.ws, a.tab, a.id);
+    if (href) {
+      const open = el('a', 'open', '↗');
+      open.href = href;
+      open.draggable = false;
+      open.setAttribute('aria-label', 'Open ' + a.name);
+      inner.appendChild(open);
     }
+    name.appendChild(inner);
     tr.appendChild(name);
     tr.appendChild(el('td', '', a.win.name));
     const cli = el('td'), k = el('span', 'k');
