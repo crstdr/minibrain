@@ -34,7 +34,7 @@ class ResourceReferences(HTMLParser):
 
 class PluginTests(unittest.TestCase):
     def test_plugin_entrypoints_exist(self):
-        for path in ("README.md", "app/SETUP.md", "app/ROADMAP.md", "app/ATTENTION.md",
+        for path in ("README.md", "app/SETUP.md", "app/ITEMS.md",
                      "app/agents_map.py", "app/roadmap.py", "app/web/roadmap.html"):
             with self.subTest(path=path):
                 self.assertTrue((PLUGINS / path).is_file())
@@ -108,13 +108,13 @@ class PluginTests(unittest.TestCase):
         path.write_text(change(path.read_text(encoding="utf-8")), encoding="utf-8")
         return copy
 
-    def test_roadmap_check_reports_a_bad_alert_value(self):
+    def test_roadmap_check_reports_a_bad_due_date(self):
         with tempfile.TemporaryDirectory() as tmp:
-            copy = self.edited_sample(tmp, "approve-estimate.md", lambda text: text.replace("- alert: glow", "- alert: red"))
+            copy = self.edited_sample(tmp, "gallery-preview.md", lambda text: text.replace("- due: 2026-12-30", "- due: next week"))
             result = self.roadmap("check", collection=copy)
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertNotIn("Traceback", result.stderr)
-        self.assertIn("approve-estimate", result.stdout + result.stderr)
+        self.assertIn("gallery-preview", result.stdout + result.stderr)
 
     def test_roadmap_check_reports_a_cycle_through_serves(self):
         def needs_its_priority(text):

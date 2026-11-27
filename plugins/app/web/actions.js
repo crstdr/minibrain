@@ -74,9 +74,9 @@ export function rebuild() {
 export function expireSnoozes() {
   if (!canEdit() || dragging) return false;
   const now = Date.now();
-  const expiredPrimary = !!app.model.attention?.items.some(it => it.snoozedUntil && it.snoozedUntil <= now);
-  const expiredAgent = app.model.allAgents.some(a => a.items.some(it => it.snoozedUntil && it.snoozedUntil <= now));
-  if (!expiredPrimary && !expiredAgent) return false;
+  const expiredGeneral = !!app.model.attention?.general.some(it => it.snoozedUntil && it.snoozedUntil <= now);
+  const expiredAgent = app.model.allAgents.some(a => a.attItems.some(it => it.snoozedUntil && it.snoozedUntil <= now));
+  if (!expiredGeneral && !expiredAgent) return false;
   rebuild();
   return true;
 }

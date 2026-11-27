@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
-"""Agents Map: a live map of your agents and how they are linked, served on this machine.
+"""minibrain app: Agents Map and Roadmap served locally on 127.0.0.1.
 
-Starts a small server on 127.0.0.1 and opens the map in the browser. The page asks
-the server for fresh data (Refresh) and stores what you arrange by hand: positions,
-groups, link settings, View settings, undo history and named saves.
+Starts a local server on 127.0.0.1 and opens Agents Map in the browser. The page asks
+the server for fresh data (Refresh) and stores manual arrangements: positions, groups,
+link settings, View settings, undo history and named saves.
 
-The data comes from a source module (sources/repoprompt.py reads RepoPrompt CE's saved
-state, read-only). What the page receives holds names, models and usage numbers, never
-transcripts or paths. With --attention FILE it also carries the items another program
-lists there as needing you (attention.py describes the file).
+Agent state comes from a source module (sources/repoprompt.py reads RepoPrompt CE's
+saved state, read-only). Registered collections in collections.json provide open items,
+derived Attention/Blocked/Overdue states, and Roadmap dependency graphs. What leaves the
+server never includes transcripts or host filesystem paths.
 
-What you arrange is kept in ~/Library/Application Support/minibrain (--state-dir),
-never in a source's own folder.
+State and the default collections.json registry live in
+~/Library/Application Support/minibrain (--state-dir), never in a source or brain folder.
 
 Usage:
   python3 agents_map.py              start the server and open the map
   python3 agents_map.py --no-open    start the server only
   python3 agents_map.py --demo       show sample data without RepoPrompt CE
-  python3 agents_map.py --json       print one collection and exit
-  python3 agents_map.py --attention FILE   also show the attention items in FILE
+  python3 agents_map.py --json       print one snapshot and exit
 """
 import argparse
 import glob
@@ -41,7 +40,6 @@ from copy import deepcopy
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-import attention
 import roadmap
 from sources import demo, repoprompt
 
@@ -817,72 +815,34 @@ def _open_agents(agents):
     return [a for a in agents if not a.get("closed")]
 
 
-def _roadmap_summaries(entries, agents):
-    """(summaries, extra_attentions, warnings) across all configured roadmaps. Zero host paths returned."""
-    summaries, attentions, warnings = [], [], []
-    open_agents = _open_agents(agents)
-    for entry in entries:
-        try:
-            tickets, problems, notes = roadmap.load(entry["collection"])
-        except Exception as error:
-            print("roadmap load failed (%s): %r" % (entry["id"], error), file=sys.stderr)
-            warnings.append("Roadmap '%s' is unreadable." % entry["title"])
-            continue
-        if problems and not tickets:
-            warnings.append("Roadmap '%s' could not be loaded." % entry["title"])
-            continue
-        lane_names = {t["lane"] for t in tickets.values() if t["lane"]}
-        if entry["owner_lane"]:
-            lane_names.add(entry["owner_lane"])
-        resolved = roadmap.resolve_lanes(lane_names, open_agents)
-        lanes = {}
-        open_total = waiting_total = 0
-        for t in tickets.values():
-            if t["kind"] == "priority" or not roadmap.is_open(t):
-                continue
-            open_total += 1
-            is_wait = t["state"] == "awaiting-user"
-            if is_wait:
-                waiting_total += 1
-            sid = resolved.get(t["lane"]) if t["lane"] else None
-            if sid:
-                slot = lanes.setdefault(sid, {"lane": t["lane"], "open": 0, "waiting": 0})
-                slot["open"] += 1
-                if is_wait:
-                    slot["waiting"] += 1
-        summaries.append({
-            "id": entry["id"],
-            "title": entry["title"],
-            "owner_lane": entry["owner_lane"],
-            "owner_id": resolved.get(entry["owner_lane"]) if entry["owner_lane"] else None,
-            "open": open_total,
-            "waiting": waiting_total,
-            "lanes": lanes,
-        })
-        if entry["attention"]:
-            try:
-                block, att_notes = roadmap.attention_list(
-                    entry["collection"], open_agents, entry["id"],
-                    title=entry["title"], owner_lane=entry["owner_lane"],
-                )
-                if block:
-                    block["primary"] = False
-                    attentions.append(block)
-                warnings.extend(att_notes)
-            except Exception as error:
-                print("roadmap attention failed (%s): %r" % (entry["id"], error), file=sys.stderr)
-                warnings.append("Roadmap '%s' attention failed." % entry["title"])
-    return summaries, attentions, warnings
+def _roadmap_entry_summary(block):
+    return {
+        "id": block["id"],
+        "title": block["title"],
+        "lane": block["lane"],
+        "owner_id": block["owner_id"],
+        "open": block["open"],
+        "attention": block["attention"],
+        "lanes": block["lanes"],
+    }
 
 
-def roadmap_document(roadmaps_file, roadmap_id, collect, known=()):
-    """Full document for one configured roadmap id, enriched with live lane resolution and open links."""
-    entries, _ = roadmap.read_registry(roadmaps_file)
-    entry = next((e for e in entries if e["id"] == roadmap_id), None)
+def roadmap_document(collections_file, collection_id, collect, known=()):
+    """Full graph document for one registered collection id, enriched with live lane links."""
+    entries, _ = roadmap.read_registry(collections_file)
+    entry = next((e for e in entries if e["id"] == collection_id), None)
     if not entry:
-        raise KeyError(roadmap_id)
-    doc = roadmap.document(entry["collection"], title=entry["title"],
-                           owner_lane=entry["owner_lane"], roadmap_id=entry["id"])
+        raise KeyError(collection_id)
+    external_done = roadmap.build_external_done([e for e in entries if e["id"] != collection_id])
+    doc = roadmap.document(
+        entry["collection"],
+        title=entry["title"],
+        lane=entry["lane"],
+        collection_id=entry["id"],
+        external_done=external_done,
+    )
+    if not doc["has_graph"]:
+        raise KeyError(collection_id)
     try:
         graph_data = collect(recent=False, known=known)
     except Exception:
@@ -890,13 +850,33 @@ def roadmap_document(roadmaps_file, roadmap_id, collect, known=()):
     agents = graph_data.get("agents", [])
     open_agents = _open_agents(agents)
     closed_agents = [a for a in agents if a.get("closed")]
-    names = {n[k] for n in doc["nodes"] for k in ("lane", "suggested") if n.get(k)}
-    if doc["owner_lane"]:
-        names.add(doc["owner_lane"])
+    names = {n["lane"] for n in doc["nodes"] if n.get("lane")}
+    if doc["lane"]:
+        names.add(doc["lane"])
     lanes = roadmap.resolve_lanes(names, open_agents)
+    owner_sid = (
+        roadmap.resolve_lane_link(entry["lane_link"], open_agents)
+        or (lanes.get(doc["lane"]) if doc["lane"] else None)
+    )
+    if doc["lane"] and owner_sid:
+        lanes[doc["lane"]] = owner_sid
+    # Also resolve per-record lane-link overrides (without leaking raw unvalidated URLs).
+    items, _, _, _, _ = roadmap._load_all(entry["collection"])
+    node_agents = {}
+    for n in doc["nodes"]:
+        it = items.get(n["id"])
+        sid = (
+            (roadmap.resolve_lane_link(it["lane_link"], open_agents) if it and it["lane_link"] else None)
+            or (lanes.get(n["lane"]) if n["lane"] else None)
+            or owner_sid
+        )
+        if sid:
+            node_agents[n["id"]] = sid
     doc["lanes"] = lanes
+    doc["node_agents"] = node_agents
     if graph_data.get("demo"):
         doc["open"] = {}
+        doc["node_open"] = {}
     else:
         by_id = {a["id"]: a for a in agents}
         away = roadmap.resolve_lanes([l for l, sid in lanes.items() if not sid], closed_agents)
@@ -906,61 +886,34 @@ def roadmap_document(roadmaps_file, roadmap_id, collect, known=()):
             href = _workspace_open_link(agent)
             if href:
                 links[lane] = {"href": href, "open": bool(sid)}
+        node_open = {}
+        for nid, sid in node_agents.items():
+            agent = by_id.get(sid)
+            href = _workspace_open_link(agent)
+            if href:
+                node_open[nid] = {"href": href, "open": not agent.get("closed"), "name": agent.get("name", "")}
         doc["open"] = links
+        doc["node_open"] = node_open
     return doc
 
 
-def _collection_attentions(entries, agents):
-    """(attentions, warnings) across all configured non-roadmap collections. Zero host paths returned."""
-    attentions, warnings = [], []
-    open_agents = _open_agents(agents)
-    for entry in entries:
-        try:
-            block, att_notes = roadmap.collection_attention_list(
-                entry["collection"], open_agents, entry["id"],
-                title=entry["title"], owner_lane=entry["owner_lane"],
-                closed=entry["closed"],
-            )
-            if block:
-                block["primary"] = False
-                attentions.append(block)
-            warnings.extend(att_notes)
-        except Exception as error:
-            print("collection attention failed (%s): %r" % (entry["id"], error), file=sys.stderr)
-            warnings.append("Collection '%s' attention failed." % entry["title"])
-    return attentions, warnings
-
-
-def graph_document(collect, recent, attention_file, known=(), roadmaps_file=None):
-    """The source's graph document plus validated attention items, roadmap summaries and warnings."""
+def graph_document(collect, recent, known=(), collections_file=None):
+    """The source's graph document plus registered collections and warnings."""
     data = collect(recent=recent, known=known)
-    try:
-        data["attention"], notes = attention.read(attention_file)
-    except Exception as error:   # input from another program must never cost the map
-        print("attention file failed: %r" % error, file=sys.stderr)
-        data["attention"], notes = None, ["Attention file is unreadable."]
-    rm_notes = []
-    if roadmaps_file:
+    col_notes = []
+    if collections_file:
         try:
-            rm_entries, col_entries, reg_notes = roadmap.read_registry_all(roadmaps_file)
+            entries, reg_notes = roadmap.read_registry(collections_file)
         except Exception as error:
-            print("roadmaps config failed: %r" % error, file=sys.stderr)
-            rm_entries, col_entries, reg_notes = [], [], ["Roadmaps config is unreadable."]
-        rm_notes.extend(reg_notes)
-        extra_att = []
-        if rm_entries:
-            summaries, rm_att, sum_notes = _roadmap_summaries(rm_entries, data.get("agents", []))
-            rm_notes.extend(sum_notes)
-            data["roadmaps"] = summaries
-            extra_att.extend(rm_att)
-        if col_entries:
-            col_att, col_notes = _collection_attentions(col_entries, data.get("agents", []))
-            rm_notes.extend(col_notes)
-            extra_att.extend(col_att)
-        if extra_att:
-            primary = [{**data["attention"], "primary": True}] if data["attention"] else []
-            data["attentions"] = primary + extra_att
-    data["warnings"] = (notes + rm_notes + data["warnings"])[:20]
+            print("collections registry failed: %r" % error, file=sys.stderr)
+            entries, reg_notes = [], ["Collections registry is unreadable."]
+        col_notes.extend(reg_notes)
+        if entries:
+            blocks, load_notes = roadmap.load_collections(entries, _open_agents(data.get("agents", [])))
+            col_notes.extend(load_notes)
+            if blocks:
+                data["collections"] = blocks
+    data["warnings"] = (col_notes + data["warnings"])[:20]
     return data
 
 
@@ -985,11 +938,10 @@ class MapServer(ThreadingHTTPServer):
     # request in about 25 loads, which left the page blank.
     request_queue_size = 128
 
-    def __init__(self, port, collect, store, web_dir=WEB_DIR, attention_file=None, roadmaps_file=None):
+    def __init__(self, port, collect, store, web_dir=WEB_DIR, collections_file=None):
         self.collect = collect
         self.store = store
-        self.attention_file = attention_file   # read at every request; never sent to the page
-        self.roadmaps_file = roadmaps_file     # read at every request; paths never sent to the page
+        self.collections_file = collections_file if collections_file is not None else os.path.join(store.dir, "collections.json")
         # the only files ever served: names found in the page folder at start
         self.static = {name: os.path.join(web_dir, name) for name in os.listdir(web_dir) if STATIC_NAME_RE.match(name)}
         if "index.html" not in self.static:
@@ -1122,9 +1074,9 @@ class Handler(BaseHTTPRequestHandler):
     def graph(self, recent):
         # Errors can disclose file paths; log them only to the terminal.
         try:
-            data = graph_document(self.server.collect, recent, self.server.attention_file,
+            data = graph_document(self.server.collect, recent,
                                   known=self.server.store.known_windows(),
-                                  roadmaps_file=self.server.roadmaps_file)
+                                  collections_file=self.server.collections_file)
         except ValueError as error:
             print("collection failed: %r" % error, file=sys.stderr)
             return self.reply_json(503, {"error": "app data is being written; try again"})
@@ -1134,25 +1086,28 @@ class Handler(BaseHTTPRequestHandler):
         self.reply_json(200, data)
 
     def roadmaps_list(self):
-        if not self.server.roadmaps_file:
+        if not self.server.collections_file:
             return self.reply_json(200, {"roadmaps": [], "warnings": []})
         try:
-            entries, warnings = roadmap.read_registry(self.server.roadmaps_file)
+            entries, warnings = roadmap.read_registry(self.server.collections_file)
         except Exception as error:
-            print("roadmaps config failed: %r" % error, file=sys.stderr)
-            return self.reply_json(200, {"roadmaps": [], "warnings": ["Roadmaps config is unreadable."]})
+            print("collections registry failed: %r" % error, file=sys.stderr)
+            return self.reply_json(200, {"roadmaps": [], "warnings": ["Collections registry is unreadable."]})
+        if not entries:
+            return self.reply_json(200, {"roadmaps": [], "warnings": warnings[:20]})
         try:
             agents = self.server.collect(recent=False, known=self.server.store.known_windows()).get("agents", [])
         except Exception:
             agents = []
-        summaries, _, notes = _roadmap_summaries(entries, agents)
+        blocks, notes = roadmap.load_collections(entries, _open_agents(agents))
+        summaries = [_roadmap_entry_summary(b) for b in blocks if b["has_graph"]]
         return self.reply_json(200, {"roadmaps": summaries, "warnings": (warnings + notes)[:20]})
 
     def roadmap_one(self, roadmap_id):
-        if not self.server.roadmaps_file or not roadmap.SLUG.match(roadmap_id):
+        if not self.server.collections_file or not roadmap.SLUG.match(roadmap_id):
             return self.reply_json(404, {"error": "not found"})
         try:
-            doc = roadmap_document(self.server.roadmaps_file, roadmap_id, self.server.collect,
+            doc = roadmap_document(self.server.collections_file, roadmap_id, self.server.collect,
                                    known=self.server.store.known_windows())
         except KeyError:
             return self.reply_json(404, {"error": "not found"})
@@ -1189,13 +1144,12 @@ def login_item_plist(
     port=DEFAULT_PORT,
     state_dir=None,
     app_support=None,
-    attention_file=None,
-    roadmaps_file=None,
+    collections_file=None,
     script_path=None,
     python_path=None,
     label=LOGIN_ITEM_LABEL,
 ):
-    """Build the launchd plist dict for starting Agents Map at login."""
+    """Build the launchd plist dict for starting minibrain app at login."""
     py = sys.executable if python_path is None else python_path
     if not py or not os.path.isabs(py):
         raise SystemExit("cannot determine absolute Python path")
@@ -1211,10 +1165,8 @@ def login_item_plist(
         argv += ["--state-dir", effective_state]
     if app_support:
         argv += ["--app-support", os.path.abspath(os.path.expanduser(app_support))]
-    if attention_file:
-        argv += ["--attention", os.path.abspath(os.path.expanduser(attention_file))]
-    if roadmaps_file:
-        argv += ["--roadmaps", os.path.abspath(os.path.expanduser(roadmaps_file))]
+    if collections_file:
+        argv += ["--collections", os.path.abspath(os.path.expanduser(collections_file))]
     return {
         "Label": label,
         "ProgramArguments": argv,
@@ -1253,8 +1205,7 @@ def login_item_on(
     port=DEFAULT_PORT,
     state_dir=None,
     app_support=None,
-    attention_file=None,
-    roadmaps_file=None,
+    collections_file=None,
     launch_agents_dir=None,
     label=LOGIN_ITEM_LABEL,
     runner=None,
@@ -1282,8 +1233,7 @@ def login_item_on(
         port=port,
         state_dir=state_dir,
         app_support=app_support,
-        attention_file=attention_file,
-        roadmaps_file=roadmaps_file,
+        collections_file=collections_file,
         script_path=script_path,
         python_path=python_path,
         label=label,
@@ -1393,15 +1343,12 @@ def main(argv=None):
     parser.add_argument("--demo", action="store_true", help="show sample data without RepoPrompt CE")
     parser.add_argument("--no-open", action="store_true", help="do not open the map in the browser")
     parser.add_argument("--app-support", default=None, help="RepoPrompt CE data folder")
-    parser.add_argument("--state-dir", help="where layouts are kept (temporary by default in demo mode)")
-    parser.add_argument("--attention", metavar="FILE", help="a file of items that need you, written by another program (off when absent)")
-    parser.add_argument("--roadmaps", metavar="FILE", help="JSON registry of roadmaps and attention collections (off when absent)")
-    parser.add_argument("--json", action="store_true", help="print one collection and exit")
-    parser.add_argument("--recent", action="store_true", help="with --json: include recent agents without links")
+    parser.add_argument("--state-dir", help="where layouts and collections.json live (temporary in demo mode)")
+    parser.add_argument("--collections", metavar="FILE", help="JSON registry of collections (default: <state-dir>/collections.json)")
+    parser.add_argument("--json", action="store_true", help="print one snapshot and exit")
     parser.add_argument("--login-item", choices=("on", "off"), help="start at login (on) or stop and remove that (off)")
     args = parser.parse_args(argv)
-    args.attention = os.path.expanduser(args.attention) if args.attention else None
-    args.roadmaps = os.path.expanduser(args.roadmaps) if args.roadmaps else None
+    args.collections = os.path.expanduser(args.collections) if args.collections else None
 
     if args.login_item:
         if args.demo or args.json:
@@ -1414,8 +1361,7 @@ def main(argv=None):
             port=port,
             state_dir=args.state_dir,
             app_support=args.app_support,
-            attention_file=args.attention,
-            roadmaps_file=args.roadmaps,
+            collections_file=args.collections,
         )
         return
 
@@ -1431,25 +1377,23 @@ def main(argv=None):
         if args.demo:
             args.state_dir = args.state_dir or temporary
             forbidden += (STATE_DIR, repoprompt.APP_SUPPORT)
-            if args.attention is None:
-                args.attention = os.path.join(temporary, "attention.json")
-                write_json(args.attention, demo.attention_document())
-            if args.roadmaps is None:
+            if args.collections is None:
                 sample_dir = _demo_roadmap_dir()
                 if sample_dir:
-                    args.roadmaps = os.path.join(temporary, "roadmaps.json")
-                    write_json(args.roadmaps, {"version": 1, "roadmaps": [{
+                    args.collections = os.path.join(temporary, "collections.json")
+                    write_json(args.collections, {"version": 1, "collections": [{
                         "id": "studio-roadmap",
                         "title": "Studio roadmap",
                         "collection": sample_dir,
-                        "owner_lane": "Studio lead",
-                        "attention": False,
+                        "lane": "Studio lead",
                     }]})
         else:
             if args.state_dir is None:
                 args.state_dir = STATE_DIR
+            if args.collections is None:
+                args.collections = os.path.join(args.state_dir, "collections.json")
         if args.json:
-            json.dump(graph_document(collect, args.recent, args.attention, roadmaps_file=args.roadmaps),
+            json.dump(graph_document(collect, False, collections_file=args.collections),
                       sys.stdout, ensure_ascii=False, indent=1)
             print()
             return
@@ -1471,7 +1415,7 @@ def serve(args, collect, forbidden):
     url = "http://127.0.0.1:%d/" % args.port
     store = Store(args.state_dir, forbidden=forbidden)
     try:
-        server = MapServer(args.port, collect, store, attention_file=args.attention, roadmaps_file=args.roadmaps)
+        server = MapServer(args.port, collect, store, collections_file=args.collections)
     except OSError:
         if args.demo or not map_server_running(args.port):
             raise SystemExit("port %d is in use; pass --port" % args.port)

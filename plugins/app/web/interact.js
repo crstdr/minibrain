@@ -10,7 +10,7 @@ import { CW, CH, framePixels } from './grid.js';
 import { addToGroup, applyPositions, createGroup, landing, openMembers, removeFromGroup, setCols, setStandalone, translateGroup, ungroup } from './layout.js';
 import { applyView, fitGroup, frames, linksOf, linksSetting, placeFrame, placeLinks, placeWin, sync, zoomAt } from './render.js';
 import { canEdit, changed, flash, layoutChanged, persistViewport, removeWindow, setBoxHidden, setLinkOverride, setDragging, setHover, setPin, togglePin } from './actions.js';
-import { closePopover, dismissTipOutside, openAttention, syncTableSelection, toggleTip } from './panels.js';
+import { closePopover, dismissTipOutside, syncTableSelection, toggleTip } from './panels.js';
 import { isDrawerOpen, openRoadmapDrawer, syncDrawerWithAgent } from './drawer.js';
 
 const stage = $('stage'), layerFg = $('layer-fg'), layerFrames = $('layer-frames');
@@ -177,22 +177,11 @@ stage.addEventListener('click', function (e) {
   if (swallowClick) { e.preventDefault(); e.stopPropagation(); return; }
   if (e.target.closest(CHROME)) return;
   const chip = e.target.closest('.agent'), winEl = e.target.closest('.win');
-  if (e.target.closest('.att-count')) { e.preventDefault(); e.stopPropagation(); openAttention(e.target.closest('.att-count')); return; }   // not the chip's link
   const rmChip = e.target.closest('.rm-chip');
   if (rmChip) {
     e.preventDefault(); e.stopPropagation();
     if (chip) setPin({ kind: 'agent', id: chip.dataset.id });
     openRoadmapDrawer(rmChip.dataset.roadmap, rmChip.dataset.lane || null, null);
-    syncTableSelection();
-    return;
-  }
-  const rmBadge = e.target.closest('.att-badge[data-roadmap]');
-  if (rmBadge) {
-    e.preventDefault(); e.stopPropagation();
-    const a = chip && app.model.byId.get(chip.dataset.id);
-    if (a) setPin({ kind: 'agent', id: a.id });
-    const owned = a?.roadmaps?.some(r => r.id === rmBadge.dataset.roadmap && r.mode === 'owner');
-    openRoadmapDrawer(rmBadge.dataset.roadmap, owned ? null : (a?.sourceName || null), rmBadge.dataset.ticket || null);
     syncTableSelection();
     return;
   }
@@ -448,8 +437,8 @@ function agentMenu(a) {
       const cur = app.model?.byId.get(id);
       if (!cur) return;
       markSeen(cur);
-      cur.el.classList.remove('glow', 'pulse');
-      cur.el.style.animationDelay = '';
+      cur.el.classList.remove('glow');
+      cur.el.querySelector('.need-ring')?.remove();
     });
     mSep();
   }

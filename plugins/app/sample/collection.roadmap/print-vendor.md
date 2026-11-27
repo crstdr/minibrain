@@ -1,10 +1,9 @@
 # Confirm print vendor slot
 
-- kind: gap
-- state: missing
+- kind: task
+- state: blocked vendor quote
 - serves: catalogue
-- suggested: Queue reader
-- owner: unassigned
+- lane: Queue reader
 - source: unknown
 - tags: #print
 

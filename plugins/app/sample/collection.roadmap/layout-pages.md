@@ -1,12 +1,11 @@
 # Lay out catalogue pages
 
-- kind: project
+- kind: task
 - state: in-progress
 - serves: catalogue
 - needs: roadmap/pick-cover
 - lane: Release editor
 - owner: Release editor
-- days: 3
 - source: spaces/Catalogue.md#Layout @ 2026-11-25
 - tags: #print
 

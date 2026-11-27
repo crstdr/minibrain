@@ -5,7 +5,7 @@ import { canEdit, persistViewport } from './actions.js';
 import { groupName } from './model.js';
 import { app, currentLayout, groupOf } from './state.js';
 import { stateText } from './model.js';
-import { badgeItems, glowDelay, haloDelay, kindIcon, phaseDelay, pulseDelay } from './attention.js';
+import { attentionIcon, glowDelay, phaseDelay } from './attention.js';
 import { $, el, svg, clamp, store } from './util.js';
 import { CHIP_W, CHIP_H, CW, CH, conflicts, framePixels } from './grid.js';
 import { boxOf, openMembers, scene } from './layout.js';
@@ -29,12 +29,10 @@ function buildChip(a) {
   if (a.pinned) node.classList.add('pinned');
   if (a.run) node.classList.add(a.run);
   if (a.needs && !a.seen) {
-    const pulse = a.alert === 'pulse';
-    node.classList.add(pulse ? 'pulse' : 'glow');
-    // Both motions take their phase from the clock, so a redraw carries on instead of restarting; the
-    // outline is the first child, so the box's own badges and text still paint over it.
-    node.insertBefore(needRing(pulse ? pulseDelay() : glowDelay()), node.firstChild);
-    if (pulse) node.style.animationDelay = haloDelay();
+    node.classList.add('glow');
+    // Phase from the wall clock so a redraw carries on instead of restarting; inserted first
+    // so the box's own badges and text paint over it.
+    node.insertBefore(needRing(glowDelay()), node.firstChild);
   }
   if (a.state === 'failed') node.classList.add('failed');
   if (a.pct != null && a.pct >= CRIT) node.classList.add('crit');
@@ -76,30 +74,16 @@ function buildChip(a) {
     node.appendChild(open);
   }
 
-  // Attention items on this agent: left-edge tags clear of the top-right roadmap chip.
-  const shown = badgeItems(a);
-  const muted = a.items.length > 0 && a.items.every(function (it) { return it.snoozedUntil; });
-  const primary = muted ? a.items[0] : shown[0];
-  const att = app.model.attention;
-  const hasLoose = !!(att && att.owner === a && att.activeLoose.length);
-  if (primary || hasLoose) {
+  // Attention count badge (top-left) and open count / roadmap chip (top-right).
+  if (a.attItems && a.attItems.length) {
+    const activeCount = a.attItems.filter(it => !it.snoozedUntil).length;
+    const muted = activeCount === 0;
     const left = el('span', 'att-left');
-    if (hasLoose) {
-      const b = el('button', 'att-count' + (att.activeLoose.some(function (it) { return it.alert !== 'none'; }) ? ' alert' : ''), att.activeLoose.length + (att.activeLoose.length === 1 ? ' item' : ' items'));
-      b.type = 'button';
-      left.appendChild(b);
-    }
-    if (primary) {
-      const b = el('span', 'att-badge' + (muted ? ' muted' : primary.alert !== 'none' ? ' alert' : ''));
-      if (primary.isRoadmap && primary.source) {
-        b.dataset.roadmap = primary.source;
-        b.dataset.ticket = primary.ticket || primary.id;
-      }
-      b.appendChild(kindIcon(primary.kind));
-      if (!muted) b.appendChild(el('span', 'att-word', primary.kind));
-      if (shown.length > 1) b.appendChild(el('span', 'att-n', '+' + (shown.length - 1)));
-      left.appendChild(b);
-    }
+    const b = el('span', 'att-badge' + (muted ? ' muted' : ' alert'));
+    b.appendChild(attentionIcon());
+    b.appendChild(el('span', 'att-n', String(muted ? a.attItems.length : activeCount)));
+    if (!muted) b.appendChild(el('span', 'att-word', 'attention'));
+    left.appendChild(b);
     node.appendChild(left);
   }
   if (a.roadmaps && a.roadmaps.length) {
@@ -114,19 +98,21 @@ function buildChip(a) {
     ic.appendChild(svg('circle', { cx: 9.8, cy: 3, r: 1.6, fill: 'currentColor' }));
     ic.appendChild(svg('circle', { cx: 9.8, cy: 9, r: 1.6, fill: 'currentColor' }));
     ic.appendChild(svg('path', { d: 'M3.8 6 C6 6 6.5 3 8.2 3 M3.8 6 C6 6 6.5 9 8.2 9', stroke: 'currentColor', 'stroke-width': 1.3, fill: 'none' }));
-    const label = owned.length > 1 ? owned.length + ' roadmaps'
-      : owned.length === 1 ? 'roadmap · ' + first.open
-      : first.open + (first.open === 1 ? ' ticket' : ' tickets');
+    const openCount = a.items.length || first.open;
+    const label = openCount ? openCount + ' open' : 'roadmap';
     chip.appendChild(ic);
     chip.appendChild(el('span', '', label));
     node.appendChild(chip);
+  } else if (a.items && a.items.length) {
+    node.appendChild(el('span', 'open-chip', a.items.length + ' open'));
   }
 
   node.setAttribute('aria-label', a.name + ', ' + a.cliName + ' ' + a.model + (a.effort ? ' ' + a.effort : '') +
     ', context ' + (a.pct != null ? Math.round(a.pct) + ' percent' : 'unknown') + (a.pinned ? ', pinned' : '') +
     (a.linked ? ', oversees ' + a.out.length + ', overseen by ' + a.inn.length : ', no oversight links') +
     ', window ' + a.win.name + ', ' + stateText(a, true) +
-    a.items.map(function (it) { return ', ' + it.kind + ': ' + it.reason; }).join(''));
+    (a.attItems.length ? ', ' + a.attItems.length + ' attention' : '') +
+    (a.items.length ? ', ' + a.items.length + ' open' : ''));
   a.el = node;
   return node;
 }
@@ -197,7 +183,7 @@ export function renderAll() {
   sync();
   const nextChip = focusedChip && m.byId.get(focusedChip.dataset.id)?.el;
   if (nextChip) {
-    const next = focused === focusedChip ? nextChip : nextChip.querySelector(focused.matches('.agent-open') ? '.agent-open' : '.att-count');
+    const next = focused === focusedChip ? nextChip : nextChip.querySelector(focused.matches('.agent-open') ? '.agent-open' : '.rm-chip');
     (next || nextChip).focus({ preventScroll: true });
   }
 }

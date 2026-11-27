@@ -1,10 +1,9 @@
 # Plan next studio schedule
 
-- kind: project
-- state: discussed
+- kind: task
+- state: planned
 - serves: catalogue
 - lane: Studio lead
-- owner: Studio lead
-- attention: watch
+- due: 2026-11-20
 - source: MEMORY.md#Open threads @ 2026-11-25
 - tags: #planning

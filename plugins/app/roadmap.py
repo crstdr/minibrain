@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""Collection-backed roadmap: dependency graph, validation, attention items and standalone viewer.
+"""Collection reader, validator, attention derivation and standalone Roadmap viewer.
 
-Reads one minibrain collection folder (collection.<name>/*.md, compatible with tools/collection.py)
-and produces:
-  - a dependency graph document for the browser renderer (document());
-  - attention items compatible with Agents Map (attention_list());
-  - CLI validation (check), text digest (summary), JSON output (json), and a standalone server (serve).
+Reads a minibrain collection folder (collection.<name>/*.md) and produces:
+  - open items with derived Attention, Blocked and Overdue flags for Agents Map;
+  - a dependency graph document (needs/serves) for the Roadmap view;
+  - CLI commands: check, summary, json and standalone serve on 127.0.0.1.
 
-Read-only on every collection file. Bound to 127.0.0.1 only. Server errors, registry warnings and
-metadata never expose host filesystem paths; configured record fields and body prose are served
-only to the local viewer. Python 3.9 standard library only.
+Read-only on every collection file. Bound to 127.0.0.1 only. Errors, warnings and
+metadata never expose host filesystem paths; configured record fields and body prose
+are served only to the local viewer. Python 3.9 standard library only.
 
 Usage:
   python3 roadmap.py --collection PATH serve [--title TEXT] [--port 47615] [--no-open]
@@ -19,8 +18,8 @@ Usage:
 """
 import argparse
 import datetime
+import difflib
 import json
-import math
 import os
 import re
 import stat
@@ -34,39 +33,61 @@ HERE = Path(__file__).resolve().parent
 WEB_DIR = HERE / "web"
 DEFAULT_PORT = 47615
 MAX_REGISTRY_BYTES = 256 * 1024
-MAX_ROADMAPS = 50
-MAX_ITEMS = 50
-REASON_MAX = 80
-GLOW_BLOCKERS = 5
-GENERIC_LOUD_CAP = 5
-SOON_WORKDAYS = 2
-DEFAULT_CLOSED = ("done",)
+MAX_COLLECTIONS = 50
 ALLOWED_LINK_SCHEMES = ("repoprompt-ce",)
 
-KINDS = ("priority", "project", "decision", "gap")
-STATES = (
-    "mapped", "awaiting-user", "missing", "blocked", "built-off", "partial",
-    "unknown", "discussed", "specified", "paused", "in-progress", "live", "done",
-)
-CLOSED = ("done", "live")
-ATTENTION_KINDS = ("blocker", "deadline", "calendar", "watch")
-ALERTS = ("none", "glow", "pulse")
-SEVERITY = {"blocker": 0, "deadline": 1, "calendar": 2, "watch": 3}
-LEVEL = {"none": 0, "glow": 1, "pulse": 2}
+RESERVED_STATES = ("done", "in-progress", "blocked", "awaiting-user")
+SEMANTIC_FIELDS = frozenset({"state", "needs", "serves", "due", "lane", "lane-link"})
 RESERVED_IDS = frozenset({"default"})
 
 SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 FIELD = re.compile(r"^- ([A-Za-z][\w-]*):(?:[ \t](.*)|$)")
 FIELDLIKE = re.compile(r"^\s*[-*+][ \t]+[^\s:]+[ \t]*:(?!//)")
-FINITE_NUM = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 ARCHIVED = re.compile(r"<!-- archived: (\S+) (\d{4}-\d{2}-\d{2}) -->(\r?\n)")
 ARCHIVE_MARKER = re.compile(r"<!--\s*(?:end\s+)?archived:", re.I)
-LISTS = ("serves", "needs", "related")
-TEXTS = (
-    "kind", "state", "owner", "lane", "suggested", "due", "when", "since",
-    "short", "attention", "alert", "ask", "by", "checked", "source", "tags",
-)
+
+_COLLAPSED_STATES = {re.sub(r"[^a-z]", "", s): s for s in RESERVED_STATES}
+_NEAR_MISS_EXACT = {
+    "dnoe": "done",
+    "don": "done",
+    "block": "blocked",
+    "blocking": "blocked",
+    "blockd": "blocked",
+    "bloked": "blocked",
+    "in-prog": "in-progress",
+    "in_prog": "in-progress",
+    "inprog": "in-progress",
+    "in-progres": "in-progress",
+    "waiting-user": "awaiting-user",
+    "waiting_user": "awaiting-user",
+    "waiting-for-user": "awaiting-user",
+    "waiting_for_user": "awaiting-user",
+    "await-user": "awaiting-user",
+    "await_user": "awaiting-user",
+    "needs-user": "awaiting-user",
+    "needs_user": "awaiting-user",
+    "need-user": "awaiting-user",
+    "need_user": "awaiting-user",
+    "needs-you": "awaiting-user",
+    "needs_you": "awaiting-user",
+}
+_NEAR_MISS_TWO = {
+    ("in", "progress"): "in-progress",
+    ("in", "prog"): "in-progress",
+    ("awaiting", "user"): "awaiting-user",
+    ("waiting", "user"): "awaiting-user",
+    ("await", "user"): "awaiting-user",
+    ("needs", "user"): "awaiting-user",
+    ("need", "user"): "awaiting-user",
+    ("needs", "you"): "awaiting-user",
+}
+_NEAR_MISS_THREE = {
+    ("waiting", "for", "user"): "awaiting-user",
+    ("waiting", "on", "user"): "awaiting-user",
+    ("waiting", "for", "you"): "awaiting-user",
+    ("waiting", "on", "you"): "awaiting-user",
+}
 
 CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -89,24 +110,26 @@ RESPONSE_HEADERS = (
 # ---------------------------------------------------------------- parsing & validation
 
 def _parse_record(text):
-    """(title, fields, body, seen_keys, parse_errors) matching minibrain core header rules."""
+    """(title, headers, fields, body, seen_keys, parse_errors) matching minibrain header rules."""
     lines = re.findall(r"[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$", text)
     first = lines[0].rstrip("\r\n") if lines else ""
     title = first[2:].strip() if first.startswith("# ") else ""
     at = 1
     if at < len(lines) and not lines[at].strip():
         at += 1
-    fields, seen_keys, errors = {}, set(), []
+    headers, fields, seen_keys, errors = [], {}, set(), []
     while at < len(lines):
         raw = lines[at].rstrip("\r\n")
         match = FIELD.fullmatch(raw)
         if match:
             key = match.group(1).lower()
+            value = (match.group(2) or "").strip()
             if key in seen_keys:
                 errors.append("duplicate header field %s" % key)
             else:
                 seen_keys.add(key)
-                fields[key] = (match.group(2) or "").strip()
+                fields[key] = value
+                headers.append((key, value))
         elif FIELDLIKE.match(raw):
             errors.append("malformed header field: %s" % raw[:60])
         else:
@@ -115,32 +138,55 @@ def _parse_record(text):
             break
         at += 1
     body = "".join(lines[at:]).strip()
-    return title, fields, body, seen_keys, errors
+    return title, headers, fields, body, seen_keys, errors
 
 
 def parse(text):
     """(title, fields, body) of one record: '# Title', '- key: value' lines, optional blank line, body."""
-    title, fields, body, _, _ = _parse_record(text)
+    title, _, fields, body, _, _ = _parse_record(text)
     return title, fields, body
 
 
-def _parse_number(value):
-    """(float_or_none, ok) requiring a complete, finite decimal/scientific number."""
-    text = (value or "").strip()
+def parse_state(raw):
+    """(first_word, detail) from a raw state header value."""
+    text = (raw or "").strip()
     if not text:
-        return None, True
-    if not FINITE_NUM.fullmatch(text):
-        return None, False
-    try:
-        num = float(text)
-    except ValueError:
-        return None, False
-    return (num, True) if math.isfinite(num) else (None, False)
+        return "", ""
+    parts = text.split(None, 1)
+    return parts[0], (parts[1].strip() if len(parts) > 1 else "")
 
 
-def _number(value):
-    num, ok = _parse_number(value)
-    return num if ok else None
+def near_miss_state(raw):
+    """Reserved state name if raw state is a likely near-miss, else None."""
+    text = (raw or "").strip()
+    if not text:
+        return None
+    words = text.split()
+    first = words[0]
+    if first in RESERVED_STATES:
+        return None
+    cleaned = first.rstrip(":;,.").lower()
+    if cleaned in RESERVED_STATES:
+        return cleaned
+    if cleaned in _NEAR_MISS_EXACT:
+        return _NEAR_MISS_EXACT[cleaned]
+    collapsed = re.sub(r"[^a-z]", "", cleaned)
+    if collapsed in _COLLAPSED_STATES:
+        return _COLLAPSED_STATES[collapsed]
+    if len(words) >= 3:
+        tri = tuple(w.rstrip(":;,.").lower() for w in words[:3])
+        if tri in _NEAR_MISS_THREE:
+            return _NEAR_MISS_THREE[tri]
+    if len(words) >= 2:
+        pair = (cleaned, words[1].rstrip(":;,.").lower())
+        if pair in _NEAR_MISS_TWO:
+            return _NEAR_MISS_TWO[pair]
+    norm = cleaned.replace("_", "-")
+    if len(norm) >= 5:
+        hit = difflib.get_close_matches(norm, ("in-progress", "blocked", "awaiting-user"), n=1, cutoff=0.78)
+        if hit:
+            return hit[0]
+    return None
 
 
 def _day(value):
@@ -153,29 +199,10 @@ def _day(value):
         return None
 
 
-def _moment(value):
-    """A datetime for an ISO date or date-time; no zone means local time."""
-    text = (value or "").strip()
-    day = _day(text)
-    if day:
-        return datetime.datetime(day.year, day.month, day.day)
-    try:
-        return datetime.datetime.fromisoformat(text[:-1] + "+00:00" if text.endswith(("Z", "z")) else text)
-    except ValueError:
+def _due_epoch(day_obj):
+    if not day_obj:
         return None
-
-
-def _due_epoch(value):
-    """(epoch_seconds, all_day) for a validated due/when string, or (None, False)."""
-    if not value:
-        return None, False
-    day = _day(value)
-    if day:
-        return int(datetime.datetime(day.year, day.month, day.day).timestamp()), True
-    moment = _moment(value)
-    if moment:
-        return int(moment.timestamp()), False
-    return None, False
+    return int(datetime.datetime(day_obj.year, day_obj.month, day_obj.day).timestamp())
 
 
 def _collection_name(folder):
@@ -183,11 +210,10 @@ def _collection_name(folder):
     return name[len("collection."):] if name.startswith("collection.") else name
 
 
-def _refs(value, collection_name):
-    """(local_ids, external_refs) from a needs/serves/related value.
+def _parse_refs(value, collection_name):
+    """(local_ids, external_refs) from a needs/serves value.
 
-    Accepts both local IDs ('decide') and collection-qualified refs ('roadmap/decide').
-    Refs pointing to another collection ('other/item') are returned in external_refs.
+    A bare ID or '<this-collection>/ID' is local; '<other>/ID' is cross-collection.
     """
     prefix = collection_name + "/"
     local, external = [], []
@@ -204,8 +230,100 @@ def _refs(value, collection_name):
     return local, external
 
 
-def is_open(ticket):
-    return ticket["state"] not in CLOSED
+def is_open(item):
+    return item["state"] != "done"
+
+
+def _clean_text(value, limit):
+    if not isinstance(value, str):
+        return ""
+    value = "".join(ch for ch in value if ch.isprintable()).strip()
+    return value[:limit] if value else ""
+
+
+def _build_item(label, title, headers, fields, body, cname, archived=False):
+    state_raw = fields.get("state", "").strip()
+    state, state_detail = parse_state(state_raw)
+    needs_local, needs_ext = _parse_refs(fields.get("needs"), cname)
+    serves_local, serves_ext = _parse_refs(fields.get("serves"), cname)
+    generic = [[k, v] for k, v in headers if k not in SEMANTIC_FIELDS and v]
+    return {
+        "id": label,
+        "title": title,
+        "body": body,
+        "archived": archived,
+        "state_raw": state_raw,
+        "state": state,
+        "state_detail": state_detail,
+        "due": fields.get("due", "").strip(),
+        "lane": fields.get("lane", "").strip(),
+        "lane_link": fields.get("lane-link", "").strip(),
+        "kind": fields.get("kind", "").strip(),
+        "tags": fields.get("tags", "").strip(),
+        "source": fields.get("source", "").strip(),
+        "headers": generic,
+        "_needs_local": needs_local,
+        "_needs_ext": needs_ext,
+        "_serves_local": serves_local,
+        "_serves_ext": serves_ext,
+        "needs": [],
+        "serves": [],
+        "archived_needs": [],
+        "external_needs": [],
+        "unresolved_needs": [],
+        "unresolved_serves": [],
+    }
+
+
+def _load_archived(folder, cname):
+    """(archived_items_by_id, problems, incomplete) from optional collection.<name>.archive.md."""
+    archive_path = folder.parent / (folder.name + ".archive.md")
+    try:
+        st = archive_path.lstat()
+    except FileNotFoundError:
+        return {}, [], False
+    except OSError:
+        return {}, ["%s: archive file is unreadable" % archive_path.name], True
+    if not stat.S_ISREG(st.st_mode) or stat.S_ISLNK(st.st_mode):
+        return {}, ["%s: archive is not a regular file" % archive_path.name], True
+    try:
+        text = archive_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        return {}, ["%s: unreadable (%s)" % (archive_path.name, type(error).__name__)], True
+    archived, block, problems, incomplete = {}, None, [], False
+    for line in re.findall(r"[^\n]*\n|[^\n]+\Z", text):
+        start = ARCHIVED.fullmatch(line)
+        if block is None and start:
+            rid = start.group(1)
+            if rid in archived:
+                problems.append("%s: %s archived twice" % (archive_path.name, rid))
+            block = (rid, [])
+        elif block and line in ("<!-- end archived: %s -->%s" % (block[0], end) for end in ("\n", "\r\n")):
+            rid, block_lines = block
+            if rid not in archived:
+                title, headers, fields, body, _, _ = _parse_record("".join(block_lines))
+                archived[rid] = _build_item(rid, title, headers, fields, body, cname, archived=True)
+            block = None
+        elif block is not None:
+            block[1].append(line)
+        elif ARCHIVE_MARKER.search(line) or (archived and line.strip()):
+            problems.append("%s: malformed archive marker" % archive_path.name)
+            incomplete = True
+            break
+    if block:
+        problems.append("%s: archive block %s has no end marker" % (archive_path.name, block[0]))
+        incomplete = True
+    return archived, problems, incomplete
+
+
+def _closure(start, edges):
+    seen, stack = set(), list(edges.get(start, ()))
+    while stack:
+        node = stack.pop()
+        if node not in seen and node != start:
+            seen.add(node)
+            stack.extend(edges.get(node, ()))
+    return seen
 
 
 def _cycle(edges):
@@ -234,96 +352,48 @@ def _cycle(edges):
     return None
 
 
-def _effective_needs(tickets, archived=None):
-    """Effective needs mapping (including archived records and priority-to-task serves edges)."""
-    all_tickets = dict(archived or {})
-    all_tickets.update(tickets)
-    needs = {}
-    for key, ticket in all_tickets.items():
-        deps = [ref for ref in ticket["needs"] if ref in all_tickets]
-        for ref in ticket.get("archived_needs", ()):
-            if ref in all_tickets and ref not in deps:
-                deps.append(ref)
-        needs[key] = deps
-    all_priorities = [key for key, ticket in all_tickets.items() if ticket["kind"] == "priority"]
-    for priority in all_priorities:
-        behind = _closure(priority, needs)
-        for key, ticket in all_tickets.items():
-            if priority in ticket["serves"] and key not in behind and key != priority:
-                needs[priority].append(key)
-                behind = _closure(priority, needs)
-    priorities = [key for key, ticket in tickets.items() if ticket["kind"] == "priority"]
-    return needs, priorities
+def _graph_edges(items, archived=None):
+    """Build directed dependency edges (needs + non-redundant reversed serves) for layout and cycles."""
+    all_items = dict(archived or {})
+    all_items.update(items)
+    deps = {}
+    for key, item in all_items.items():
+        row = [ref for ref in item["needs"] if ref in all_items]
+        for ref_info in item.get("archived_needs", ()):
+            ref = ref_info["id"] if isinstance(ref_info, dict) else ref_info
+            if ref in all_items and ref not in row:
+                row.append(ref)
+        deps[key] = row
+    # Reverse serves: if child serves parent, parent sits left of child in the dependency graph.
+    for child_id, item in all_items.items():
+        for target_id in item["serves"]:
+            if target_id not in all_items:
+                continue
+            if target_id == child_id:
+                if child_id not in deps[target_id]:
+                    deps[target_id].append(child_id)
+                continue
+            if child_id not in _closure(target_id, deps):
+                deps[target_id].append(child_id)
+    return deps
 
 
-def _build_ticket(label, title, fields, body, cname, archived=False):
-    ticket = {"id": label, "title": title, "body": body, "archived": archived}
-    for key in TEXTS:
-        ticket[key] = fields.get(key, "")
-    ext = []
-    for key in LISTS:
-        local, other = _refs(fields.get(key), cname)
-        ticket[key] = local
-        if key == "needs":
-            ext.extend(other)
-    ticket["ext"] = ext
-    ticket["archived_needs"] = []
-    ticket["lane_link"] = fields.get("lane-link", "")
-    rank_num, rank_ok = _parse_number(fields.get("rank"))
-    days_num, days_ok = _parse_number(fields.get("days"))
-    ticket["rank"] = rank_num
-    ticket["days"] = days_num
-    ticket["focus"] = fields.get("focus", "").lower() in ("yes", "true", "1")
-    return ticket, rank_ok, days_ok
+def _resolve_external(raw_ref, external_done):
+    """(found, is_done) for a cross-collection 'col/id' ref against optional external_done map."""
+    if not external_done or "/" not in raw_ref:
+        return False, False
+    col, _, rid = raw_ref.partition("/")
+    table = external_done.get(col)
+    if table is None or rid not in table:
+        return False, False
+    return True, bool(table[rid])
 
 
-def _load_archived(folder, cname):
-    """(archived_tickets_by_id, problems, incomplete) from optional collection.<name>.archive.md."""
-    archive_path = folder.parent / (folder.name + ".archive.md")
-    try:
-        st = archive_path.lstat()
-    except FileNotFoundError:
-        return {}, [], False
-    except OSError:
-        return {}, ["%s: archive file is unreadable" % archive_path.name], True
-    if not stat.S_ISREG(st.st_mode) or stat.S_ISLNK(st.st_mode):
-        return {}, ["%s: archive is not a regular file" % archive_path.name], True
-    try:
-        text = archive_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as error:
-        return {}, ["%s: unreadable (%s)" % (archive_path.name, type(error).__name__)], True
-    archived, block, problems, incomplete = {}, None, [], False
-    for line in re.findall(r"[^\n]*\n|[^\n]+\Z", text):
-        start = ARCHIVED.fullmatch(line)
-        if block is None and start:
-            rid = start.group(1)
-            if rid in archived:
-                problems.append("%s: %s archived twice" % (archive_path.name, rid))
-            block = (rid, [])
-        elif block and line in ("<!-- end archived: %s -->%s" % (block[0], end) for end in ("\n", "\r\n")):
-            rid, block_lines = block
-            if rid not in archived:
-                title, fields, body, _, _ = _parse_record("".join(block_lines))
-                ticket, _, _ = _build_ticket(rid, title, fields, body, cname, archived=True)
-                archived[rid] = ticket
-            block = None
-        elif block is not None:
-            block[1].append(line)
-        elif ARCHIVE_MARKER.search(line) or (archived and line.strip()):
-            problems.append("%s: malformed archive marker" % archive_path.name)
-            incomplete = True
-            break
-    if block:
-        problems.append("%s: archive block %s has no end marker" % (archive_path.name, block[0]))
-        incomplete = True
-    return archived, problems, incomplete
-
-
-def _load_all(collection_dir):
-    """(active_tickets, archived_tickets, problems, warnings, incomplete) for one collection."""
+def _load_all(collection_dir, external_done=None):
+    """(active_items, archived_items, problems, warnings, incomplete) for one collection."""
     folder = Path(collection_dir)
     cname = _collection_name(folder)
-    tickets, problems, warnings = {}, [], []
+    items, problems, warnings = {}, [], []
     try:
         st = folder.lstat()
         if not stat.S_ISDIR(st.st_mode) or stat.S_ISLNK(st.st_mode):
@@ -335,7 +405,7 @@ def _load_all(collection_dir):
     archived, archive_problems, incomplete = _load_archived(folder, cname)
     problems.extend(archive_problems)
 
-    meta_by_id = {}
+    seen_keys_by_id = {}
     for path in entries:
         if path.suffix != ".md":
             continue
@@ -345,7 +415,7 @@ def _load_all(collection_dir):
                 problems.append("%s: skipped non-regular file" % path.name)
                 incomplete = True
                 continue
-            title, fields, body, seen_keys, parse_errors = _parse_record(path.read_text(encoding="utf-8"))
+            title, headers, fields, body, seen_keys, parse_errors = _parse_record(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError) as error:
             problems.append("%s: unreadable (%s)" % (path.name, type(error).__name__))
             incomplete = True
@@ -355,237 +425,168 @@ def _load_all(collection_dir):
             problems.append("%s: %s" % (label, err))
         if label in archived:
             problems.append("%s: archived ID reused by an active record" % label)
-        ticket, rank_ok, days_ok = _build_ticket(label, title, fields, body, cname, archived=False)
-        tickets[label] = ticket
-        meta_by_id[label] = (seen_keys, rank_ok, days_ok)
+        items[label] = _build_item(label, title, headers, fields, body, cname, archived=False)
+        seen_keys_by_id[label] = seen_keys
 
-    for ticket in tickets.values():
-        label = ticket["id"]
-        seen_keys, rank_ok, days_ok = meta_by_id[label]
-        if not ticket["title"]:
+    # Resolve archived internal needs/serves so multi-hop archived chains work cleanly.
+    for item in archived.values():
+        item["needs"] = [r for r in item["_needs_local"] if r in items]
+        item["archived_needs"] = [
+            {"id": r, "done": archived[r]["state"] == "done"}
+            for r in item["_needs_local"] if r in archived
+        ]
+        item["serves"] = [r for r in item["_serves_local"] if r in items or r in archived]
+
+    for item in items.values():
+        label = item["id"]
+        seen_keys = seen_keys_by_id[label]
+        if not item["title"]:
             problems.append("%s: missing '# Title' line" % label)
-        if ticket["kind"] not in KINDS:
-            problems.append("%s: kind must be one of %s" % (label, ", ".join(KINDS)))
-        if ticket["state"] not in STATES:
-            problems.append("%s: state must be one of %s" % (label, ", ".join(STATES)))
-        if not rank_ok:
-            problems.append("%s: rank must be a finite number" % label)
-        elif ticket["kind"] == "priority" and ticket["rank"] is None:
-            problems.append("%s: priority requires numeric 'rank'" % label)
-        if not days_ok:
-            problems.append("%s: days must be a finite number" % label)
-        if ticket["attention"] and ticket["attention"] not in ATTENTION_KINDS + ("none",):
-            problems.append("%s: attention must be one of %s, none" % (label, ", ".join(ATTENTION_KINDS)))
-        if ticket["alert"] and ticket["alert"] not in ALERTS:
-            problems.append("%s: alert must be one of %s" % (label, ", ".join(ALERTS)))
-        if ticket["due"] and _day(ticket["due"]) is None:
+        if not SLUG.match(label):
+            warnings.append("%s: id is not a valid slug" % label)
+        near = near_miss_state(item["state_raw"])
+        if near:
+            warnings.append("%s: state '%s' looks like reserved '%s'" % (label, item["state_raw"], near))
+        if item["due"] and _day(item["due"]) is None:
             problems.append("%s: due must be YYYY-MM-DD" % label)
-        if ticket["when"] and _moment(ticket["when"]) is None:
-            problems.append("%s: when must be an ISO date or date-time" % label)
-        if len(ticket["ask"]) > REASON_MAX:
-            problems.append("%s: ask is %d characters (max %d)" % (label, len(ticket["ask"]), REASON_MAX))
-        if ticket["tags"]:
-            bad_tags = [t for t in ticket["tags"].split() if not t.startswith("#") or len(t) == 1]
+        if item["tags"]:
+            bad_tags = [t for t in item["tags"].split() if not t.startswith("#") or len(t) == 1]
             if bad_tags:
                 problems.append("%s: tags must start with # and have a name" % label)
         if "source" in seen_keys:
-            src = ticket["source"]
+            src = item["source"]
             loc, sep, obs = src.rpartition(" @ ")
             if src != "unknown" and not (sep and loc.strip() and obs.strip()):
                 problems.append("%s: source needs '<location> @ <observation>' or unknown" % label)
-        if not SLUG.match(label):
-            warnings.append("%s: id cannot be used as an attention item id" % label)
-        for key in LISTS:
-            kept, unknown = [], []
-            for ref in ticket[key]:
-                if ref in tickets:
-                    kept.append(ref)
-                elif key == "needs" and ref in archived:
-                    if ref not in ticket["archived_needs"]:
-                        ticket["archived_needs"].append(ref)
-                elif key == "related" and ref in archived:
-                    continue
-                else:
-                    unknown.append(ref)
-            if unknown:
-                problems.append("%s: %s names unknown records: %s" % (label, key, ", ".join(unknown)))
-            ticket[key] = kept
-        if ticket["ext"]:
-            warnings.append("%s: external prerequisite not validated here: %s" % (label, ", ".join(ticket["ext"])))
-        stray = [ref for ref in ticket["serves"] if tickets[ref]["kind"] != "priority"]
-        if stray:
-            problems.append("%s: serves must name priorities: %s" % (label, ", ".join(stray)))
-            ticket["serves"] = [ref for ref in ticket["serves"] if ref not in stray]
 
-    effective_needs, _ = _effective_needs(tickets, archived)
-    cycle = _cycle(effective_needs)
+        # Resolve needs: local active, local archived, cross-collection, or unresolved (not an error).
+        for ref in item["_needs_local"]:
+            if ref in items:
+                item["needs"].append(ref)
+            elif ref in archived:
+                item["archived_needs"].append({"id": ref, "done": archived[ref]["state"] == "done"})
+            else:
+                item["unresolved_needs"].append(ref)
+        for raw_ref in item["_needs_ext"]:
+            found, done = _resolve_external(raw_ref, external_done)
+            if found:
+                item["external_needs"].append({"ref": raw_ref, "done": done})
+            else:
+                item["unresolved_needs"].append(raw_ref)
+
+        # Resolve serves: may target any active item; unresolved refs are shown, not errors.
+        for ref in item["_serves_local"]:
+            if ref in items:
+                item["serves"].append(ref)
+            elif ref in archived:
+                continue
+            else:
+                item["unresolved_serves"].append(ref)
+        for raw_ref in item["_serves_ext"]:
+            item["unresolved_serves"].append(raw_ref)
+
+        if item["unresolved_needs"]:
+            warnings.append("%s: unresolved needs: %s" % (label, ", ".join(item["unresolved_needs"])))
+        if item["unresolved_serves"]:
+            warnings.append("%s: unresolved serves: %s" % (label, ", ".join(item["unresolved_serves"])))
+
+    deps = _graph_edges(items, archived)
+    cycle = _cycle(deps)
     if cycle:
         problems.append("needs cycle: " + " -> ".join(cycle))
-    return tickets, archived, problems, warnings, incomplete
+    return items, archived, problems, warnings, incomplete
 
 
-def load(collection_dir):
-    """(tickets_by_id, problems, warnings) for one collection.<name>/ folder.
+def load(collection_dir, external_done=None):
+    """(items_by_id, problems, warnings) for one collection.<name>/ folder.
 
     Read-only. Messages never contain host filesystem paths beyond the collection folder name.
     """
-    tickets, _, problems, warnings, _ = _load_all(collection_dir)
-    return tickets, problems, warnings
+    items, _, problems, warnings, _ = _load_all(collection_dir, external_done=external_done)
+    return items, problems, warnings
 
 
-# ---------------------------------------------------------------- graph
+# ---------------------------------------------------------------- derivation & graph
 
-def _closure(start, edges):
-    seen, stack = set(), list(edges.get(start, ()))
-    while stack:
-        node = stack.pop()
-        if node not in seen and node != start:
-            seen.add(node)
-            stack.extend(edges.get(node, ()))
-    return seen
-
-
-def graph(tickets, archived=None):
-    """(needs_by_id, ordered_priorities, loose_ids, waiting_counts)."""
-    all_tickets = dict(archived or {})
-    all_tickets.update(tickets)
-    needs, priorities = _effective_needs(tickets, archived)
-
-    def order(key):
-        ticket = tickets[key]
-        return (
-            0 if ticket["focus"] else 1,
-            ticket["rank"] if ticket["rank"] is not None else float("inf"),
-            ticket["since"] or "9999",
-            key,
-        )
-
-    priorities.sort(key=order)
-    active_needs = {k: [ref for ref in needs.get(k, ()) if ref in tickets] for k in tickets}
-    reached = set(priorities)
-    for priority in priorities:
-        reached |= _closure(priority, active_needs)
-    loose = sorted(key for key in tickets if key not in reached)
-    waiting = {key: 0 for key in all_tickets}
-    for key, ticket in all_tickets.items():
-        if is_open(ticket):
-            for prereq in _closure(key, needs):
-                waiting[prereq] += 1
-    return needs, priorities, loose, waiting
+def _local_today(now=None):
+    if now is None:
+        return datetime.date.today()
+    if isinstance(now, datetime.datetime):
+        dt = now if now.tzinfo is None else now.astimezone()
+        return dt.date()
+    return now
 
 
-# ---------------------------------------------------------------- attention
-
-def _workdays_until(target_day, today):
-    """Working days from tomorrow to target_day inclusive; negative if passed."""
-    if target_day < today:
-        return -1
-    count, at = 0, today
-    while at < target_day:
-        at += datetime.timedelta(days=1)
-        if at.weekday() < 5:
-            count += 1
-    return count
-
-
-def _normalize_reason(raw, warn_label, warnings):
-    """Strip non-printables, trim, and shorten to at most REASON_MAX characters with a warning."""
-    reason = "".join(ch for ch in (raw or "") if ch.isprintable()).strip()
-    if not reason:
-        return ""
-    if len(reason) > REASON_MAX:
-        warnings.append("%s: title exceeds %d characters; add a shorter 'ask'" % (warn_label, REASON_MAX))
-        reason = reason[:REASON_MAX - 3].rstrip() + "..."
-    return reason
-
-
-def _local_naive(dt):
-    return dt.replace(tzinfo=None) if dt.tzinfo is None else dt.astimezone().replace(tzinfo=None)
+def derive(items, archived=None, now=None):
+    """Compute open, overdue, attention and blocked on every active item in place."""
+    today = _local_today(now)
+    for item in items.values():
+        opened = is_open(item)
+        due_day = _day(item["due"]) if item["due"] else None
+        overdue = bool(opened and due_day is not None and due_day < today)
+        att = bool(opened and (item["state"] == "awaiting-user" or overdue))
+        unmet = False
+        if opened:
+            if any(items[ref]["state"] != "done" for ref in item["needs"]):
+                unmet = True
+            elif any(not entry["done"] for entry in item["archived_needs"]):
+                unmet = True
+            elif any(not entry["done"] for entry in item["external_needs"]):
+                unmet = True
+        blocked = bool(opened and (item["state"] == "blocked" or unmet))
+        item["open"] = opened
+        item["overdue"] = overdue
+        item["attention"] = att
+        item["blocked"] = blocked
+        item["due_epoch"] = _due_epoch(due_day)
 
 
-def attention(tickets, needs, waiting, now=None, archived=None):
-    """(items, warnings) ordered most pressing first.
-
-    Explicit `alert` on a record always wins. Default loudness: overdue items or blockers
-    holding soon-due work pulse; top GLOW_BLOCKERS blockers by waiting count or deadlines
-    due within SOON_WORKDAYS workdays glow; everything else is still (`none`).
-    """
-    now = now or datetime.datetime.now()
-    local_now = _local_naive(now)
-    today, warnings, items = local_now.date(), [], []
-    all_tickets = dict(archived or {})
-    all_tickets.update(tickets)
-    dependants = {key: set() for key in all_tickets}
-    for key in all_tickets:
-        for prereq in _closure(key, needs):
-            if prereq in dependants:
-                dependants[prereq].add(key)
-
-    for key, ticket in tickets.items():
-        raw_att = ticket["attention"] if ticket["attention"] in ATTENTION_KINDS + ("none",) else ""
-        raw_alert = ticket["alert"] if ticket["alert"] in ALERTS else ""
-        if not is_open(ticket) or raw_att == "none" or ticket["kind"] == "priority":
-            continue
-        when = _moment(ticket["when"]) if ticket["when"] else None
-        due = _day(ticket["due"]) if ticket["due"] else None
-        kind = raw_att or (
-            "blocker" if ticket["kind"] == "decision" and ticket["state"] == "awaiting-user"
-            else "calendar" if when else "deadline" if due else ""
-        )
-        if not kind or not SLUG.match(key):
-            continue
-        if kind == "calendar":
-            if not when:
-                continue
-            if _local_naive(when) <= local_now:
-                continue
-        reason = _normalize_reason(ticket["ask"] or ticket["title"], key, warnings)
-        if not reason:
-            continue
-        soon_dates = [
-            d for d in (
-                [due] + [_day(all_tickets[other]["due"]) for other in dependants[key]
-                         if is_open(all_tickets[other]) and all_tickets[other]["due"]]
-            ) if d
-        ]
-        items.append({
-            "id": key,
-            "kind": kind,
-            "alert": raw_alert,
-            "reason": reason,
-            "due": ticket["when"] if kind == "calendar" else ticket["due"],
-            "lane": ticket["lane"],
-            "lane_link": ticket.get("lane_link", ""),
-            "behind": waiting[key],
-            "_overdue": bool(due and due < today),
-            "_soon": any(0 <= _workdays_until(d, today) <= SOON_WORKDAYS for d in soon_dates),
-        })
-
-    blockers = sorted(
-        (item for item in items if item["kind"] == "blocker" and item["behind"] > 0),
-        key=lambda item: (-item["behind"], item["id"]),
+def has_graph_links(items):
+    """True when at least one active item declares needs or serves."""
+    return any(
+        item["needs"] or item["serves"] or item["archived_needs"]
+        or item["external_needs"] or item["unresolved_needs"] or item["unresolved_serves"]
+        for item in items.values()
     )
-    glowing = {item["id"] for item in blockers[:GLOW_BLOCKERS]}
-    for item in items:
-        if not item["alert"]:
-            if item["_overdue"] or (item["kind"] == "blocker" and item["_soon"]):
-                item["alert"] = "pulse"
-            elif item["id"] in glowing or (item["kind"] == "deadline" and item["_soon"]):
-                item["alert"] = "glow"
-            else:
-                item["alert"] = "none"
-        del item["_overdue"], item["_soon"]
 
-    items.sort(key=lambda item: (
-        -LEVEL[item["alert"]], SEVERITY[item["kind"]], -item["behind"], item["due"] or "9999", item["id"]
-    ))
-    if len(items) > MAX_ITEMS:
-        warnings.append("%d attention items; showing the first %d" % (len(items), MAX_ITEMS))
-        items = items[:MAX_ITEMS]
-    for position, item in enumerate(items, 1):
-        item["rank"] = position if position <= 10 else None
-    return items, warnings
 
+def graph(items, archived=None):
+    """(active_deps, roots, loose, waiting_counts) for layout and graph rendering."""
+    all_items = dict(archived or {})
+    all_items.update(items)
+    deps = _graph_edges(items, archived)
+    active_deps = {k: [ref for ref in deps.get(k, ()) if ref in items] for k in items}
+
+    in_deg = {k: 0 for k in items}
+    for k, targets in active_deps.items():
+        for t in targets:
+            if t in in_deg and t != k:
+                in_deg[t] += 1
+
+    sort_key = lambda k: ((items[k]["title"] or k).lower(), k)
+    roots = sorted((k for k in items if in_deg[k] == 0 and active_deps[k]), key=sort_key)
+    loose = sorted((k for k in items if in_deg[k] == 0 and not active_deps[k]), key=sort_key)
+
+    # Any node trapped in a cycle with no in-degree-0 ancestor still gets a root so nothing vanishes.
+    reached = set(roots) | set(loose)
+    for r in roots:
+        reached |= _closure(r, active_deps)
+    for k in sorted(items, key=sort_key):
+        if k not in reached:
+            roots.append(k)
+            reached.add(k)
+            reached |= _closure(k, active_deps)
+
+    waiting = {k: 0 for k in all_items}
+    for k, item in all_items.items():
+        if is_open(item):
+            for prereq in _closure(k, deps):
+                if prereq in waiting:
+                    waiting[prereq] += 1
+    return active_deps, roots, loose, waiting
+
+
+# ---------------------------------------------------------------- lane resolution
 
 def resolve_lanes(lanes, agents):
     """lane name -> session id from Agents Map agents ([{id, name}, ...]).
@@ -611,8 +612,8 @@ def resolve_lanes(lanes, agents):
 def resolve_lane_link(raw_link, agents, allowed_schemes=ALLOWED_LINK_SCHEMES):
     """Resolve a harness deep link to a unique open agent id, or None.
 
-    Only link schemes in `allowed_schemes` are accepted; any other scheme is ignored so a record
-    can never inject an arbitrary URL into the browser.
+    Only link schemes in `allowed_schemes` are accepted so a record can never inject an
+    arbitrary URL into the browser.
     """
     text = (raw_link or "").strip()
     if not text or not agents:
@@ -649,305 +650,165 @@ def resolve_lane_link(raw_link, agents, allowed_schemes=ALLOWED_LINK_SCHEMES):
     return None
 
 
-def validate(collection_dir, now=None):
-    """(record_count, problems, warnings) without depending on full document rendering."""
-    tickets, archived, problems, warnings, _ = _load_all(collection_dir)
-    notes = []
-    if tickets:
-        needs, _, _, waiting = graph(tickets, archived=archived)
-        _, notes = attention(tickets, needs, waiting, now, archived=archived)
-    return len(tickets), problems, warnings + notes
+def _item_sort_key(item):
+    """Attention first (overdue, awaiting-user), then in-progress, blocked, neutral; earliest due first."""
+    rank = 0 if item["attention"] else 1
+    sub = (
+        (0 if item["overdue"] else 1) if item["attention"]
+        else (0 if item["state"] == "in-progress" else 1 if item["blocked"] else 2)
+    )
+    return (rank, sub, item["due"] or "9999", item["id"])
 
 
-def attention_list(collection_dir, agents, roadmap_id, title="", owner_lane="", now=None,
-                   allowed_schemes=ALLOWED_LINK_SCHEMES):
-    """Build one Agents Map attention block directly from a collection, without writing files.
-
-    Returns (block_or_none, warnings) where block matches attention.read()'s shape plus
-    `source` (roadmap_id), `title`, and `roadmap: True` for multi-source merging and click-through.
-    """
-    tickets, archived, problems, warnings, incomplete = _load_all(collection_dir)
-    if not tickets:
-        return None, problems[:5]
-    needs, _, _, waiting = graph(tickets, archived=archived)
-    items, notes = attention(tickets, needs, waiting, now, archived=archived)
-    lanes_needed = {item["lane"] for item in items if item["lane"]}
-    if owner_lane:
-        lanes_needed.add(owner_lane)
+def _summarize_loaded(entry, items, archived, incomplete, agents, now=None, allowed_schemes=ALLOWED_LINK_SCHEMES):
+    """Build one unified Agents Map collection block from already-loaded items."""
+    derive(items, archived=archived, now=now)
+    is_graph = has_graph_links(items)
+    lanes_needed = {it["lane"] for it in items.values() if it["open"] and it["lane"]}
+    if entry["lane"]:
+        lanes_needed.add(entry["lane"])
     resolved = resolve_lanes(lanes_needed, agents)
-    owner_id = resolved.get(owner_lane) if owner_lane else None
-    out = []
-    for item in items:
-        due_epoch, all_day = _due_epoch(item["due"])
+    owner_id = (
+        resolve_lane_link(entry["lane_link"], agents, allowed_schemes=allowed_schemes)
+        or (resolved.get(entry["lane"]) if entry["lane"] else None)
+    )
+    open_items = sorted((it for it in items.values() if it["open"]), key=_item_sort_key)
+    out, lane_counts = [], {}
+    for it in open_items:
         agent_id = (
-            resolve_lane_link(item.get("lane_link"), agents, allowed_schemes=allowed_schemes)
-            or (resolved.get(item["lane"]) if item["lane"] else None)
+            resolve_lane_link(it["lane_link"], agents, allowed_schemes=allowed_schemes)
+            or (resolved.get(it["lane"]) if it["lane"] else None)
+            or owner_id
         )
+        eff_lane = it["lane"] or entry["lane"]
+        if agent_id:
+            slot = lane_counts.setdefault(agent_id, {"lane": eff_lane, "open": 0, "attention": 0})
+            slot["open"] += 1
+            if it["attention"]:
+                slot["attention"] += 1
         out.append({
-            "id": item["id"],
-            "ticket": item["id"],
-            "source": roadmap_id,
-            "kind": item["kind"],
-            "rank": item["rank"],
-            "reason": item["reason"],
-            "due": due_epoch,
-            "all_day": all_day,
+            "id": it["id"],
+            "source": entry["id"],
+            "source_title": entry["title"],
+            "has_graph": is_graph,
+            "title": it["title"] or it["id"],
+            "state": it["state"],
+            "state_detail": it["state_detail"],
+            "state_raw": it["state_raw"],
+            "due": it["due"],
+            "due_epoch": it["due_epoch"],
+            "attention": it["attention"],
+            "blocked": it["blocked"],
+            "overdue": it["overdue"],
+            "lane": eff_lane,
+            "kind": it["kind"],
             "agent": agent_id,
-            "alert": item["alert"],
         })
-    now_dt = now or datetime.datetime.now().astimezone()
-    ts = int((now_dt if now_dt.tzinfo else now_dt.astimezone()).timestamp())
-    label = title or _collection_name(collection_dir)
     block = {
-        "source": roadmap_id,
-        "title": label,
-        "updated": ts,
-        "owner": owner_id,
-        "roadmap": True,
+        "id": entry["id"],
+        "title": entry["title"],
+        "lane": entry["lane"],
+        "owner_id": owner_id,
+        "has_graph": is_graph,
+        "open": len(out),
+        "attention": sum(1 for it in out if it["attention"]),
+        "lanes": lane_counts,
         "items": out,
     }
-    extra_warnings = []
+    warnings = []
     if incomplete:
         block["incomplete"] = True
-        extra_warnings.append("Roadmap '%s' is partly unreadable." % label)
-    return block, (extra_warnings + notes)[:5]
+        warnings.append("Collection '%s' is partly unreadable." % entry["title"])
+    return block, warnings
 
 
-def collection_attention_list(
+def collection_summary(
     collection_dir,
     agents,
     source_id,
     title="",
-    owner_lane="",
-    closed=DEFAULT_CLOSED,
+    lane="",
+    lane_link="",
     now=None,
+    external_done=None,
     allowed_schemes=ALLOWED_LINK_SCHEMES,
 ):
-    """Build one Agents Map attention block from any minibrain collection folder.
+    """Build one unified Agents Map collection block (open items + graph flag) without writing files.
 
-    Read-only. Only records with an explicit `attention` value (not `none`) opt in; dates alone
-    never opt a record in. Archived records are excluded. Invalid known values drop only that
-    item with a warning naming source_id and record id, never host paths.
+    Returns (block_or_none, warnings). Never leaks host paths.
     """
-    folder = Path(collection_dir)
-    label = title or _collection_name(folder)
-    try:
-        st = folder.lstat()
-        if not stat.S_ISDIR(st.st_mode) or stat.S_ISLNK(st.st_mode):
-            return None, ["Collection '%s' is unreadable." % label]
-        entries = sorted(folder.iterdir(), key=lambda p: p.name)
-    except OSError:
+    label = title or _collection_name(collection_dir).replace("-", " ").title()
+    items, archived, _, _, incomplete = _load_all(collection_dir, external_done=external_done)
+    if not items and incomplete:
         return None, ["Collection '%s' is unreadable." % label]
-
-    now_dt = now or datetime.datetime.now()
-    local_now = _local_naive(now_dt)
-    today = local_now.date()
-    closed_set = {s.strip().lower() for s in (closed or ()) if isinstance(s, str) and s.strip()}
-    warnings = []
-    incomplete = False
-    candidates = []
-
-    for path in entries:
-        if path.suffix != ".md":
-            continue
-        try:
-            pst = path.lstat()
-            if not stat.S_ISREG(pst.st_mode):
-                incomplete = True
-                continue
-            title_line, fields, _, _, _ = _parse_record(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError):
-            incomplete = True
-            continue
-
-        raw_att = fields.get("attention", "")
-        if not raw_att or raw_att == "none":
-            continue
-        state = fields.get("state", "").strip().lower()
-        if state and state in closed_set:
-            continue
-
-        rid = path.stem
-        ref = "%s/%s" % (source_id, rid)
-        if not SLUG.match(rid):
-            warnings.append("%s: invalid record id" % ref)
-            continue
-        if raw_att not in ATTENTION_KINDS:
-            warnings.append("%s: invalid attention value" % ref)
-            continue
-        raw_alert = fields.get("alert", "")
-        if raw_alert and raw_alert not in ALERTS:
-            warnings.append("%s: invalid alert value" % ref)
-            continue
-        raw_due = fields.get("due", "")
-        due = _day(raw_due) if raw_due else None
-        if raw_due and due is None:
-            warnings.append("%s: invalid due date" % ref)
-            continue
-        raw_when = fields.get("when", "")
-        when = _moment(raw_when) if raw_when else None
-        if raw_when and when is None:
-            warnings.append("%s: invalid when date" % ref)
-            continue
-        if raw_att == "calendar":
-            if when is None:
-                warnings.append("%s: calendar requires valid when" % ref)
-                continue
-            if _local_naive(when) <= local_now:
-                continue
-
-        reason = _normalize_reason(fields.get("ask") or title_line, ref, warnings)
-        if not reason:
-            warnings.append("%s: missing ask or title" % ref)
-            continue
-
-        due_str = raw_when if raw_att == "calendar" else raw_due
-        due_epoch, all_day = _due_epoch(due_str)
-        overdue = bool(due and due < today)
-        if raw_alert:
-            computed = raw_alert
-            explicit = True
-        else:
-            explicit = False
-            if overdue:
-                computed = "pulse"
-            elif raw_att == "blocker" or (raw_att == "deadline" and due and 0 <= _workdays_until(due, today) <= SOON_WORKDAYS):
-                computed = "glow"
-            else:
-                computed = "none"
-
-        candidates.append({
-            "id": rid,
-            "kind": raw_att,
-            "alert": computed if explicit else "none",
-            "reason": reason,
-            "due": due_epoch,
-            "all_day": all_day,
-            "_computed": computed,
-            "_explicit": explicit,
-            "_sort_due": due_epoch if due_epoch is not None else float("inf"),
-            "_lane": fields.get("lane", ""),
-            "_lane_link": fields.get("lane-link", ""),
-        })
-
-    auto_loud = sorted(
-        (item for item in candidates if not item["_explicit"] and item["_computed"] != "none"),
-        key=lambda item: (-LEVEL[item["_computed"]], SEVERITY[item["kind"]], item["_sort_due"], item["id"]),
-    )
-    for item in auto_loud[:GENERIC_LOUD_CAP]:
-        item["alert"] = item["_computed"]
-    if len(auto_loud) > GENERIC_LOUD_CAP:
-        warnings.append("Collection '%s' capped at %d loud items." % (label, GENERIC_LOUD_CAP))
-
-    candidates.sort(key=lambda item: (-LEVEL[item["alert"]], SEVERITY[item["kind"]], item["_sort_due"], item["id"]))
-    if len(candidates) > MAX_ITEMS:
-        warnings.append("Collection '%s' has %d attention items; showing the first %d." % (label, len(candidates), MAX_ITEMS))
-        candidates = candidates[:MAX_ITEMS]
-
-    lanes_needed = {item["_lane"] for item in candidates if item["_lane"]}
-    if owner_lane:
-        lanes_needed.add(owner_lane)
-    resolved = resolve_lanes(lanes_needed, agents)
-    owner_id = resolved.get(owner_lane) if owner_lane else None
-
-    out = []
-    for position, item in enumerate(candidates, 1):
-        agent_id = (
-            resolve_lane_link(item["_lane_link"], agents, allowed_schemes=allowed_schemes)
-            or (resolved.get(item["_lane"]) if item["_lane"] else None)
-            or owner_id
-        )
-        out.append({
-            "id": item["id"],
-            "source": source_id,
-            "kind": item["kind"],
-            "rank": position if position <= 10 else None,
-            "reason": item["reason"],
-            "due": item["due"],
-            "all_day": item["all_day"],
-            "agent": agent_id,
-            "alert": item["alert"],
-        })
-
-    ts = int((now_dt if now_dt.tzinfo else now_dt.astimezone()).timestamp())
-    block = {
-        "source": source_id,
-        "title": label,
-        "updated": ts,
-        "owner": owner_id,
-        "roadmap": False,
-        "items": out,
-    }
-    extra_warnings = []
-    if incomplete:
-        block["incomplete"] = True
-        extra_warnings.append("Collection '%s' is partly unreadable." % label)
-    return block, (extra_warnings + warnings)[:5]
+    entry = {"id": source_id, "title": label, "lane": lane, "lane_link": lane_link}
+    return _summarize_loaded(entry, items, archived, incomplete, agents, now=now, allowed_schemes=allowed_schemes)
 
 
-# ---------------------------------------------------------------- document & registry
+# ---------------------------------------------------------------- validation, document & registry
 
-def document(collection_dir, title="", owner_lane="", roadmap_id="", now=None):
-    """Build the roadmap graph document from a collection folder.
+def validate(collection_dir, now=None):
+    """(record_count, problems, warnings) without depending on full document rendering."""
+    items, archived, problems, warnings, _ = _load_all(collection_dir)
+    if items:
+        derive(items, archived=archived, now=now)
+    return len(items), problems, warnings
+
+
+def document(collection_dir, title="", lane="", collection_id="", now=None, external_done=None):
+    """Build the Roadmap graph document from a collection folder.
 
     Never exposes host filesystem paths outside the user's configured record text.
     """
-    tickets, archived, problems, warnings, _ = _load_all(collection_dir)
-    needs, priorities, loose, waiting = graph(tickets, archived=archived)
-    items, notes = attention(tickets, needs, waiting, now, archived=archived)
-    marks = {item["id"]: item for item in items}
+    items, archived, problems, warnings, _ = _load_all(collection_dir, external_done=external_done)
+    derive(items, archived=archived, now=now)
+    active_deps, roots, loose, waiting = graph(items, archived=archived)
+    is_graph = has_graph_links(items)
     cname = _collection_name(collection_dir)
+
+    ordered = list(roots) + [k for k in sorted(items) if k not in set(roots)]
     nodes = []
-    for key in priorities + sorted(k for k in tickets if tickets[k]["kind"] != "priority"):
-        ticket = tickets[key]
-        node = {
-            name: ticket[name]
-            for name in (
-                "id", "title", "kind", "state", "owner", "lane", "suggested",
-                "serves", "related", "ext", "archived_needs", "due", "when", "since",
-                "focus", "short", "ask", "by", "checked", "source", "tags", "body",
-            )
-        }
-        node.update(
-            needs=[ref for ref in needs[key] if ref in tickets],
-            rank=ticket["rank"],
-            days=ticket["days"],
-            open=is_open(ticket),
-            behind=waiting[key],
-            attention=None,
-        )
-        mark = marks.get(key)
-        if mark:
-            node["attention"] = {
-                "kind": mark["kind"],
-                "alert": mark["alert"],
-                "reason": mark["reason"],
-                "rank": mark["rank"],
-                "due": mark["due"],
-            }
-        nodes.append(node)
+    for key in ordered:
+        it = items[key]
+        nodes.append({
+            "id": it["id"],
+            "title": it["title"] or it["id"],
+            "state": it["state"],
+            "state_detail": it["state_detail"],
+            "state_raw": it["state_raw"],
+            "due": it["due"],
+            "due_epoch": it["due_epoch"],
+            "lane": it["lane"],
+            "open": it["open"],
+            "attention": it["attention"],
+            "blocked": it["blocked"],
+            "overdue": it["overdue"],
+            "needs": it["needs"],
+            "serves": it["serves"],
+            "graph_deps": active_deps[key],
+            "archived_needs": it["archived_needs"],
+            "external_needs": it["external_needs"],
+            "unresolved_needs": it["unresolved_needs"],
+            "unresolved_serves": it["unresolved_serves"],
+            "behind": waiting[key],
+            "headers": it["headers"],
+            "body": it["body"],
+        })
     stamp = (now or datetime.datetime.now()).astimezone()
     return {
-        "schema": 1,
-        "id": roadmap_id or cname,
+        "schema": 2,
+        "id": collection_id or cname,
         "title": title or cname.replace("-", " ").title(),
         "collection": "collection." + cname,
         "generated": stamp.isoformat(timespec="seconds"),
-        "owner_lane": owner_lane or "",
+        "lane": lane or "",
+        "has_graph": is_graph,
         "nodes": nodes,
-        "order": priorities,
+        "roots": roots,
         "loose": loose,
-        "attention": items,
         "problems": problems[:20],
-        "warnings": (warnings + notes)[:20],
+        "warnings": warnings[:20],
     }
-
-
-def _clean_text(value, limit):
-    if not isinstance(value, str):
-        return ""
-    value = "".join(ch for ch in value if ch.isprintable()).strip()
-    return value[:limit] if value else ""
 
 
 def _canonical_path(path_str):
@@ -957,95 +818,45 @@ def _canonical_path(path_str):
         return os.path.normpath(os.path.abspath(path_str))
 
 
-def read_registry_all(path):
-    """Read and validate a --roadmaps JSON file with optional `collections` array.
+def read_registry(path):
+    """Read and validate the collections registry JSON file.
 
-    Returns (roadmap_entries, collection_entries, warnings). Warnings never expose filesystem paths.
+    Returns (entries, warnings). Warnings never expose host filesystem paths.
     Format:
       {"version": 1,
-       "roadmaps": [{"id": "studio-work", "title": "Studio roadmap",
-                     "collection": "/abs/or/~/path/collection.roadmap",
-                     "owner_lane": "Studio lead", "attention": true}],
-       "collections": [{"id": "tasks", "title": "Tasks",
-                        "collection": "/abs/or/~/path/collection.tasks",
-                        "owner_lane": "Lead", "closed": ["done"]}]}
+       "collections": [
+         {"id": "studio-roadmap", "collection": "/path/to/collection.roadmap",
+          "title": "Studio roadmap", "lane": "Studio lead", "lane_link": "repoprompt-ce://..."}
+       ]}
+    Also accepts a bare JSON array of entry objects.
     """
     if not path:
-        return [], [], []
+        return [], []
     reg_path = Path(os.path.expanduser(path))
     try:
         if reg_path.stat().st_size > MAX_REGISTRY_BYTES:
-            return [], [], ["Roadmaps config is too large."]
+            return [], ["Collections registry is too large."]
         raw = json.loads(reg_path.read_bytes()[:MAX_REGISTRY_BYTES + 1].decode("utf-8"))
     except FileNotFoundError:
-        return [], [], []
+        return [], []
     except (OSError, ValueError, RecursionError):
-        return [], [], ["Roadmaps config is unreadable."]
+        return [], ["Collections registry is unreadable."]
 
-    if not isinstance(raw, dict) or raw.get("version") != 1 or isinstance(raw.get("version"), bool):
-        return [], [], ["Roadmaps config ignored: bad header."]
-    has_roadmaps = "roadmaps" in raw
-    has_collections = "collections" in raw
-    if not has_roadmaps and not has_collections:
-        return [], [], ["Roadmaps config ignored: bad header."]
-    raw_roadmaps = raw.get("roadmaps", [])
-    raw_collections = raw.get("collections", [])
-    if not isinstance(raw_roadmaps, list) or not isinstance(raw_collections, list):
-        return [], [], ["Roadmaps config ignored: bad header."]
+    if isinstance(raw, list):
+        raw_list = raw
+    elif (isinstance(raw, dict) and raw.get("version") == 1
+          and not isinstance(raw.get("version"), bool)
+          and isinstance(raw.get("collections"), list)):
+        raw_list = raw["collections"]
+    else:
+        return [], ["Collections registry ignored: bad header."]
 
     base = reg_path.parent
-    roadmaps, collections, seen_ids, roadmap_paths, dropped = [], [], set(), set(), []
-
-    def resolve_col(item):
-        col = item.get("collection")
-        if not isinstance(col, str) or not col.strip():
-            raise ValueError("collection")
-        col_str = os.path.expanduser(col.strip())
-        if not os.path.isabs(col_str):
-            # Lexical normalization only (no symlink dereference) so relative and absolute
-            # collection symlinks follow the same lstat() policy in load().
-            col_str = os.path.normpath(os.path.join(str(base), col_str))
-        return str(Path(col_str))
-
-    for index, item in enumerate(raw_roadmaps, 1):
+    entries, seen_ids, seen_paths, dropped = [], set(), set(), []
+    for index, item in enumerate(raw_list, 1):
         try:
-            if index > MAX_ROADMAPS:
-                raise ValueError("beyond %d" % MAX_ROADMAPS)
-            if not isinstance(item, dict):
-                raise ValueError("entry")
-            rid = item.get("id")
-            if not isinstance(rid, str) or not SLUG.match(rid):
-                raise ValueError("id")
-            if rid in RESERVED_IDS:
-                raise ValueError("id reserved")
-            if rid in seen_ids:
-                raise ValueError("id repeated")
-            title = _clean_text(item.get("title"), 80)
-            if not title:
-                raise ValueError("title")
-            col_path = resolve_col(item)
-            owner_lane = _clean_text(item.get("owner_lane", ""), 80)
-            if "attention" in item and not isinstance(item["attention"], bool):
-                raise ValueError("attention")
-            emit_att = bool(item.get("attention", False))
-            seen_ids.add(rid)
-            roadmap_paths.add(_canonical_path(col_path))
-            roadmaps.append({
-                "id": rid,
-                "title": title,
-                "collection": col_path,
-                "owner_lane": owner_lane,
-                "attention": emit_att,
-            })
-        except ValueError as error:
-            dropped.append("%d: %s" % (index, error))
-        except (OSError, RuntimeError):
-            dropped.append("%d: collection path invalid" % index)
-
-    for index, item in enumerate(raw_collections, 1):
-        try:
-            if index > MAX_ROADMAPS:
-                raise ValueError("beyond %d" % MAX_ROADMAPS)
+            if index > MAX_COLLECTIONS:
+                raise ValueError("beyond %d" % MAX_COLLECTIONS)
             if not isinstance(item, dict):
                 raise ValueError("entry")
             cid = item.get("id")
@@ -1055,72 +866,157 @@ def read_registry_all(path):
                 raise ValueError("id reserved")
             if cid in seen_ids:
                 raise ValueError("id repeated")
-            title = _clean_text(item.get("title"), 80)
-            if not title:
+            col = item.get("collection")
+            if not isinstance(col, str) or not col.strip():
+                raise ValueError("collection")
+            col_str = os.path.expanduser(col.strip())
+            if not os.path.isabs(col_str):
+                # Lexical normalization only (no symlink dereference) so relative and absolute
+                # collection symlinks follow the same lstat() policy in load().
+                col_str = os.path.normpath(os.path.join(str(base), col_str))
+            col_path = str(Path(col_str))
+            canon = _canonical_path(col_path)
+            if canon in seen_paths:
+                raise ValueError("collection repeated")
+            if "title" in item and item["title"] is not None and not isinstance(item["title"], str):
                 raise ValueError("title")
-            col_path = resolve_col(item)
-            if _canonical_path(col_path) in roadmap_paths:
-                raise ValueError("collection already in roadmaps")
-            owner_lane = _clean_text(item.get("owner_lane", ""), 80)
-            if "closed" not in item:
-                closed = list(DEFAULT_CLOSED)
-            else:
-                raw_closed = item["closed"]
-                if not isinstance(raw_closed, list) or not all(isinstance(s, str) for s in raw_closed):
-                    raise ValueError("closed")
-                closed = [s.strip().lower() for s in raw_closed if s.strip()]
+            title = _clean_text(item.get("title"), 80) or _collection_name(col_path).replace("-", " ").title()
+            if "lane" in item and item["lane"] is not None and not isinstance(item["lane"], str):
+                raise ValueError("lane")
+            lane = _clean_text(item.get("lane"), 80)
+            if "lane_link" in item and item["lane_link"] is not None and not isinstance(item["lane_link"], str):
+                raise ValueError("lane_link")
+            lane_link = _clean_text(item.get("lane_link"), 512)
             seen_ids.add(cid)
-            collections.append({
+            seen_paths.add(canon)
+            entries.append({
                 "id": cid,
-                "title": title,
                 "collection": col_path,
-                "owner_lane": owner_lane,
-                "closed": closed,
+                "title": title,
+                "lane": lane,
+                "lane_link": lane_link,
             })
         except ValueError as error:
-            dropped.append("collections[%d]: %s" % (index, error))
+            dropped.append("%d: %s" % (index, error))
         except (OSError, RuntimeError):
-            dropped.append("collections[%d]: collection path invalid" % index)
+            dropped.append("%d: collection path invalid" % index)
 
     warnings = []
     if dropped:
-        warnings.append("Roadmaps config: skipped %d entries (%s)." % (len(dropped), ", ".join(dropped[:5])))
-    return roadmaps, collections, warnings
+        warnings.append("Collections registry: skipped %d entries (%s)." % (len(dropped), ", ".join(dropped[:5])))
+    return entries, warnings
 
 
-def read_registry(path):
-    """Read and validate roadmap entries from a --roadmaps JSON file."""
-    roadmaps, _, warnings = read_registry_all(path)
-    return roadmaps, warnings
+def _resolve_external_needs(items, external_done):
+    """Upgrade unresolved cross-collection needs using external_done map (in place)."""
+    if not external_done:
+        return
+    for item in items.values():
+        still = []
+        for raw_ref in item["unresolved_needs"]:
+            found, done = _resolve_external(raw_ref, external_done)
+            if found:
+                item["external_needs"].append({"ref": raw_ref, "done": done})
+            else:
+                still.append(raw_ref)
+        item["unresolved_needs"] = still
 
 
-def summary(collection_dir, title="", owner_lane="", now=None):
-    """Human-readable summary of priorities, open work and attention items."""
-    doc = document(collection_dir, title=title, owner_lane=owner_lane, now=now)
-    nodes = {node["id"]: node for node in doc["nodes"]}
-    lines = ["%s: %d records, %d open" % (
-        doc["title"], len(nodes), sum(1 for n in nodes.values() if n["open"] and n["kind"] != "priority")
-    )]
-    lines += ["", "Priorities:"]
-    for key in doc["order"]:
-        node = nodes[key]
-        behind = _closure(key, {k: n["needs"] for k, n in nodes.items()})
-        tag = "focus" if node["focus"] else "#%g" % node["rank"] if node["rank"] is not None else "unranked"
-        waits = sum(1 for other in behind if nodes[other]["state"] == "awaiting-user")
-        open_count = sum(1 for other in behind if nodes[other]["open"] and nodes[other]["kind"] != "priority")
-        lines.append("  %-8s %s (%d open, %d waiting on you)" % (tag, node["title"], open_count, waits))
-    lines += ["", "Needs you, most pressing first:"]
-    for item in doc["attention"]:
-        extra = [item["kind"]]
-        if item["alert"] != "none":
-            extra.append(item["alert"])
-        if item["due"]:
-            extra.append("due " + item["due"])
-        if item["behind"]:
-            extra.append("%d waiting" % item["behind"])
-        if item["lane"]:
-            extra.append(item["lane"])
-        lines.append("  %s: %s [%s]" % (item["id"], item["reason"], ", ".join(extra)))
+def load_collections(entries, agents, now=None, allowed_schemes=ALLOWED_LINK_SCHEMES):
+    """Load all registered collections in a single pass, resolving cross-collection needs.
+
+    Returns (blocks, warnings). Zero host paths returned.
+    """
+    loaded = []
+    by_name, collisions = {}, set()
+    for entry in entries:
+        label = entry["title"]
+        try:
+            items, archived, problems, _, incomplete = _load_all(entry["collection"])
+        except Exception as error:
+            print("collection load failed (%s): %r" % (entry["id"], error), file=sys.stderr)
+            loaded.append((entry, None, None, True, ["Collection '%s' is unreadable." % label]))
+            continue
+        if not items and incomplete:
+            loaded.append((entry, None, None, True, ["Collection '%s' is unreadable." % label]))
+            continue
+        table = {k: (v["state"] == "done") for k, v in archived.items()}
+        table.update({k: (v["state"] == "done") for k, v in items.items()})
+        cname = _collection_name(entry["collection"])
+        for key in (cname, entry["id"]):
+            if key in by_name and by_name[key] is not table:
+                collisions.add(key)
+            else:
+                by_name[key] = table
+        loaded.append((entry, items, archived, incomplete, []))
+    for key in collisions:
+        by_name.pop(key, None)
+
+    blocks, warnings = [], []
+    for entry, items, archived, incomplete, errs in loaded:
+        if items is None:
+            warnings.extend(errs)
+            continue
+        _resolve_external_needs(items, by_name)
+        block, notes = _summarize_loaded(
+            entry, items, archived, incomplete, agents, now=now, allowed_schemes=allowed_schemes,
+        )
+        blocks.append(block)
+        warnings.extend(notes)
+    return blocks, warnings
+
+
+def build_external_done(entries):
+    """Map unambiguous collection folder names and registry ids to {item_id: is_done_bool}."""
+    by_name, collisions, loaded = {}, set(), {}
+    for entry in entries:
+        items, archived, _, _, _ = _load_all(entry["collection"])
+        if not items and not archived:
+            continue
+        table = {k: (v["state"] == "done") for k, v in archived.items()}
+        table.update({k: (v["state"] == "done") for k, v in items.items()})
+        loaded[entry["id"]] = table
+        cname = _collection_name(entry["collection"])
+        for key in (cname, entry["id"]):
+            if key in by_name and by_name[key] is not table:
+                collisions.add(key)
+            else:
+                by_name[key] = table
+    for key in collisions:
+        by_name.pop(key, None)
+    return by_name
+
+
+def summary(collection_dir, title="", lane="", now=None):
+    """Human-readable summary of open items and attention items."""
+    doc = document(collection_dir, title=title, lane=lane, now=now)
+    nodes = doc["nodes"]
+    open_nodes = [n for n in nodes if n["open"]]
+    att_nodes = [n for n in open_nodes if n["attention"]]
+    other_nodes = [n for n in open_nodes if not n["attention"]]
+    lines = ["%s: %d items, %d open, %d attention" % (doc["title"], len(nodes), len(open_nodes), len(att_nodes))]
+
+    def fmt(node):
+        extra = []
+        if node["state_raw"]:
+            extra.append(node["state_raw"])
+        if node["overdue"]:
+            extra.append("overdue")
+        if node["due"]:
+            extra.append("due " + node["due"])
+        if node["blocked"] and node["state"] != "blocked":
+            extra.append("blocked")
+        if node["behind"]:
+            extra.append("unlocks %d" % node["behind"])
+        if node["lane"]:
+            extra.append(node["lane"])
+        suffix = " [%s]" % ", ".join(extra) if extra else ""
+        return "  %s: %s%s" % (node["id"], node["title"], suffix)
+
+    if att_nodes:
+        lines += ["", "Attention:"] + [fmt(n) for n in sorted(att_nodes, key=_item_sort_key)]
+    if other_nodes:
+        lines += ["", "Open:"] + [fmt(n) for n in sorted(other_nodes, key=_item_sort_key)]
     for label, entries in (("Problems", doc["problems"]), ("Warnings", doc["warnings"])):
         if entries:
             lines += ["", label + ":"] + ["  " + entry for entry in entries]
@@ -1133,10 +1029,10 @@ class RoadmapServer(ThreadingHTTPServer):
     daemon_threads = True
     request_queue_size = 64
 
-    def __init__(self, port, collection_dir, title="", owner_lane="", web_dir=WEB_DIR):
+    def __init__(self, port, collection_dir, title="", lane="", web_dir=WEB_DIR):
         self.collection_dir = str(collection_dir)
         self.roadmap_title = title
-        self.owner_lane = owner_lane
+        self.default_lane = lane
         self.static = {
             name: os.path.join(web_dir, name)
             for name in os.listdir(web_dir)
@@ -1148,7 +1044,7 @@ class RoadmapServer(ThreadingHTTPServer):
 
 
 class StandaloneHandler(BaseHTTPRequestHandler):
-    server_version = "minibrain-roadmap/1"
+    server_version = "minibrain-roadmap/2"
     protocol_version = "HTTP/1.1"
     timeout = 30
 
@@ -1194,7 +1090,7 @@ class StandaloneHandler(BaseHTTPRequestHandler):
         try:
             if path in ("/api/roadmap", "/api/roadmap/default"):
                 doc = document(self.server.collection_dir, title=self.server.roadmap_title,
-                               owner_lane=self.server.owner_lane, roadmap_id="default")
+                               lane=self.server.default_lane, collection_id="default")
                 return self.reply_json(200, doc)
             if path in ("/", "/roadmap", "/roadmap/"):
                 name = "roadmap.html"
@@ -1227,7 +1123,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--collection", default=None, help="path to a collection.<name>/ folder")
     parser.add_argument("--title", default="", help="display title for the roadmap")
-    parser.add_argument("--owner", default="", help="default owner lane name")
+    parser.add_argument("--lane", default="", help="default lane name")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="port on 127.0.0.1 (default: %(default)s)")
     parser.add_argument("--no-open", action="store_true", help="do not open a browser")
     parser.add_argument("command", nargs="?", default="serve", choices=("serve", "check", "summary", "json"))
@@ -1241,19 +1137,19 @@ def main(argv=None):
         for entry in warnings:
             print("warning:", entry)
         if not problems and not warnings:
-            print("clean: %d records" % count)
+            print("clean: %d items" % count)
         return 1 if problems else 0
     if args.command == "summary":
-        print(summary(collection_dir, title=args.title, owner_lane=args.owner))
+        print(summary(collection_dir, title=args.title, lane=args.lane))
         return 0
     if args.command == "json":
-        json.dump(document(collection_dir, title=args.title, owner_lane=args.owner),
+        json.dump(document(collection_dir, title=args.title, lane=args.lane),
                   sys.stdout, ensure_ascii=False, indent=1, allow_nan=False)
         print()
         return 0
 
     try:
-        server = RoadmapServer(args.port, collection_dir, title=args.title, owner_lane=args.owner)
+        server = RoadmapServer(args.port, collection_dir, title=args.title, lane=args.lane)
     except OSError:
         raise SystemExit("port %d is in use; pass --port" % args.port)
     url = "http://127.0.0.1:%d/" % server.server_address[1]

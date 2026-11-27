@@ -1,6 +1,6 @@
 # minibrain app (alpha)
 
-A local browser companion for minibrain with two views: **Agents Map** (live map of your agents, oversight links and attention items) and **Roadmap** (dependency graph for any roadmap collection). The app is in alpha: the Agents Map view needs macOS and RepoPrompt CE, while the Roadmap view runs wherever Python 3.9+ does.
+A local browser companion for minibrain with two views over the same collection items: **Agents Map** (live map of your agents, oversight links, Attention and open items) and **Roadmap** (dependency graph when items use `needs` or `serves`). The app is in alpha: Agents Map needs macOS and RepoPrompt CE, while Roadmap runs wherever Python 3.9+ does.
 
 ## Run Agents Map (macOS, RepoPrompt CE)
 
@@ -10,63 +10,46 @@ Requires macOS, RepoPrompt CE, Python 3.9 or later and a browser. Run from this 
 python3 -B agents_map.py
 ```
 
-The map opens at `http://127.0.0.1:47613/`. Add `--no-open` to start without opening a browser, or `--port N` to choose another port. Stop with Ctrl-C.
+The map opens at `http://127.0.0.1:47613/`. Add `--no-open` to start without opening a browser, `--port N` to choose another port, or `--demo` to preview sample data without RepoPrompt CE. Stop with Ctrl-C.
 
-Start at login: `python3 -B agents_map.py --login-item on` with the same options you run with; `--login-item off` stops it and removes the login item. Supported browsers can install the page as an app.
+Start at login: `python3 -B agents_map.py --login-item on` with the same options you run with; `--login-item off` stops it and removes the login item. In Chrome, the install icon in the address bar installs the page as an app.
 
-Your arrangement (layouts, groups, saves) is kept in `~/Library/Application Support/minibrain` (`--state-dir DIR`), never in RepoPrompt CE's folder or any brain.
+Layouts, saves and the default `collections.json` registry live in `~/Library/Application Support/minibrain` (`--state-dir DIR`), never in RepoPrompt CE's folder or any brain.
 
 ## Run Roadmap standalone (any OS)
 
-Requires Python 3.9+ and a browser (no RepoPrompt CE needed). See [`ROADMAP.md`](ROADMAP.md) for the collection metadata contract and CLI commands, or try the bundled sample:
+Requires Python 3.9+ and a browser (no RepoPrompt CE needed). See [`ITEMS.md`](ITEMS.md) for the item contract and CLI commands, or try the bundled sample:
 
 ```sh
 python3 -B roadmap.py --collection sample/collection.roadmap check
 python3 -B roadmap.py --collection sample/collection.roadmap serve --title "Studio roadmap"
 ```
 
-## Update and remove
+## Connect collections
 
-Replace only the app folder, rerun your start command, and update the source commit in `~/Library/Application Support/minibrain/INSTALL.md`. To remove, run `python3 -B agents_map.py --login-item off` and delete the app folder and `INSTALL.md` (saved layouts in the state folder stay). If the app folder is already gone, run the two cleanup commands `--login-item on` printed (also in `INSTALL.md`), then delete `INSTALL.md`.
+Add approved collections to `~/Library/Application Support/minibrain/collections.json` (or pass `--collections FILE` pointing to a registry outside every brain). See [`ITEMS.md`](ITEMS.md) for the item contract.
 
-## Connect roadmaps and attention items
-
-- **Collection-backed roadmaps and attention items:** pass `--roadmaps FILE` pointing to a JSON registry kept outside every brain (quote the path if it contains spaces). Put roadmap collections under `roadmaps` (see [`ROADMAP.md`](ROADMAP.md)) and any other attention-bearing collections under `collections` (see [`ATTENTION.md`](ATTENTION.md)):
-
-```sh
-python3 -B agents_map.py \
-  --roadmaps "$HOME/Library/Application Support/minibrain/roadmaps.json"
-```
-
-Example registry (`id` must be a unique slug across both arrays and not `default`; `closed` defaults to `["done"]` when omitted):
+Example registry (`id` must be a unique slug and not `default`; `title`, `lane` and `lane_link` are optional):
 
 ```json
 {
   "version": 1,
-  "roadmaps": [
-    {
-      "id": "project-roadmap",
-      "title": "Project roadmap",
-      "collection": "/path/to/brain/collection.roadmap",
-      "owner_lane": "Lead agent",
-      "attention": true
-    }
-  ],
   "collections": [
     {
-      "id": "finance-tasks",
-      "title": "Finance",
-      "collection": "/path/to/brain/collection.tasks",
-      "owner_lane": "Finance",
-      "closed": ["done"]
+      "id": "studio-roadmap",
+      "collection": "/path/to/brain/collection.roadmap",
+      "title": "Studio roadmap",
+      "lane": "Studio lead"
     }
   ]
 }
 ```
 
-- **Legacy attention JSON:** `--attention FILE` still works for an external JSON file written by another program. See [`attention.example.json`](attention.example.json) for the format.
+The app reads registered collections read-only on `127.0.0.1` and never leaks host paths in metadata or errors. Each agent's card shows its Attention and open counts and opens a panel listing Attention items first, then other open items, with the lane link; collections with `needs` or `serves` also open in the live side-by-side Roadmap drawer.
 
-The app reads configured collections read-only on `127.0.0.1`, never leaks host paths in metadata or errors, and serves only configured records. Clicking an agent's roadmap badge or card opens the roadmap in a live side-by-side split drawer; generic collection items highlight or open their agent without calling the roadmap drawer.
+## Update and remove
+
+Replace only the app folder, rerun your start command, and update the source commit in `~/Library/Application Support/minibrain/INSTALL.md`. To remove, run `python3 -B agents_map.py --login-item off` and delete the app folder and `INSTALL.md` (saved layouts in the state folder stay). If the app folder is already gone, run the two cleanup commands `--login-item on` printed (also in `INSTALL.md`), then delete `INSTALL.md`.
 
 ## Add a source
 

@@ -1,6 +1,5 @@
 """Sample studio data, independent of local app state."""
 import time
-from datetime import date, datetime, timedelta, timezone
 
 STUDIO = (
     ("Studio desk", ("Studio lead", "Schedule keeper")),
@@ -51,12 +50,3 @@ def collect(recent=False, known=()):
     return dict(schema=2, generated=now, windows=windows, agents=agents, links=links,
                 hidden=dict(archived=0, no_window=0, no_tab=0, missing=0, links=0),
                 warnings=[], app_running=True, demo=True)
-
-
-def attention_document():
-    return dict(version=1, updated=datetime.now(timezone.utc).isoformat(), owner=agent_id(0), items=[
-        dict(id="sample-blocker", kind="blocker", agent=agent_id(12), alert="glow", reason="Approve the print estimate"),
-        dict(id="sample-deadline", kind="deadline", agent=agent_id(8), reason="Send the gallery preview",
-             due=(date.today() + timedelta(days=3)).isoformat()),
-        dict(id="sample-watch", kind="watch", agent=None, reason="Review the next studio schedule"),
-    ])

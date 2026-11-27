@@ -7,7 +7,7 @@ import { groupByPrefix, openMembers } from './layout.js';
 import { duration, groupName, layoutName, stateText, wakingLanes } from './model.js';
 import { addSave, deleteSave, listSaves } from './server.js';
 import { CRIT, WARN, centerOn, fit, fitGroup, fitWindow, frames, workspaceLink } from './render.js';
-import { OLD_LIST, itemMeta, kindIcon, setSnooze } from './attention.js';
+import { attentionIcon, itemMeta, setSnooze } from './attention.js';
 import { canEdit, changeLayout, changed, flash, rebuild, restoreNamedSave, retry, setBoxHidden, setHover, setPin } from './actions.js';
 import { openRoadmapDrawer } from './drawer.js';
 
@@ -35,44 +35,68 @@ function itemControls(it) {
     });
     controls.appendChild(b);
   }
-  if (it.snoozedUntil) {
-    const until = new Date(it.snoozedUntil);
-    const hhmm = [until.getHours(), until.getMinutes()].map(n => String(n).padStart(2, '0')).join(':');
-    button('snoozed until ' + hhmm, null);
-  } else {
-    button('1 h', 'hour');
-    button('Tomorrow', 'tomorrow');
+  if (it.attention) {
+    if (it.snoozedUntil) {
+      const until = new Date(it.snoozedUntil);
+      const hhmm = [until.getHours(), until.getMinutes()].map(n => String(n).padStart(2, '0')).join(':');
+      button('snoozed until ' + hhmm, null);
+    } else {
+      button('1 h', 'hour');
+      button('Tomorrow', 'tomorrow');
+    }
   }
-  if (it.isRoadmap && it.source) {
+  if (it.has_graph && it.source) {
     const rmBtn = el('button', '', 'Roadmap');
     rmBtn.type = 'button';
     rmBtn.addEventListener('click', function () {
-      openRoadmapDrawer(it.source, null, it.ticket || it.id);
+      openRoadmapDrawer(it.source, null, it.id);
     });
     controls.appendChild(rmBtn);
   }
-  const owner = it.source
-    ? (it.sourceOwner && app.model.byId.get(it.sourceOwner))
-    : app.model.attention?.owner;
-  const href = owner && workspaceLink(owner.ws, owner.tab, owner.id);
-  if (href) {
-    const ask = el('a', 'item-ask', 'Ask ' + owner.name);
-    ask.href = href;
-    ask.draggable = false;
-    controls.appendChild(ask);
-  }
-  return controls;
+  return controls.childNodes.length ? controls : null;
 }
 
-function itemClass(it) {
-  return it.snoozedUntil ? ' snoozed' : it.alert !== 'none' ? ' alert' : '';
+function itemDotClass(it) {
+  if (it.blocked) return 'st-dot st-blocked';
+  if (it.state === 'in-progress') return 'st-dot st-wip';
+  return 'st-dot st-neutral';
 }
 
-function tipRows(title, sub, rows, cls, items, roadmaps = null) {
+function renderItemSection(headingText, items, isAttention) {
+  if (!items || !items.length) return;
+  tip.appendChild(el('div', 't-sec-head', headingText));
+  const list = el('ul', 't-items');
+  items.forEach(function (it) {
+    const cls = isAttention ? (it.snoozedUntil ? ' snoozed' : ' alert') : '';
+    const li = el('li', 't-item' + cls);
+    const mark = el('span', 't-kind');
+    if (isAttention) mark.appendChild(attentionIcon());
+    else mark.appendChild(el('span', itemDotClass(it)));
+    li.appendChild(mark);
+    const body = el('span', 't-body'), meta = itemMeta(it);
+    body.appendChild(el('span', 't-reason', it.title));
+    if (meta) body.appendChild(el('span', 't-meta', meta));
+    const controls = itemControls(it);
+    if (controls) body.appendChild(controls);
+    li.appendChild(body);
+    list.appendChild(li);
+  });
+  tip.appendChild(list);
+}
+
+function tipRows(title, sub, rows, cls, attItems, otherItems, roadmaps = null, laneHref = null) {
   tip.textContent = '';
+  const head = el('div', 't-head');
   const heading = el('div', 't-name', title);
   heading.id = 'tip-name';
-  tip.appendChild(heading);
+  head.appendChild(heading);
+  if (laneHref) {
+    const open = el('a', 't-open', 'Open ↗');
+    open.href = laneHref;
+    open.draggable = false;
+    head.appendChild(open);
+  }
+  tip.appendChild(head);
   if (sub) tip.appendChild(el('div', 't-sub', sub));
   if (roadmaps && roadmaps.length) {
     const box = el('div', 't-roadmaps');
@@ -81,7 +105,7 @@ function tipRows(title, sub, rows, cls, items, roadmaps = null) {
       btn.type = 'button';
       const left = el('span');
       left.appendChild(el('span', 't-rm-title', r.mode === 'owner' ? r.title : r.title + ' · lane'));
-      left.appendChild(el('span', 't-rm-sub', r.open + ' open' + (r.waiting ? ' · ' + r.waiting + ' waiting' : '')));
+      left.appendChild(el('span', 't-rm-sub', r.open + ' open' + (r.attention ? ' · ' + r.attention + ' attention' : '')));
       btn.appendChild(left);
       btn.appendChild(el('span', 't-rm-go', '→'));
       btn.addEventListener('click', function () {
@@ -91,23 +115,9 @@ function tipRows(title, sub, rows, cls, items, roadmaps = null) {
     });
     tip.appendChild(box);
   }
-  // Attention items first, each with its kind's mark and any due/rank beneath the reason.
-  if (items && items.length) {
-    const list = el('ul', 't-items');
-    items.forEach(function (it) {
-      const li = el('li', 't-item' + itemClass(it));
-      const mark = el('span', 't-kind');
-      mark.appendChild(kindIcon(it.kind));
-      li.appendChild(mark);
-      const body = el('span', 't-body'), meta = itemMeta(it);
-      body.appendChild(el('span', 't-reason', it.reason));
-      if (meta) body.appendChild(el('span', 't-meta', meta));
-      body.appendChild(itemControls(it));
-      li.appendChild(body);
-      list.appendChild(li);
-    });
-    tip.appendChild(list);
-  }
+  // Attention items first, then other open items.
+  renderItemSection('Attention', attItems, true);
+  renderItemSection('Open', otherItems, false);
   const dl = el('dl', cls || '');
   rows.forEach(function (r) { dl.appendChild(el('dt', '', r[0])); dl.appendChild(el('dd', '', r[1])); });
   tip.appendChild(dl);
@@ -128,7 +138,6 @@ export function fillTip(target) {
       rows.push(['Oversees', names(a.out, function (l) { return l.dst; }, a.out_hidden)]);
       rows.push(['Overseen by', names(a.inn, function (l) { return l.src; }, a.in_hidden)]);
     } else rows.push(['Links', 'no oversight links']);
-    const items = m.attention?.owner === a ? a.items.concat(m.attention.loose) : a.items;
     if (a.lane_of && m.byId.get(a.lane_of)) rows.push(['Created by', m.byId.get(a.lane_of).name]);
     if (a.pinned) rows.push(['Pinned', 'yes, in the sidebar']);
     if (a.wakeText) {
@@ -138,7 +147,8 @@ export function fillTip(target) {
       if (w.all || chosen.length) rows.push(['At most', w.limit ? 'once every ' + duration(w.limit) : 'no delay']);
       rows.push(['Idle wake', w.idle ? 'after ' + duration(w.idle) + ' idle' : 'off']);
     }
-    tipRows(a.name, a.cliName + ' · ' + a.model + (a.effort ? ' · ' + a.effort : ''), rows, 't-stats', items, a.roadmaps);
+    const href = workspaceLink(a.ws, a.tab, a.id);
+    tipRows(a.name, a.cliName + ' · ' + a.model + (a.effort ? ' · ' + a.effort : ''), rows, 't-stats', a.attItems, a.otherItems, a.roadmaps, href);
     return;
   }
   const g = app.arr.groups.filter(function (x) { return x.id === target.id; })[0];
@@ -292,13 +302,13 @@ export function hideTip() {
 const search = $('search');
 export function queryKey() { return app.ui.obfuscate ? 'agents-map.obfuscated-query.v1' : 'agents-map.query.v2'; }
 
-// What the bar count filters to: the agents that need the user, or if none does, those at work.
+// What the bar count filters to: agents needing Attention, or if none does, those at work.
 export function activeQuery() {
-  return app.model && app.model.allAgents.some(function (a) { return a.needs; }) ? 'needs-you' : 'active';
+  return app.model && app.model.allAgents.some(function (a) { return a.needs; }) ? 'attention' : 'active';
 }
 
 // The button's own filters: a click sets one or clears whichever is on, and it counts as pressed while one is.
-export function isActiveQuery(q) { return q === 'needs-you' || q === 'active'; }
+export function isActiveQuery(q) { return q === 'attention' || q === 'active'; }
 
 export function applyFilter() {
   const m = app.model;
@@ -451,14 +461,13 @@ function renderAge() {
   const mins = (Date.now() / 1000 - m.generated) / 60;
   const at = new Date(m.generated * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const failed = app.ui.refreshError;
-  const old = !failed && m.attention && m.attention.updated != null && m.generated - m.attention.updated > OLD_LIST;
-  const stale = !failed && (mins > STALE_MINUTES || old);
+  const stale = !failed && mins > STALE_MINUTES;
   age.classList.toggle('failed', !!failed);
   age.classList.toggle('stale', stale);
   if (failed) {
     age.textContent = 'Refresh failed: ' + failed + ' · showing ' + at;
   } else if (stale) {
-    age.textContent = 'Snapshot ' + at + ' · ' + ago(m.generated) + (old ? ' · Attention list from ' + stamp(m.attention.updated) : '');
+    age.textContent = 'Snapshot ' + at + ' · ' + ago(m.generated);
   } else {
     age.textContent = '';
   }
@@ -487,15 +496,15 @@ export function renderPanels() {
   const needing = m.allAgents.filter(a => a.needs).length;
   const active = $('btn-active');
   active.hidden = !running && !needing;
-  active.textContent = [needing ? needing + (needing === 1 ? ' needs you' : ' need you') : '', running ? running + ' running' : ''].filter(Boolean).join(' · ');
+  active.textContent = [needing ? needing + ' attention' : '', running ? running + ' running' : ''].filter(Boolean).join(' · ');
   active.classList.toggle('waiting', needing > 0);
-  // Items with no drawn agent are listed under their owner's box; unowned items and
-  // primary loose items without a drawn owner appear in the bar.
-  const barAtt = barAttentionItems(m.attention);
+  // Unmatched attention items (whose lane did not resolve to an open agent) appear in the bar.
+  const barAll = m.attention?.general || [];
+  const barActive = m.attention?.activeGeneral || [];
   const items = $('btn-attention');
-  items.hidden = !barAtt.all.length;
-  items.textContent = barAtt.active.length ? plural(barAtt.active.length, 'attention item', 'attention items') : 'Attention';
-  items.classList.toggle('waiting', barAtt.active.some(function (it) { return it.alert !== 'none'; }));
+  items.hidden = !barAll.length;
+  items.textContent = barActive.length ? barActive.length + ' attention' : 'Attention';
+  items.classList.toggle('waiting', barActive.length > 0);
   if (popover.dataset.kind === 'attention') fillAttention();
 
   const notes = [];   // only what is wrong now; the counts of hidden agents are in the table's data, not the footer
@@ -527,7 +536,7 @@ function indexItem(cls, name, count, target, onClick, needs = false) {
   if (needs) {
     const mark = el('span', 'i-need', '◆');
     mark.setAttribute('role', 'img');
-    mark.setAttribute('aria-label', 'Needs you');
+    mark.setAttribute('aria-label', 'Attention');
     b.appendChild(mark);
   }
   if (count != null) b.appendChild(el('span', typeof count === 'number' ? 'i-n count' : 'i-n', String(count)));
@@ -680,40 +689,25 @@ function stamp(seconds) {
   return new Date(seconds * 1000).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
-let attentionScope = 'bar';
-
-function barAttentionItems(att) {
-  if (!att) return { all: [], active: [] };
-  const looseAll = att.owner ? [] : (att.loose || []);
-  const looseActive = att.owner ? [] : (att.activeLoose || []);
-  return {
-    all: looseAll.concat(att.general || []),
-    active: looseActive.concat(att.activeGeneral || []),
-  };
-}
-
-// The attention items that have no drawn agent, as the owner's badge or the bar button opens them.
+// Unmatched attention items opened from the top bar's Attention button.
 function fillAttention() {
-  const att = app.model && app.model.attention;
-  const loose = !att ? [] : (attentionScope === 'owner' ? (att.loose || []) : barAttentionItems(att).all);
+  const list = (app.model && app.model.attention && app.model.attention.general) || [];
   popover.textContent = '';
   popover.dataset.kind = 'attention';
-  if (!loose.length) { closePopover(); return; }
+  if (!list.length) { closePopover(); return; }
   popover.appendChild(el('div', 'p-title', 'Attention'));
-  loose.forEach(function (it) {
-    const row = el('div', 'p-item' + itemClass(it));
-    row.appendChild(el('div', 'p-name', it.reason));
-    const sub = el('div', 'p-sub');
-    sub.appendChild(kindIcon(it.kind));
-    sub.appendChild(el('span', '', [it.kind, itemMeta(it)].filter(Boolean).join(' · ')));
-    row.appendChild(sub);
-    row.appendChild(itemControls(it));
+  list.forEach(function (it) {
+    const row = el('div', 'p-item' + (it.snoozedUntil ? ' snoozed' : ' alert'));
+    row.appendChild(el('div', 'p-name', it.title));
+    const meta = [it.sourceTitle, itemMeta(it)].filter(Boolean).join(' · ');
+    if (meta) row.appendChild(el('div', 'p-sub', meta));
+    const controls = itemControls(it);
+    if (controls) row.appendChild(controls);
     popover.appendChild(row);
   });
 }
 
 export function openAttention(anchor) {
-  attentionScope = anchor && anchor.classList.contains('att-count') ? 'owner' : 'bar';
   openPopover(anchor);
   fillAttention();
 }
@@ -778,11 +772,5 @@ export function openSaves() {
 export function initLegend() {
   $('lg-warn').textContent = WARN + '% or more';
   $('lg-crit').textContent = CRIT + '% or more';
-  ['blocker', 'deadline', 'calendar', 'watch'].forEach(function (kind) {
-    const item = el('span', 'item');
-    item.appendChild(kindIcon(kind));
-    item.appendChild(el('span', '', kind));
-    $('lg-kinds').appendChild(item);
-  });
   setInterval(renderAge, 15000);
 }

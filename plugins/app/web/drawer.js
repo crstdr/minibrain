@@ -136,8 +136,9 @@ export async function openRoadmapDrawer(roadmapId, lane = null, nodeId = null) {
       onClose: closeRoadmapDrawer,
       onSelectNode(node, doc) {
         if (!node || !app.model) return;
-        const targetLane = node.lane || node.suggested || doc.owner_lane;
-        const sid = doc.lanes && targetLane ? doc.lanes[targetLane] : null;
+        const targetLane = node.lane || doc.lane;
+        const sid = (doc.node_agents && doc.node_agents[node.id])
+          || (doc.lanes && targetLane ? doc.lanes[targetLane] : null);
         if (sid && app.model.byId.has(sid)) {
           setPin({ kind: 'agent', id: sid });
           syncTableSelection();

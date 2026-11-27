@@ -209,7 +209,7 @@ a.win-title:hover { color: var(--ink); text-decoration: underline; max-width: no
   color: var(--ink); font: 600 22px/1 system-ui, sans-serif; text-decoration: none;
   transition: opacity 140ms ease, background-color 140ms ease, visibility 0s linear 140ms;
 }
-.agent:has(.rm-chip) .agent-open { padding-top: 4px; }
+.agent:has(.rm-chip, .open-chip) .agent-open { padding-top: 4px; }
 .agent:is(:hover, :focus-visible, :has(:focus-visible)):not(:has(.rm-chip:hover)) .agent-open {
   visibility: visible; opacity: 1; pointer-events: auto;
   transition: opacity 110ms ease, background-color 140ms ease, visibility 0s linear 0s;
@@ -240,9 +240,8 @@ a.win-title:hover { color: var(--ink); text-decoration: underline; max-width: no
 .agent.running .run { display: block; border-radius: 50%; background: var(--good); }
 .agent.failed .run { display: block; border-radius: 2px; background: var(--critical); }
 /* Running: a round green dot and a green outline, both still. Waiting for the user: an amber diamond and outline;
-   motion means "needs you", so only an agent that needs the user and is not yet marked Seen moves: .glow marches a
-   dashed outline around the box, .pulse marches it twice as fast and adds a tight halo (render.js draws the outline
-   and sets both phases from the clock). */
+   motion means Attention, so only an agent needing Attention and not yet marked Seen moves: .glow marches a
+   dashed outline around the box (render.js draws the outline and sets its phase from the clock). */
 .agent.waiting .run { display: block; border-radius: 2px; background: var(--warning); transform: rotate(45deg); }
 .agent.running, .agent.waiting { border-style: solid; border-width: 1.5px; }
 .agent.running { border-color: var(--good); }
@@ -252,7 +251,7 @@ a.win-title:hover { color: var(--ink); text-decoration: underline; max-width: no
    no fill, no tint, nothing over the box's own background or text. Sizes are world px times --inv-k (1 / the
    view's zoom, set on #world by render.js), so on screen they stay a 3 px offset, a 2 px line and 6 px dashes
    with 4 px gaps at any zoom. An absolutely positioned child starts at the padding box, hence --need-border
-   in the offset. The periods are GLOW_PERIOD, PULSE_PERIOD and HALO_PERIOD in attention.js. */
+   in the offset. The period is GLOW_PERIOD in attention.js. */
 .agent > .need-ring { display: none; }   /* still, under reduced motion: the box keeps its waiting/alert look */
 @media (prefers-reduced-motion: no-preference) {
   .agent > .need-ring {
@@ -271,16 +270,9 @@ a.win-title:hover { color: var(--ink); text-decoration: underline; max-width: no
     animation: march linear infinite;
   }
   .agent.glow > .need-ring rect { animation-duration: 0.6s; }    /* one dash and gap (10 px) per period */
-  .agent.pulse > .need-ring rect { animation-duration: 0.3s; }
   @keyframes march {
     from { stroke-dashoffset: 0; }
     to { stroke-dashoffset: calc(-10px * var(--inv-k)); }    /* 6 px dash + 4 px gap, clockwise */
-  }
-  /* the pulse level's tight halo, breathing under the dashes; the box's own background is untouched */
-  .agent.pulse { animation: halo 0.6s ease-in-out infinite; }
-  @keyframes halo {
-    0%, 100% { box-shadow: 0 0 calc(3px * var(--inv-k)) 0 rgba(250,178,25,0.35); }
-    50% { box-shadow: 0 0 calc(10px * var(--inv-k)) calc(3px * var(--inv-k)) rgba(250,178,25,1); }
   }
 }
 /* Attention items: left-edge tags on the box's top edge, clear of the top-right roadmap chip. */
@@ -387,19 +379,29 @@ body.dragging .agent { pointer-events: none; }
 #legend b { color: var(--ink); font-weight: 600; }
 
 #tip { position: fixed; z-index: 30; max-width: 380px; padding: 9px 11px; font-size: 12px; overflow: auto; }
+#tip .t-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 #tip .t-name { font-weight: 650; font-size: 13px; overflow-wrap: anywhere; }
+#tip .t-open {
+  flex: none; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 5px;
+  border: 1px solid var(--border); background: var(--chip); color: var(--ink); text-decoration: none; white-space: nowrap;
+}
+#tip .t-open:hover { border-color: var(--muted); }
 #tip .t-sub { color: var(--ink-2); margin-bottom: 6px; }
+#tip .t-sec-head { font-size: 10.5px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin: 6px 0 4px; }
 #tip dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; }
 #tip dt { color: var(--muted); }
 #tip dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
-/* Attention items lead the card: kind mark, the reason in the normal ink, due/rank beneath.
-   An item with an alert level takes the badge's amber on its mark and a thin left rule. */
+/* Attention items lead the card, followed by other open items. */
 #tip .t-items { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 5px; }
 #tip .t-item { display: flex; align-items: flex-start; gap: 6px; padding: 1px 0 1px 7px; border-left: 2px solid transparent; }
 #tip .t-item.alert { border-left-color: var(--warning); }
-#tip .t-kind { flex: none; display: flex; margin-top: 2px; color: var(--ink-2); }
+#tip .t-kind { flex: none; display: flex; align-items: center; justify-content: center; width: 12px; margin-top: 3px; color: var(--ink-2); }
 #tip .t-item.alert .t-kind { color: var(--warning); }
-#tip .t-item .att-ic { width: 12px; height: 12px; }
+#tip .t-item .att-ic { width: 10px; height: 10px; }
+.st-dot { display: inline-block; width: 7px; height: 7px; border-radius: 2px; background: var(--muted); }
+.st-dot.st-wip { background: var(--warning); }
+.st-dot.st-blocked { background: var(--critical); }
+.st-dot.st-neutral { background: var(--muted); opacity: 0.55; }
 #tip .t-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 #tip .t-reason { color: var(--ink); font-size: 12.5px; line-height: 1.3; overflow-wrap: anywhere; }
 #tip .t-meta { color: var(--muted); font-size: 11px; }
@@ -537,15 +539,22 @@ td .k { display: inline-flex; align-items: center; gap: 5px; }
 #index button.i-item.i-hidden { color: var(--muted); }
 #index .i-need { color: var(--warning); font-size: 10px; }
 
-/* Roadmap chip on agent boxes and roadmap rows inside the Agent Card. */
-.rm-chip {
+/* Top-right open count pill and Roadmap graph chip on agent boxes. */
+.rm-chip, .open-chip {
   position: absolute; top: -9px; right: 8px; z-index: 4;
   height: 17px; padding: 0 7px; border-radius: 9px; box-sizing: border-box;
   display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.01em; line-height: 1; white-space: nowrap;
+  transform: scale(min(var(--att-scale, 1), 1.45)); transform-origin: 100% 100%;
+}
+.open-chip {
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink-2);
+  pointer-events: none;
+}
+.rm-chip {
   border: 1px solid var(--rm-chip-border, rgba(15,118,110,0.45));
   background: var(--rm-chip-bg, #e4f3f0); color: var(--rm-chip-ink, #0f524c);
-  font-size: 10px; font-weight: 600; letter-spacing: 0.01em; line-height: 1; white-space: nowrap; cursor: pointer;
-  transform: scale(min(var(--att-scale, 1), 1.45)); transform-origin: 100% 100%;
+  cursor: pointer;
 }
 .rm-chip:hover {
   background: var(--rm-chip-hover-bg, #d2ece7);
@@ -553,7 +562,6 @@ td .k { display: inline-flex; align-items: center; gap: 5px; }
   color: var(--rm-chip-hover-ink, #093d38);
 }
 .rm-chip svg { width: 10px; height: 10px; flex: none; }
-.att-badge[data-roadmap] { cursor: pointer; }
 #tip .t-roadmaps { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
 #tip .t-rm-btn {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -562,9 +570,9 @@ td .k { display: inline-flex; align-items: center; gap: 5px; }
   background: var(--rm-row-bg, #eef7f5); color: var(--ink);
 }
 #tip .t-rm-btn:hover {
-  border-color: var(--rm-wip, #0f766e);
+  border-color: var(--rm-chip-hover-border, #0f766e);
   background: var(--rm-row-hover-bg, #dff0ec);
 }
 #tip .t-rm-title { font-size: 12.5px; font-weight: 600; display: block; }
 #tip .t-rm-sub { font-size: 11px; color: var(--rm-row-sub, var(--ink-2)); display: block; margin-top: 1px; }
-#tip .t-rm-go { font-size: 14px; font-weight: 700; color: var(--rm-wip); flex: none; }
+#tip .t-rm-go { font-size: 14px; font-weight: 700; color: var(--rm-chip-ink, #0f524c); flex: none; }

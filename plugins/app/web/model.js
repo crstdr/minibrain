@@ -4,7 +4,7 @@ import { app, membership, visible } from './state.js';
 
 import { CHIP_W, CHIP_H, GAP, PAD, CW, GAPX, boxSize, colsFor } from './grid.js';
 import { clamp } from './util.js';
-import { applyAttention } from './attention.js';
+import { applyCollections } from './attention.js';
 
 const CLI = {
   codexExec: ['Codex', 'CX'], claudeCode: ['Claude Code', 'CC'], openCode: ['OpenCode', 'OC'],
@@ -144,13 +144,13 @@ export function buildModel(graph, arr, layout, shared) {
     // What the app last saved, shown only while it can still be true (the server marks the rest stale).
     a.stale = a.stale === true;
     a.run = a.stale ? null : a.state === 'running' ? 'running' : a.state.indexOf('waitingFor') === 0 ? 'waiting' : null;
-    a.needs = a.run === 'waiting';   // needs the user: the one flag the motion, the bar count and its filter read
+    a.needs = a.run === 'waiting';   // needs Attention: motion, bar count and filter read this flag
     a.heat = heatOf(raw, graph.generated);
     a.pct = a.used && a.window ? Math.min(100, a.used / a.window * 100) : null;
     const c = Object.prototype.hasOwnProperty.call(CLI, a.cli) ? CLI[a.cli] : [a.cli, a.cli.slice(0, 2).toUpperCase()];
     a.cliName = c[0]; a.abbr = c[1];
     a.cliClass = a.cli === 'codexExec' ? 'codex' : a.cli === 'claudeCode' ? 'claude' : 'other';
-    a.hay = (a.name + ' ' + a.model + ' ' + (a.effort || '') + ' ' + a.cliName + ' ' + win.name + ' ' + (a.stale ? 'unconfirmed' : a.state) + (a.run ? ' active ' + a.run : '') + (a.needs ? ' needs-you' : '') + (a.pinned ? ' pinned' : '')).toLowerCase();
+    a.hay = (a.name + ' ' + a.model + ' ' + (a.effort || '') + ' ' + a.cliName + ' ' + win.name + ' ' + (a.stale ? 'unconfirmed' : a.state) + (a.run ? ' active ' + a.run : '') + (a.needs ? ' attention' : '') + (a.pinned ? ' pinned' : '')).toLowerCase();
     allById.set(a.id, a);
     win.agents.push(a);
     allAgents.push(a);
@@ -160,19 +160,20 @@ export function buildModel(graph, arr, layout, shared) {
   const winById = new Map(wins.map(w => [w.id, w]));
   const agents = allAgents.filter(a => winById.has(a.win.id));
   const byId = new Map(agents.map(a => [a.id, a]));
-  const attention = applyAttention(graph.attention, allAgents, allById, byId, obscure, graph.attentions);
-  const roadmaps = (graph.roadmaps || []).map((r, i) => ({
+  const collections = Array.isArray(graph.collections) ? graph.collections : [];
+  const attention = applyCollections(collections, allAgents, allById, byId, obscure);
+  const roadmaps = collections.filter(c => c && c.has_graph).map((r, i) => ({
     ...r,
     title: obscure ? 'Roadmap ' + (i + 1) : r.title,
   }));
   allAgents.forEach(a => { a.roadmaps = []; });
   roadmaps.forEach(r => {
     if (r.owner_id && allById.has(r.owner_id)) {
-      allById.get(r.owner_id).roadmaps.push({ id: r.id, title: r.title, mode: 'owner', lane: null, open: r.open, waiting: r.waiting });
+      allById.get(r.owner_id).roadmaps.push({ id: r.id, title: r.title, mode: 'owner', lane: null, open: r.open, attention: r.attention });
     }
     for (const [sid, info] of Object.entries(r.lanes || {})) {
       if (sid === r.owner_id || !allById.has(sid)) continue;
-      allById.get(sid).roadmaps.push({ id: r.id, title: r.title, mode: 'lane', lane: info.lane, open: info.open, waiting: info.waiting });
+      allById.get(sid).roadmaps.push({ id: r.id, title: r.title, mode: 'lane', lane: info.lane, open: info.open, attention: info.attention });
     }
   });
   const links = [], overseers = new Set();

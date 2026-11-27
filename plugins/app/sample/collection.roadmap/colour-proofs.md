@@ -1,7 +1,7 @@
 # Print colour proofs
 
-- kind: project
-- state: done
+- kind: task
+- state: done live
 - serves: catalogue
 - lane: Release editor
 - owner: Release editor
