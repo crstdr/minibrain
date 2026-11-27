@@ -43,7 +43,7 @@ function itemControls(it) {
     button('1 h', 'hour');
     button('Tomorrow', 'tomorrow');
   }
-  if (it.source) {
+  if (it.isRoadmap && it.source) {
     const rmBtn = el('button', '', 'Roadmap');
     rmBtn.type = 'button';
     rmBtn.addEventListener('click', function () {
@@ -51,7 +51,9 @@ function itemControls(it) {
     });
     controls.appendChild(rmBtn);
   }
-  const owner = (it.sourceOwner && app.model.byId.get(it.sourceOwner)) || app.model.attention?.owner;
+  const owner = it.source
+    ? (it.sourceOwner && app.model.byId.get(it.sourceOwner))
+    : app.model.attention?.owner;
   const href = owner && workspaceLink(owner.ws, owner.tab, owner.id);
   if (href) {
     const ask = el('a', 'item-ask', 'Ask ' + owner.name);
@@ -449,7 +451,7 @@ function renderAge() {
   const mins = (Date.now() / 1000 - m.generated) / 60;
   const at = new Date(m.generated * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const failed = app.ui.refreshError;
-  const old = !failed && m.attention && m.generated - m.attention.updated > OLD_LIST;
+  const old = !failed && m.attention && m.attention.updated != null && m.generated - m.attention.updated > OLD_LIST;
   const stale = !failed && (mins > STALE_MINUTES || old);
   age.classList.toggle('failed', !!failed);
   age.classList.toggle('stale', stale);
@@ -487,13 +489,13 @@ export function renderPanels() {
   active.hidden = !running && !needing;
   active.textContent = [needing ? needing + (needing === 1 ? ' needs you' : ' need you') : '', running ? running + ' running' : ''].filter(Boolean).join(' · ');
   active.classList.toggle('waiting', needing > 0);
-  // Items with no drawn agent are listed under their owner's box; with no owner drawn either, in the bar.
-  const loose = m.attention && !m.attention.owner ? m.attention : null;
-  const pendingItems = loose?.activeLoose || [];
+  // Items with no drawn agent are listed under their owner's box; unowned items and
+  // primary loose items without a drawn owner appear in the bar.
+  const barAtt = barAttentionItems(m.attention);
   const items = $('btn-attention');
-  items.hidden = !loose?.loose.length;
-  items.textContent = pendingItems.length ? plural(pendingItems.length, 'attention item', 'attention items') : 'Attention';
-  items.classList.toggle('waiting', pendingItems.some(function (it) { return it.alert !== 'none'; }));
+  items.hidden = !barAtt.all.length;
+  items.textContent = barAtt.active.length ? plural(barAtt.active.length, 'attention item', 'attention items') : 'Attention';
+  items.classList.toggle('waiting', barAtt.active.some(function (it) { return it.alert !== 'none'; }));
   if (popover.dataset.kind === 'attention') fillAttention();
 
   const notes = [];   // only what is wrong now; the counts of hidden agents are in the table's data, not the footer
@@ -678,9 +680,22 @@ function stamp(seconds) {
   return new Date(seconds * 1000).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
+let attentionScope = 'bar';
+
+function barAttentionItems(att) {
+  if (!att) return { all: [], active: [] };
+  const looseAll = att.owner ? [] : (att.loose || []);
+  const looseActive = att.owner ? [] : (att.activeLoose || []);
+  return {
+    all: looseAll.concat(att.general || []),
+    active: looseActive.concat(att.activeGeneral || []),
+  };
+}
+
 // The attention items that have no drawn agent, as the owner's badge or the bar button opens them.
 function fillAttention() {
-  const m = app.model, loose = m && m.attention ? m.attention.loose : [];
+  const att = app.model && app.model.attention;
+  const loose = !att ? [] : (attentionScope === 'owner' ? (att.loose || []) : barAttentionItems(att).all);
   popover.textContent = '';
   popover.dataset.kind = 'attention';
   if (!loose.length) { closePopover(); return; }
@@ -698,6 +713,7 @@ function fillAttention() {
 }
 
 export function openAttention(anchor) {
+  attentionScope = anchor && anchor.classList.contains('att-count') ? 'owner' : 'bar';
   openPopover(anchor);
   fillAttention();
 }

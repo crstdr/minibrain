@@ -117,10 +117,11 @@ export function applyAttention(att, agents, allById, drawnById, obscure, attenti
   const primaryNs = (primarySrc && primarySrc.owner) || '';
   let list = null;
   if (primarySrc) {
-    list = { updated: primarySrc.updated, owner: drawnById.get(primarySrc.owner) || null, items: [], loose: [], activeLoose: [] };
+    list = { updated: primarySrc.updated, owner: drawnById.get(primarySrc.owner) || null, items: [], loose: [], activeLoose: [], general: [], activeGeneral: [] };
   }
   sources.forEach(function (src) {
     const isPrimary = !!src._primary;
+    const isRoadmap = !isPrimary && src.roadmap === true;
     const ns = isPrimary ? (src.owner || '') : src.source;
     src.items.slice().sort(compare).forEach(function (raw) {
       const key = ITEM + JSON.stringify([ns, raw.id]);
@@ -129,7 +130,7 @@ export function applyAttention(att, agents, allById, drawnById, obscure, attenti
       const snoozedUntil = saved?.sig === sig && Number.isFinite(saved.until) && saved.until > now ? saved.until : null;
       if (snoozedUntil) keys.add(key);
       const it = { ...raw, source: isPrimary ? null : (raw.source || src.source || null), sourceOwner: src.owner || null,
-        reason: obscure ? '•••' : raw.reason, snoozedUntil };
+        isRoadmap, reason: obscure ? '•••' : raw.reason, snoozedUntil };
       snoozeKeys.set(it, [key, sig]);
       if (isPrimary && list) {
         list.items.push(it);
@@ -142,6 +143,11 @@ export function applyAttention(att, agents, allById, drawnById, obscure, attenti
       if (on) on.items.push(it);
       else if (!isPrimary && src.owner && allById.has(src.owner)) allById.get(src.owner).items.push(it);
       const target = on || (src.owner ? allById.get(src.owner) : null);
+      if (!isPrimary && !target) {
+        if (!list) list = { updated: null, owner: null, items: [], loose: [], activeLoose: [], general: [], activeGeneral: [] };
+        list.general.push(it);
+        if (!snoozedUntil) list.activeGeneral.push(it);
+      }
       if (it.alert !== 'none') {
         const mark = ITEM + JSON.stringify(it.source ? [it.source, it.id, it.due, raw.reason] : [it.id, it.due, raw.reason]);
         live.add(mark);
@@ -149,6 +155,10 @@ export function applyAttention(att, agents, allById, drawnById, obscure, attenti
       }
     });
   });
+  if (list && list.general.length > 1) {
+    list.general.sort(compare);
+    list.activeGeneral.sort(compare);
+  }
   agents.forEach(function (a) {
     if (a.items.length > 1) a.items.sort(compare);
     let level = 0;

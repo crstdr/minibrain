@@ -24,8 +24,11 @@ import argparse
 import glob
 import json
 import os
+import plistlib
 import re
+import shlex
 import signal
+import subprocess
 import sys
 import tempfile
 import threading
@@ -43,6 +46,8 @@ import roadmap
 from sources import demo, repoprompt
 
 STATE_DIR = os.path.expanduser("~/Library/Application Support/agents-map")
+LAUNCH_AGENTS_DIR = os.path.expanduser("~/Library/LaunchAgents")
+LOGIN_ITEM_LABEL = "io.github.crstdr.minibrain.agents-map"
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(HERE, "web")
 DEFAULT_PORT = 47613  # fixed, so the page keeps one origin (browser settings stick to it)
@@ -535,15 +540,20 @@ def reconcile(before, after, layouts, initiating_id, mode, seeds, *, history_ste
             layout["windows"].update(window_seeds)
 
 
+def _check_state_dir(state_dir, forbidden=()):
+    resolved = os.path.realpath(os.path.expanduser(state_dir))
+    for parent in forbidden:
+        parent = os.path.realpath(parent)
+        if resolved == parent or resolved.startswith(parent + os.sep):
+            raise SystemExit("state folder must not be inside " + parent)
+    return resolved
+
+
 class Store:
     """Atomic shared history, layout catalogue and settings; named saves stay separate."""
 
     def __init__(self, state_dir, forbidden=()):
-        self.dir = os.path.realpath(os.path.expanduser(state_dir))
-        for parent in forbidden:
-            parent = os.path.realpath(parent)
-            if self.dir == parent or self.dir.startswith(parent + os.sep):
-                raise SystemExit("state folder must not be inside " + parent)
+        self.dir = _check_state_dir(state_dir, forbidden=forbidden)
         self.saves_dir = os.path.join(self.dir, "saves")
         self.path = os.path.join(self.dir, "state.v2.json")
         self.lock = threading.Lock()
@@ -900,6 +910,27 @@ def roadmap_document(roadmaps_file, roadmap_id, collect, known=()):
     return doc
 
 
+def _collection_attentions(entries, agents):
+    """(attentions, warnings) across all configured non-roadmap collections. Zero host paths returned."""
+    attentions, warnings = [], []
+    open_agents = _open_agents(agents)
+    for entry in entries:
+        try:
+            block, att_notes = roadmap.collection_attention_list(
+                entry["collection"], open_agents, entry["id"],
+                title=entry["title"], owner_lane=entry["owner_lane"],
+                closed=entry["closed"],
+            )
+            if block:
+                block["primary"] = False
+                attentions.append(block)
+            warnings.extend(att_notes)
+        except Exception as error:
+            print("collection attention failed (%s): %r" % (entry["id"], error), file=sys.stderr)
+            warnings.append("Collection '%s' attention failed." % entry["title"])
+    return attentions, warnings
+
+
 def graph_document(collect, recent, attention_file, known=(), roadmaps_file=None):
     """The source's graph document plus validated attention items, roadmap summaries and warnings."""
     data = collect(recent=recent, known=known)
@@ -911,18 +942,24 @@ def graph_document(collect, recent, attention_file, known=(), roadmaps_file=None
     rm_notes = []
     if roadmaps_file:
         try:
-            entries, reg_notes = roadmap.read_registry(roadmaps_file)
+            rm_entries, col_entries, reg_notes = roadmap.read_registry_all(roadmaps_file)
         except Exception as error:
             print("roadmaps config failed: %r" % error, file=sys.stderr)
-            entries, reg_notes = [], ["Roadmaps config is unreadable."]
+            rm_entries, col_entries, reg_notes = [], [], ["Roadmaps config is unreadable."]
         rm_notes.extend(reg_notes)
-        if entries:
-            summaries, extra_att, sum_notes = _roadmap_summaries(entries, data.get("agents", []))
+        extra_att = []
+        if rm_entries:
+            summaries, rm_att, sum_notes = _roadmap_summaries(rm_entries, data.get("agents", []))
             rm_notes.extend(sum_notes)
             data["roadmaps"] = summaries
-            if extra_att:
-                primary = [{**data["attention"], "primary": True}] if data["attention"] else []
-                data["attentions"] = primary + extra_att
+            extra_att.extend(rm_att)
+        if col_entries:
+            col_att, col_notes = _collection_attentions(col_entries, data.get("agents", []))
+            rm_notes.extend(col_notes)
+            extra_att.extend(col_att)
+        if extra_att:
+            primary = [{**data["attention"], "primary": True}] if data["attention"] else []
+            data["attentions"] = primary + extra_att
     data["warnings"] = (notes + rm_notes + data["warnings"])[:20]
     return data
 
@@ -1137,20 +1174,252 @@ def map_server_running(port):
         return False
 
 
+def _launchctl_not_loaded(result):
+    text = ((result.stderr or "") + " " + (result.stdout or "")).lower()
+    return result.returncode in (3, 113) or any(
+        hint in text for hint in ("could not find service", "no such process", "not loaded")
+    )
+
+
+def _run_launchctl(argv):
+    return subprocess.run(argv, capture_output=True, text=True, check=False)
+
+
+def login_item_plist(
+    port=DEFAULT_PORT,
+    state_dir=None,
+    app_support=None,
+    attention_file=None,
+    roadmaps_file=None,
+    script_path=None,
+    python_path=None,
+    label=LOGIN_ITEM_LABEL,
+):
+    """Build the launchd plist dict for starting Agents Map at login."""
+    py = sys.executable if python_path is None else python_path
+    if not py or not os.path.isabs(py):
+        raise SystemExit("cannot determine absolute Python path")
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise SystemExit("--port must be between 1 and 65535")
+    script = os.path.abspath(os.path.expanduser(script_path or __file__))
+    effective_state = os.path.abspath(os.path.expanduser(state_dir or STATE_DIR))
+    log_path = os.path.join(effective_state, "server.log")
+    argv = [py, "-B", script, "--no-open"]
+    if port != DEFAULT_PORT:
+        argv += ["--port", str(port)]
+    if state_dir:
+        argv += ["--state-dir", effective_state]
+    if app_support:
+        argv += ["--app-support", os.path.abspath(os.path.expanduser(app_support))]
+    if attention_file:
+        argv += ["--attention", os.path.abspath(os.path.expanduser(attention_file))]
+    if roadmaps_file:
+        argv += ["--roadmaps", os.path.abspath(os.path.expanduser(roadmaps_file))]
+    return {
+        "Label": label,
+        "ProgramArguments": argv,
+        "RunAtLoad": True,
+        "KeepAlive": False,
+        "StandardOutPath": log_path,
+        "StandardErrorPath": log_path,
+    }
+
+
+def _login_item_cleanup_commands(domain_target, plist_path):
+    return (
+        "launchctl bootout " + domain_target,
+        "rm -f " + shlex.quote(plist_path),
+    )
+
+
+def _write_plist(plist_path, payload):
+    data = plistlib.dumps(payload, fmt=plistlib.FMT_XML)
+    parent = os.path.dirname(plist_path)
+    os.makedirs(parent, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".agents-map-plist-", dir=parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        os.replace(tmp, plist_path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def login_item_on(
+    port=DEFAULT_PORT,
+    state_dir=None,
+    app_support=None,
+    attention_file=None,
+    roadmaps_file=None,
+    launch_agents_dir=None,
+    label=LOGIN_ITEM_LABEL,
+    runner=None,
+    running_check=None,
+    wait_seconds=10.0,
+    poll_interval=0.2,
+    uid=None,
+    script_path=None,
+    python_path=None,
+    platform=None,
+):
+    """Install (or replace) the macOS login item and wait for it to answer."""
+    if (platform or sys.platform) != "darwin":
+        raise SystemExit("--login-item is only supported on macOS")
+    if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise SystemExit("--port must be between 1 and 65535")
+    launch_agents_dir = LAUNCH_AGENTS_DIR if launch_agents_dir is None else launch_agents_dir
+    runner = _run_launchctl if runner is None else runner
+    running_check = map_server_running if running_check is None else running_check
+    effective_app_support = os.path.abspath(os.path.expanduser(app_support or repoprompt.APP_SUPPORT))
+    if not os.path.isdir(effective_app_support):
+        raise SystemExit("RepoPrompt CE data folder not found: " + effective_app_support)
+    effective_state = _check_state_dir(state_dir or STATE_DIR, forbidden=(effective_app_support, HERE))
+    payload = login_item_plist(
+        port=port,
+        state_dir=state_dir,
+        app_support=app_support,
+        attention_file=attention_file,
+        roadmaps_file=roadmaps_file,
+        script_path=script_path,
+        python_path=python_path,
+        label=label,
+    )
+    uid = os.getuid() if uid is None else uid
+    domain = "gui/%d" % uid
+    domain_target = "%s/%s" % (domain, label)
+    plist_path = os.path.join(os.path.abspath(os.path.expanduser(launch_agents_dir)), label + ".plist")
+    url = "http://127.0.0.1:%d/" % port
+
+    if not os.path.lexists(plist_path) and running_check(port):
+        raise SystemExit(
+            "A map is already running at %s. Stop it first (--login-item off or Ctrl-C), then rerun --login-item on."
+            % url
+        )
+    bootout = runner(["launchctl", "bootout", domain_target])
+    if bootout.returncode != 0 and not _launchctl_not_loaded(bootout):
+        detail = (bootout.stderr or bootout.stdout or "").strip() or ("exit %d" % bootout.returncode)
+        raise SystemExit("Could not stop existing login item: " + detail)
+    if bootout.returncode == 0:
+        deadline = time.monotonic() + min(2.0, wait_seconds)
+        while running_check(port) and time.monotonic() < deadline:
+            time.sleep(poll_interval)
+    if running_check(port):
+        raise SystemExit(
+            "A map is already running at %s. Stop it first (--login-item off or Ctrl-C), then rerun --login-item on."
+            % url
+        )
+
+    os.makedirs(effective_state, exist_ok=True)
+    _write_plist(plist_path, payload)
+    boot = runner(["launchctl", "bootstrap", domain, plist_path])
+    if boot.returncode != 0:
+        try:
+            os.unlink(plist_path)
+        except OSError:
+            pass
+        detail = (boot.stderr or boot.stdout or "").strip() or ("exit %d" % boot.returncode)
+        raise SystemExit("Could not load login item: " + detail)
+
+    deadline = time.monotonic() + wait_seconds
+    answered = running_check(port)
+    while not answered and time.monotonic() < deadline:
+        time.sleep(poll_interval)
+        answered = running_check(port)
+    if not answered:
+        runner(["launchctl", "bootout", domain_target])
+        try:
+            os.unlink(plist_path)
+        except OSError:
+            pass
+        raise SystemExit(
+            "Agents Map did not answer at %s within %ds; login item removed. Log: %s"
+            % (url, int(round(wait_seconds)), payload["StandardOutPath"])
+        )
+
+    cmd_bootout, cmd_rm = _login_item_cleanup_commands(domain_target, plist_path)
+    print("Agents Map starts at login: %s" % url)
+    print("Plist: %s" % plist_path)
+    print("Log: %s" % payload["StandardOutPath"])
+    print("Cleanup if the app folder is deleted:")
+    print("  %s" % cmd_bootout)
+    print("  %s" % cmd_rm)
+    return plist_path
+
+
+def login_item_off(
+    launch_agents_dir=None,
+    label=LOGIN_ITEM_LABEL,
+    runner=None,
+    uid=None,
+    platform=None,
+):
+    """Stop and remove the macOS login item; succeeds if nothing was installed."""
+    if (platform or sys.platform) != "darwin":
+        raise SystemExit("--login-item is only supported on macOS")
+    launch_agents_dir = LAUNCH_AGENTS_DIR if launch_agents_dir is None else launch_agents_dir
+    runner = _run_launchctl if runner is None else runner
+    uid = os.getuid() if uid is None else uid
+    domain_target = "gui/%d/%s" % (uid, label)
+    plist_path = os.path.join(os.path.abspath(os.path.expanduser(launch_agents_dir)), label + ".plist")
+
+    bootout = runner(["launchctl", "bootout", domain_target])
+    unloaded = bootout.returncode == 0
+    if bootout.returncode != 0 and not _launchctl_not_loaded(bootout):
+        detail = (bootout.stderr or bootout.stdout or "").strip() or ("exit %d" % bootout.returncode)
+        raise SystemExit("Could not stop login item: " + detail)
+
+    removed = False
+    if os.path.lexists(plist_path):
+        try:
+            os.unlink(plist_path)
+            removed = True
+        except OSError as error:
+            raise SystemExit("Could not remove plist %s: %s" % (plist_path, error)) from None
+
+    if unloaded or removed:
+        print("Login item stopped and removed (plist: %s)." % plist_path)
+    else:
+        print("No login item installed (%s)." % plist_path)
+    return unloaded or removed
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--port", type=int, help="port on 127.0.0.1 (default: 47613, demo: 47614)")
     parser.add_argument("--demo", action="store_true", help="show sample data without RepoPrompt CE")
     parser.add_argument("--no-open", action="store_true", help="do not open the map in the browser")
-    parser.add_argument("--app-support", default=repoprompt.APP_SUPPORT, help="RepoPrompt CE data folder")
+    parser.add_argument("--app-support", default=None, help="RepoPrompt CE data folder")
     parser.add_argument("--state-dir", help="where layouts are kept (temporary by default in demo mode)")
     parser.add_argument("--attention", metavar="FILE", help="a file of items that need you, written by another program (off when absent)")
-    parser.add_argument("--roadmaps", metavar="FILE", help="JSON registry of collection-backed roadmaps (off when absent)")
+    parser.add_argument("--roadmaps", metavar="FILE", help="JSON registry of roadmaps and attention collections (off when absent)")
     parser.add_argument("--json", action="store_true", help="print one collection and exit")
     parser.add_argument("--recent", action="store_true", help="with --json: include recent agents without links")
+    parser.add_argument("--login-item", choices=("on", "off"), help="start at login (on) or stop and remove that (off)")
     args = parser.parse_args(argv)
     args.attention = os.path.expanduser(args.attention) if args.attention else None
     args.roadmaps = os.path.expanduser(args.roadmaps) if args.roadmaps else None
+
+    if args.login_item:
+        if args.demo or args.json:
+            raise SystemExit("--login-item cannot be used with --demo or --json")
+        if args.login_item == "off":
+            login_item_off()
+            return
+        port = DEFAULT_PORT if args.port is None else args.port
+        login_item_on(
+            port=port,
+            state_dir=args.state_dir,
+            app_support=args.app_support,
+            attention_file=args.attention,
+            roadmaps_file=args.roadmaps,
+        )
+        return
+
+    args.app_support = os.path.expanduser(args.app_support) if args.app_support else repoprompt.APP_SUPPORT
     if args.port is None:
         args.port = 47614 if args.demo else DEFAULT_PORT
 

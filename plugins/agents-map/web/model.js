@@ -219,7 +219,9 @@ export function buildModel(graph, arr, layout, shared) {
   return { groupNames, linkCount, overseerCount: overseers.size, allWins, allWinById, allAgents, allById, wins: wins, agents: agents, links: links, byId: byId, winById: winById,
     generated: graph.generated, appRunning: graph.app_running !== false, hidden: graph.hidden || {},
     warnings: (graph.warnings || []).map(w => obscure
-      ? w.replace(/^(.*? unreadable for (?:window )?)'.*'\.$/s, '$1•••.').replace(/^(Roadmap )'.*'( [^'\n]*\.)$/s, '$1•••$2')
+      ? w.replace(/^(.*? unreadable for (?:window )?)'.*'\.$/s, '$1•••.')
+        .replace(/^(Roadmap |Collection )'.*'( [^'\n]*\.)$/s, '$1•••$2')
+        .replace(/^[^:\n/]+\/[^:\n]+:/, '•••:')
       : w),
     attention: attention, roadmaps: roadmaps };
 }

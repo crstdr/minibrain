@@ -91,7 +91,7 @@ function buildChip(a) {
     }
     if (primary) {
       const b = el('span', 'att-badge' + (muted ? ' muted' : primary.alert !== 'none' ? ' alert' : ''));
-      if (primary.source) {
+      if (primary.isRoadmap && primary.source) {
         b.dataset.roadmap = primary.source;
         b.dataset.ticket = primary.ticket || primary.id;
       }

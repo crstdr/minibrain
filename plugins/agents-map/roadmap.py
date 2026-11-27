@@ -38,7 +38,10 @@ MAX_ROADMAPS = 50
 MAX_ITEMS = 50
 REASON_MAX = 80
 GLOW_BLOCKERS = 5
+GENERIC_LOUD_CAP = 5
 SOON_WORKDAYS = 2
+DEFAULT_CLOSED = ("done",)
+ALLOWED_LINK_SCHEMES = ("repoprompt-ce",)
 
 KINDS = ("priority", "project", "decision", "gap")
 STATES = (
@@ -265,6 +268,7 @@ def _build_ticket(label, title, fields, body, cname, archived=False):
             ext.extend(other)
     ticket["ext"] = ext
     ticket["archived_needs"] = []
+    ticket["lane_link"] = fields.get("lane-link", "")
     rank_num, rank_ok = _parse_number(fields.get("rank"))
     days_num, days_ok = _parse_number(fields.get("days"))
     ticket["rank"] = rank_num
@@ -484,6 +488,21 @@ def _workdays_until(target_day, today):
     return count
 
 
+def _normalize_reason(raw, warn_label, warnings):
+    """Strip non-printables, trim, and shorten to at most REASON_MAX characters with a warning."""
+    reason = "".join(ch for ch in (raw or "") if ch.isprintable()).strip()
+    if not reason:
+        return ""
+    if len(reason) > REASON_MAX:
+        warnings.append("%s: title exceeds %d characters; add a shorter 'ask'" % (warn_label, REASON_MAX))
+        reason = reason[:REASON_MAX - 3].rstrip() + "..."
+    return reason
+
+
+def _local_naive(dt):
+    return dt.replace(tzinfo=None) if dt.tzinfo is None else dt.astimezone().replace(tzinfo=None)
+
+
 def attention(tickets, needs, waiting, now=None, archived=None):
     """(items, warnings) ordered most pressing first.
 
@@ -492,7 +511,8 @@ def attention(tickets, needs, waiting, now=None, archived=None):
     due within SOON_WORKDAYS workdays glow; everything else is still (`none`).
     """
     now = now or datetime.datetime.now()
-    today, warnings, items = now.date(), [], []
+    local_now = _local_naive(now)
+    today, warnings, items = local_now.date(), [], []
     all_tickets = dict(archived or {})
     all_tickets.update(tickets)
     dependants = {key: set() for key in all_tickets}
@@ -517,15 +537,11 @@ def attention(tickets, needs, waiting, now=None, archived=None):
         if kind == "calendar":
             if not when:
                 continue
-            local_when = when.replace(tzinfo=None) if when.tzinfo is None else when.astimezone().replace(tzinfo=None)
-            if local_when <= now:
+            if _local_naive(when) <= local_now:
                 continue
-        reason = "".join(ch for ch in (ticket["ask"] or ticket["title"]) if ch.isprintable()).strip()
+        reason = _normalize_reason(ticket["ask"] or ticket["title"], key, warnings)
         if not reason:
             continue
-        if len(reason) > REASON_MAX:
-            warnings.append("%s: title exceeds %d characters; add a shorter 'ask'" % (key, REASON_MAX))
-            reason = reason[:REASON_MAX - 1].rstrip() + "..."
         soon_dates = [
             d for d in (
                 [due] + [_day(all_tickets[other]["due"]) for other in dependants[key]
@@ -539,6 +555,7 @@ def attention(tickets, needs, waiting, now=None, archived=None):
             "reason": reason,
             "due": ticket["when"] if kind == "calendar" else ticket["due"],
             "lane": ticket["lane"],
+            "lane_link": ticket.get("lane_link", ""),
             "behind": waiting[key],
             "_overdue": bool(due and due < today),
             "_soon": any(0 <= _workdays_until(d, today) <= SOON_WORKDAYS for d in soon_dates),
@@ -591,6 +608,47 @@ def resolve_lanes(lanes, agents):
     return found
 
 
+def resolve_lane_link(raw_link, agents, allowed_schemes=ALLOWED_LINK_SCHEMES):
+    """Resolve a harness deep link to a unique open agent id, or None.
+
+    Only link schemes in `allowed_schemes` are accepted; any other scheme is ignored so a record
+    can never inject an arbitrary URL into the browser.
+    """
+    text = (raw_link or "").strip()
+    if not text or not agents:
+        return None
+    parsed = urllib.parse.urlsplit(text)
+    scheme = (parsed.scheme or "").lower()
+    if not scheme or scheme not in allowed_schemes:
+        return None
+    if scheme != "repoprompt-ce":
+        return None
+    if parsed.netloc.lower() != "workspace" or parsed.path.rstrip("/") != "/open":
+        return None
+    qs = urllib.parse.parse_qs(parsed.query, keep_blank_values=False)
+    sid_q = (qs.get("session_id") or [""])[0].strip().lower()
+    ws_q = (qs.get("workspace_id") or [""])[0].strip().lower()
+    tab_q = (qs.get("tab_id") or [""])[0].strip().lower()
+    if sid_q:
+        matches = [
+            a["id"] for a in agents
+            if (a.get("id") or "").strip().lower() == sid_q
+            and (not ws_q or (a.get("ws") or "").strip().lower() == ws_q)
+        ]
+        return matches[0] if len(matches) == 1 else None
+    if ws_q and tab_q:
+        matches = [
+            a["id"] for a in agents
+            if (a.get("ws") or "").strip().lower() == ws_q
+            and (a.get("tab") or "").strip().lower() == tab_q
+        ]
+        return matches[0] if len(matches) == 1 else None
+    if ws_q:
+        matches = [a["id"] for a in agents if (a.get("ws") or "").strip().lower() == ws_q]
+        return matches[0] if len(matches) == 1 else None
+    return None
+
+
 def validate(collection_dir, now=None):
     """(record_count, problems, warnings) without depending on full document rendering."""
     tickets, archived, problems, warnings, _ = _load_all(collection_dir)
@@ -601,11 +659,12 @@ def validate(collection_dir, now=None):
     return len(tickets), problems, warnings + notes
 
 
-def attention_list(collection_dir, agents, roadmap_id, title="", owner_lane="", now=None):
+def attention_list(collection_dir, agents, roadmap_id, title="", owner_lane="", now=None,
+                   allowed_schemes=ALLOWED_LINK_SCHEMES):
     """Build one Agents Map attention block directly from a collection, without writing files.
 
     Returns (block_or_none, warnings) where block matches attention.read()'s shape plus
-    `source` (roadmap_id) and `title` for multi-source merging and click-through.
+    `source` (roadmap_id), `title`, and `roadmap: True` for multi-source merging and click-through.
     """
     tickets, archived, problems, warnings, incomplete = _load_all(collection_dir)
     if not tickets:
@@ -620,6 +679,10 @@ def attention_list(collection_dir, agents, roadmap_id, title="", owner_lane="", 
     out = []
     for item in items:
         due_epoch, all_day = _due_epoch(item["due"])
+        agent_id = (
+            resolve_lane_link(item.get("lane_link"), agents, allowed_schemes=allowed_schemes)
+            or (resolved.get(item["lane"]) if item["lane"] else None)
+        )
         out.append({
             "id": item["id"],
             "ticket": item["id"],
@@ -629,16 +692,18 @@ def attention_list(collection_dir, agents, roadmap_id, title="", owner_lane="", 
             "reason": item["reason"],
             "due": due_epoch,
             "all_day": all_day,
-            "agent": resolved.get(item["lane"]) if item["lane"] else None,
+            "agent": agent_id,
             "alert": item["alert"],
         })
-    ts = int((now or datetime.datetime.now().astimezone()).timestamp())
+    now_dt = now or datetime.datetime.now().astimezone()
+    ts = int((now_dt if now_dt.tzinfo else now_dt.astimezone()).timestamp())
     label = title or _collection_name(collection_dir)
     block = {
         "source": roadmap_id,
         "title": label,
         "updated": ts,
         "owner": owner_id,
+        "roadmap": True,
         "items": out,
     }
     extra_warnings = []
@@ -646,6 +711,178 @@ def attention_list(collection_dir, agents, roadmap_id, title="", owner_lane="", 
         block["incomplete"] = True
         extra_warnings.append("Roadmap '%s' is partly unreadable." % label)
     return block, (extra_warnings + notes)[:5]
+
+
+def collection_attention_list(
+    collection_dir,
+    agents,
+    source_id,
+    title="",
+    owner_lane="",
+    closed=DEFAULT_CLOSED,
+    now=None,
+    allowed_schemes=ALLOWED_LINK_SCHEMES,
+):
+    """Build one Agents Map attention block from any minibrain collection folder.
+
+    Read-only. Only records with an explicit `attention` value (not `none`) opt in; dates alone
+    never opt a record in. Archived records are excluded. Invalid known values drop only that
+    item with a warning naming source_id and record id, never host paths.
+    """
+    folder = Path(collection_dir)
+    label = title or _collection_name(folder)
+    try:
+        st = folder.lstat()
+        if not stat.S_ISDIR(st.st_mode) or stat.S_ISLNK(st.st_mode):
+            return None, ["Collection '%s' is unreadable." % label]
+        entries = sorted(folder.iterdir(), key=lambda p: p.name)
+    except OSError:
+        return None, ["Collection '%s' is unreadable." % label]
+
+    now_dt = now or datetime.datetime.now()
+    local_now = _local_naive(now_dt)
+    today = local_now.date()
+    closed_set = {s.strip().lower() for s in (closed or ()) if isinstance(s, str) and s.strip()}
+    warnings = []
+    incomplete = False
+    candidates = []
+
+    for path in entries:
+        if path.suffix != ".md":
+            continue
+        try:
+            pst = path.lstat()
+            if not stat.S_ISREG(pst.st_mode):
+                incomplete = True
+                continue
+            title_line, fields, _, _, _ = _parse_record(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError):
+            incomplete = True
+            continue
+
+        raw_att = fields.get("attention", "")
+        if not raw_att or raw_att == "none":
+            continue
+        state = fields.get("state", "").strip().lower()
+        if state and state in closed_set:
+            continue
+
+        rid = path.stem
+        ref = "%s/%s" % (source_id, rid)
+        if not SLUG.match(rid):
+            warnings.append("%s: invalid record id" % ref)
+            continue
+        if raw_att not in ATTENTION_KINDS:
+            warnings.append("%s: invalid attention value" % ref)
+            continue
+        raw_alert = fields.get("alert", "")
+        if raw_alert and raw_alert not in ALERTS:
+            warnings.append("%s: invalid alert value" % ref)
+            continue
+        raw_due = fields.get("due", "")
+        due = _day(raw_due) if raw_due else None
+        if raw_due and due is None:
+            warnings.append("%s: invalid due date" % ref)
+            continue
+        raw_when = fields.get("when", "")
+        when = _moment(raw_when) if raw_when else None
+        if raw_when and when is None:
+            warnings.append("%s: invalid when date" % ref)
+            continue
+        if raw_att == "calendar":
+            if when is None:
+                warnings.append("%s: calendar requires valid when" % ref)
+                continue
+            if _local_naive(when) <= local_now:
+                continue
+
+        reason = _normalize_reason(fields.get("ask") or title_line, ref, warnings)
+        if not reason:
+            warnings.append("%s: missing ask or title" % ref)
+            continue
+
+        due_str = raw_when if raw_att == "calendar" else raw_due
+        due_epoch, all_day = _due_epoch(due_str)
+        overdue = bool(due and due < today)
+        if raw_alert:
+            computed = raw_alert
+            explicit = True
+        else:
+            explicit = False
+            if overdue:
+                computed = "pulse"
+            elif raw_att == "blocker" or (raw_att == "deadline" and due and 0 <= _workdays_until(due, today) <= SOON_WORKDAYS):
+                computed = "glow"
+            else:
+                computed = "none"
+
+        candidates.append({
+            "id": rid,
+            "kind": raw_att,
+            "alert": computed if explicit else "none",
+            "reason": reason,
+            "due": due_epoch,
+            "all_day": all_day,
+            "_computed": computed,
+            "_explicit": explicit,
+            "_sort_due": due_epoch if due_epoch is not None else float("inf"),
+            "_lane": fields.get("lane", ""),
+            "_lane_link": fields.get("lane-link", ""),
+        })
+
+    auto_loud = sorted(
+        (item for item in candidates if not item["_explicit"] and item["_computed"] != "none"),
+        key=lambda item: (-LEVEL[item["_computed"]], SEVERITY[item["kind"]], item["_sort_due"], item["id"]),
+    )
+    for item in auto_loud[:GENERIC_LOUD_CAP]:
+        item["alert"] = item["_computed"]
+    if len(auto_loud) > GENERIC_LOUD_CAP:
+        warnings.append("Collection '%s' capped at %d loud items." % (label, GENERIC_LOUD_CAP))
+
+    candidates.sort(key=lambda item: (-LEVEL[item["alert"]], SEVERITY[item["kind"]], item["_sort_due"], item["id"]))
+    if len(candidates) > MAX_ITEMS:
+        warnings.append("Collection '%s' has %d attention items; showing the first %d." % (label, len(candidates), MAX_ITEMS))
+        candidates = candidates[:MAX_ITEMS]
+
+    lanes_needed = {item["_lane"] for item in candidates if item["_lane"]}
+    if owner_lane:
+        lanes_needed.add(owner_lane)
+    resolved = resolve_lanes(lanes_needed, agents)
+    owner_id = resolved.get(owner_lane) if owner_lane else None
+
+    out = []
+    for position, item in enumerate(candidates, 1):
+        agent_id = (
+            resolve_lane_link(item["_lane_link"], agents, allowed_schemes=allowed_schemes)
+            or (resolved.get(item["_lane"]) if item["_lane"] else None)
+            or owner_id
+        )
+        out.append({
+            "id": item["id"],
+            "source": source_id,
+            "kind": item["kind"],
+            "rank": position if position <= 10 else None,
+            "reason": item["reason"],
+            "due": item["due"],
+            "all_day": item["all_day"],
+            "agent": agent_id,
+            "alert": item["alert"],
+        })
+
+    ts = int((now_dt if now_dt.tzinfo else now_dt.astimezone()).timestamp())
+    block = {
+        "source": source_id,
+        "title": label,
+        "updated": ts,
+        "owner": owner_id,
+        "roadmap": False,
+        "items": out,
+    }
+    extra_warnings = []
+    if incomplete:
+        block["incomplete"] = True
+        extra_warnings.append("Collection '%s' is partly unreadable." % label)
+    return block, (extra_warnings + warnings)[:5]
 
 
 # ---------------------------------------------------------------- document & registry
@@ -713,34 +950,64 @@ def _clean_text(value, limit):
     return value[:limit] if value else ""
 
 
-def read_registry(path):
-    """Read and validate a --roadmaps JSON file. Warnings never expose filesystem paths.
+def _canonical_path(path_str):
+    try:
+        return os.path.realpath(path_str)
+    except OSError:
+        return os.path.normpath(os.path.abspath(path_str))
 
+
+def read_registry_all(path):
+    """Read and validate a --roadmaps JSON file with optional `collections` array.
+
+    Returns (roadmap_entries, collection_entries, warnings). Warnings never expose filesystem paths.
     Format:
       {"version": 1,
        "roadmaps": [{"id": "studio-work", "title": "Studio roadmap",
                      "collection": "/abs/or/~/path/collection.roadmap",
-                     "owner_lane": "Studio lead", "attention": true}]}
+                     "owner_lane": "Studio lead", "attention": true}],
+       "collections": [{"id": "tasks", "title": "Tasks",
+                        "collection": "/abs/or/~/path/collection.tasks",
+                        "owner_lane": "Lead", "closed": ["done"]}]}
     """
     if not path:
-        return [], []
+        return [], [], []
     reg_path = Path(os.path.expanduser(path))
     try:
         if reg_path.stat().st_size > MAX_REGISTRY_BYTES:
-            return [], ["Roadmaps config is too large."]
+            return [], [], ["Roadmaps config is too large."]
         raw = json.loads(reg_path.read_bytes()[:MAX_REGISTRY_BYTES + 1].decode("utf-8"))
     except FileNotFoundError:
-        return [], []
+        return [], [], []
     except (OSError, ValueError, RecursionError):
-        return [], ["Roadmaps config is unreadable."]
+        return [], [], ["Roadmaps config is unreadable."]
 
-    if (not isinstance(raw, dict) or raw.get("version") != 1
-            or isinstance(raw.get("version"), bool) or not isinstance(raw.get("roadmaps"), list)):
-        return [], ["Roadmaps config ignored: bad header."]
+    if not isinstance(raw, dict) or raw.get("version") != 1 or isinstance(raw.get("version"), bool):
+        return [], [], ["Roadmaps config ignored: bad header."]
+    has_roadmaps = "roadmaps" in raw
+    has_collections = "collections" in raw
+    if not has_roadmaps and not has_collections:
+        return [], [], ["Roadmaps config ignored: bad header."]
+    raw_roadmaps = raw.get("roadmaps", [])
+    raw_collections = raw.get("collections", [])
+    if not isinstance(raw_roadmaps, list) or not isinstance(raw_collections, list):
+        return [], [], ["Roadmaps config ignored: bad header."]
 
     base = reg_path.parent
-    entries, seen, dropped = [], set(), []
-    for index, item in enumerate(raw["roadmaps"], 1):
+    roadmaps, collections, seen_ids, roadmap_paths, dropped = [], [], set(), set(), []
+
+    def resolve_col(item):
+        col = item.get("collection")
+        if not isinstance(col, str) or not col.strip():
+            raise ValueError("collection")
+        col_str = os.path.expanduser(col.strip())
+        if not os.path.isabs(col_str):
+            # Lexical normalization only (no symlink dereference) so relative and absolute
+            # collection symlinks follow the same lstat() policy in load().
+            col_str = os.path.normpath(os.path.join(str(base), col_str))
+        return str(Path(col_str))
+
+    for index, item in enumerate(raw_roadmaps, 1):
         try:
             if index > MAX_ROADMAPS:
                 raise ValueError("beyond %d" % MAX_ROADMAPS)
@@ -751,29 +1018,22 @@ def read_registry(path):
                 raise ValueError("id")
             if rid in RESERVED_IDS:
                 raise ValueError("id reserved")
-            if rid in seen:
+            if rid in seen_ids:
                 raise ValueError("id repeated")
             title = _clean_text(item.get("title"), 80)
             if not title:
                 raise ValueError("title")
-            col = item.get("collection")
-            if not isinstance(col, str) or not col.strip():
-                raise ValueError("collection")
-            col_str = os.path.expanduser(col.strip())
-            if not os.path.isabs(col_str):
-                # Lexical normalization only (no symlink dereference) so relative and absolute
-                # collection symlinks follow the same lstat() policy in load().
-                col_str = os.path.normpath(os.path.join(str(base), col_str))
-            col_path = Path(col_str)
+            col_path = resolve_col(item)
             owner_lane = _clean_text(item.get("owner_lane", ""), 80)
-            emit_att = bool(item.get("attention", False))
             if "attention" in item and not isinstance(item["attention"], bool):
                 raise ValueError("attention")
-            seen.add(rid)
-            entries.append({
+            emit_att = bool(item.get("attention", False))
+            seen_ids.add(rid)
+            roadmap_paths.add(_canonical_path(col_path))
+            roadmaps.append({
                 "id": rid,
                 "title": title,
-                "collection": str(col_path),
+                "collection": col_path,
                 "owner_lane": owner_lane,
                 "attention": emit_att,
             })
@@ -781,10 +1041,57 @@ def read_registry(path):
             dropped.append("%d: %s" % (index, error))
         except (OSError, RuntimeError):
             dropped.append("%d: collection path invalid" % index)
+
+    for index, item in enumerate(raw_collections, 1):
+        try:
+            if index > MAX_ROADMAPS:
+                raise ValueError("beyond %d" % MAX_ROADMAPS)
+            if not isinstance(item, dict):
+                raise ValueError("entry")
+            cid = item.get("id")
+            if not isinstance(cid, str) or not SLUG.match(cid):
+                raise ValueError("id")
+            if cid in RESERVED_IDS:
+                raise ValueError("id reserved")
+            if cid in seen_ids:
+                raise ValueError("id repeated")
+            title = _clean_text(item.get("title"), 80)
+            if not title:
+                raise ValueError("title")
+            col_path = resolve_col(item)
+            if _canonical_path(col_path) in roadmap_paths:
+                raise ValueError("collection already in roadmaps")
+            owner_lane = _clean_text(item.get("owner_lane", ""), 80)
+            if "closed" not in item:
+                closed = list(DEFAULT_CLOSED)
+            else:
+                raw_closed = item["closed"]
+                if not isinstance(raw_closed, list) or not all(isinstance(s, str) for s in raw_closed):
+                    raise ValueError("closed")
+                closed = [s.strip().lower() for s in raw_closed if s.strip()]
+            seen_ids.add(cid)
+            collections.append({
+                "id": cid,
+                "title": title,
+                "collection": col_path,
+                "owner_lane": owner_lane,
+                "closed": closed,
+            })
+        except ValueError as error:
+            dropped.append("collections[%d]: %s" % (index, error))
+        except (OSError, RuntimeError):
+            dropped.append("collections[%d]: collection path invalid" % index)
+
     warnings = []
     if dropped:
         warnings.append("Roadmaps config: skipped %d entries (%s)." % (len(dropped), ", ".join(dropped[:5])))
-    return entries, warnings
+    return roadmaps, collections, warnings
+
+
+def read_registry(path):
+    """Read and validate roadmap entries from a --roadmaps JSON file."""
+    roadmaps, _, warnings = read_registry_all(path)
+    return roadmaps, warnings
 
 
 def summary(collection_dir, title="", owner_lane="", now=None):

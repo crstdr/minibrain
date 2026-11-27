@@ -50,16 +50,12 @@ SATISFIED_STATES["roadmap"] = {"done", "live"}
 
 ### Optional fields (agent judgement and Agents Map linking)
 
-- `lane`: exact agent name as shown in Agents Map (binds the record and its attention badge to that agent).
+- `lane`: exact agent name as shown in Agents Map (binds the record and its attention badge to that agent); see [`ATTENTION.md`](ATTENTION.md) for the name and `lane-link` rules.
 - `suggested`: candidate agent name before a task is assigned.
 - `owner`: human or role accountability note (prose).
 - `short`: short label for priority filter chips.
 - `focus`: `yes` to pin a priority ahead of ranked priorities.
-- `ask`: concise action prompt (at most 80 characters) shown on attention badges; falls back to `# Title`.
-- `due`: `YYYY-MM-DD` deadline date.
-- `when`: ISO date or date-time for a calendar event (drops off once started).
-- `attention`: `blocker`, `deadline`, `calendar`, `watch`, or `none` (silences the item). If omitted: open `decision` in `awaiting-user` becomes `blocker`; future `when` becomes `calendar`; `due` becomes `deadline`.
-- `alert`: `none`, `glow`, or `pulse` (explicit loudness override; if omitted, overdue items or blockers behind soon-due work `pulse`, the top 5 blockers by waiting count and deadlines within 2 working days `glow`, others stay still).
+- Attention fields (`attention`, `ask`, `due`, `when`, `lane-link`, `alert`): see [`ATTENTION.md`](ATTENTION.md). Roadmap-only defaults: omitted `attention` is inferred from `decision` in `awaiting-user` (`blocker`), `when` (`calendar`), or `due` (`deadline`); overdue items or blockers holding soon-due work `pulse`, the top 5 blockers by waiting count and deadlines within 2 working days `glow`, others stay still.
 - `days`: estimated remaining workdays (finite number).
 - `source`: `'location @ observation'` or `'unknown'` (matches `tools/collection.py`).
 - `tags`: space-separated `#tags` (matches `tools/collection.py`).
