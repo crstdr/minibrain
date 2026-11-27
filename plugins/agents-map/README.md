@@ -18,7 +18,7 @@ Your arrangement (layouts, groups, saves) is kept in `~/Library/Application Supp
 
 ## Update and remove
 
-Replace only the app folder and rerun your start command. To remove, run `python3 -B agents_map.py --login-item off` and delete the app folder (saved layouts in the state folder stay). If the app folder is already gone, run the two cleanup commands `--login-item on` printed (also in your install note).
+Replace only the app folder, rerun your start command, and update the source commit in `~/Library/Application Support/agents-map/INSTALL.md`. To remove, run `python3 -B agents_map.py --login-item off` and delete the app folder and `INSTALL.md` (saved layouts in the state folder stay). If the app folder is already gone, run the two cleanup commands `--login-item on` printed (also in `INSTALL.md`), then delete `INSTALL.md`.
 
 ## Connect roadmaps and attention items
 
