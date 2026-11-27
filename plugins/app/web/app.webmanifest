@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Agents Map",
-  "short_name": "Agents Map",
+  "name": "minibrain",
+  "short_name": "minibrain",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

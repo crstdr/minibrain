@@ -191,5 +191,5 @@ class HostBlockAndPluginTests(unittest.TestCase):
 
     def test_changed_and_removed_plugins_are_named(self):
         out = self.run_tool(self.brain(with_block=False))
-        self.assertRegex(out, r"plugins changed \(.*\): .*agents-map")
-        self.assertIn("plugins removed upstream: map", out)
+        self.assertIn("plugins added upstream: app", out)
+        self.assertIn("plugins removed upstream: map, roadmap", out)

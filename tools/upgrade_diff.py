@@ -363,12 +363,13 @@ def main(argv):
     if old:
         plugins = sorted({p.split("/")[1] for p in git("diff", "--name-only", old, new, "--", "plugins").stdout.splitlines()
                           if p.count("/") >= 2})
-        kept = set(git("ls-tree", "--name-only", f"{new}:plugins").stdout.split())
-        if [p for p in plugins if p in kept]:
-            files.append("plugins changed (installed outside the brain; update each installed copy by its SETUP's "
-                         "Update steps): " + ", ".join(p for p in plugins if p in kept))
-        if [p for p in plugins if p not in kept]:
-            files.append("plugins removed upstream: " + ", ".join(p for p in plugins if p not in kept))
+        before, after = (set(git("ls-tree", "--name-only", f"{ref}:plugins").stdout.split()) for ref in (old, new))
+        for label, names in (("plugins changed (installed outside the brain; update each installed copy by its "
+                              "SETUP's Update steps)", [p for p in plugins if p in before and p in after]),
+                             ("plugins added upstream", [p for p in plugins if p not in before]),
+                             ("plugins removed upstream", [p for p in plugins if p not in after])):
+            if names:
+                files.append(f"{label}: " + ", ".join(names))
     unused = [src for src in maps if src not in paths]
     if unused:
         files.append("--map not used (file unchanged between these refs): " + ", ".join(unused))

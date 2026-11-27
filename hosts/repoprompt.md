@@ -11,7 +11,7 @@ Add this block to `AGENTS.md`, after the XML blocks at the top, when the brain i
 - REVIEW — Use Review for post-implementation code review when warranted; it complements, not replaces, tests.
 - CONTEXT — Use Context Builder independently when context discovery and curation warrant the overhead. Omitted response type or `clarify` prepares context only; `question`, `plan` and `review` also consult Oracles and follow ORACLES.
 - CAPACITY — Compaction: `self_compact`. Above 40% context load, consider compaction at a useful boundary. Follow agreed user preferences and delegation; otherwise ask first.
-- MAP — To show the user a deadline, blocker or event on Agents Map, read `~/Library/Application Support/agents-map/INSTALL.md`; absent means not installed.
+- MAP — To show the user a deadline, blocker or event on Agents Map, read `~/Library/Application Support/minibrain/INSTALL.md`; absent means not installed.
 
 Overseer role only:
 - HOME — Keep coordination memory separate from lanes' working files. Oversight links grant no file-edit authority.

@@ -10,7 +10,7 @@ state, read-only). What the page receives holds names, models and usage numbers,
 transcripts or paths. With --attention FILE it also carries the items another program
 lists there as needing you (attention.py describes the file).
 
-What you arrange is kept in ~/Library/Application Support/agents-map (--state-dir),
+What you arrange is kept in ~/Library/Application Support/minibrain (--state-dir),
 never in a source's own folder.
 
 Usage:
@@ -45,9 +45,9 @@ import attention
 import roadmap
 from sources import demo, repoprompt
 
-STATE_DIR = os.path.expanduser("~/Library/Application Support/agents-map")
+STATE_DIR = os.path.expanduser("~/Library/Application Support/minibrain")
 LAUNCH_AGENTS_DIR = os.path.expanduser("~/Library/LaunchAgents")
-LOGIN_ITEM_LABEL = "io.github.crstdr.minibrain.agents-map"
+LOGIN_ITEM_LABEL = "io.github.crstdr.minibrain"
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(HERE, "web")
 DEFAULT_PORT = 47613  # fixed, so the page keeps one origin (browser settings stick to it)
@@ -1236,7 +1236,7 @@ def _write_plist(plist_path, payload):
     data = plistlib.dumps(payload, fmt=plistlib.FMT_XML)
     parent = os.path.dirname(plist_path)
     os.makedirs(parent, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=".agents-map-plist-", dir=parent)
+    fd, tmp = tempfile.mkstemp(prefix=".minibrain-plist-", dir=parent)
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(data)
@@ -1336,12 +1336,12 @@ def login_item_on(
         except OSError:
             pass
         raise SystemExit(
-            "Agents Map did not answer at %s within %ds; login item removed. Log: %s"
+            "minibrain app did not answer at %s within %ds; login item removed. Log: %s"
             % (url, int(round(wait_seconds)), payload["StandardOutPath"])
         )
 
     cmd_bootout, cmd_rm = _login_item_cleanup_commands(domain_target, plist_path)
-    print("Agents Map starts at login: %s" % url)
+    print("minibrain app starts at login: %s" % url)
     print("Plist: %s" % plist_path)
     print("Log: %s" % payload["StandardOutPath"])
     print("Cleanup if the app folder is deleted:")
@@ -1479,7 +1479,7 @@ def serve(args, collect, forbidden):
         if not args.no_open:
             webbrowser.open(url)
         return
-    print("Agents Map at %s  (Ctrl-C stops it)" % url.replace(str(args.port), str(server.server_address[1])), flush=True)
+    print("minibrain app at %s  (Ctrl-C stops it)" % url.replace(str(args.port), str(server.server_address[1])), flush=True)
     if not args.no_open:
         webbrowser.open(url)
     try:

@@ -16,9 +16,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGINS = ROOT / "plugins"
-ROADMAP = PLUGINS / "roadmap"
-AGENTS_MAP = PLUGINS / "agents-map"
-SAMPLE = ROADMAP / "sample/collection.roadmap"
+APP = PLUGINS / "app"
+SAMPLE = APP / "sample/collection.roadmap"
 
 
 class ResourceReferences(HTMLParser):
@@ -35,8 +34,8 @@ class ResourceReferences(HTMLParser):
 
 class PluginTests(unittest.TestCase):
     def test_plugin_entrypoints_exist(self):
-        for path in ("README.md", "agents-map/SETUP.md", "agents-map/agents_map.py",
-                     "roadmap/SETUP.md", "roadmap/roadmap.py", "roadmap/web/roadmap.html"):
+        for path in ("README.md", "app/SETUP.md", "app/ROADMAP.md", "app/ATTENTION.md",
+                     "app/agents_map.py", "app/roadmap.py", "app/web/roadmap.html"):
             with self.subTest(path=path):
                 self.assertTrue((PLUGINS / path).is_file())
 
@@ -46,7 +45,7 @@ class PluginTests(unittest.TestCase):
                 self.assertNotIn("TODO", path.read_text(encoding="utf-8"))
 
     def test_plugin_folders_match_their_manifests(self):
-        for folder in (ROADMAP, AGENTS_MAP):
+        for folder in (APP,):
             listed = {}
             for line in (folder / "MANIFEST.sha256").read_text(encoding="utf-8").splitlines():
                 digest, name = line.split(None, 1)
@@ -58,16 +57,8 @@ class PluginTests(unittest.TestCase):
                 for name, digest in listed.items():
                     self.assertEqual(hashlib.sha256((folder / name).read_bytes()).hexdigest(), digest, name)
 
-    def test_shared_roadmap_files_are_identical_in_both_plugins(self):
-        shared = [path.relative_to(ROADMAP) for path in ROADMAP.rglob("*") if path.is_file()
-                  and path.name not in {"MANIFEST.sha256", "README.md", "SETUP.md"}]
-        self.assertGreater(len(shared), 0)
-        for name in shared:
-            with self.subTest(path=name.as_posix()):
-                self.assertEqual((AGENTS_MAP / name).read_bytes(), (ROADMAP / name).read_bytes())
-
     def test_roadmap_pages_have_no_external_loads(self):
-        for folder in (ROADMAP, AGENTS_MAP):
+        for folder in (APP,):
             for path in sorted((folder / "web").glob("*.html")) + sorted((folder / "web").glob("*.css")):
                 with self.subTest(path=path.relative_to(ROOT)):
                     text = path.read_text(encoding="utf-8")
@@ -78,7 +69,7 @@ class PluginTests(unittest.TestCase):
                     self.assertNotRegex(text, r"(?i)https?://|@import\b")
 
     def roadmap(self, *args, collection=SAMPLE):
-        return subprocess.run([sys.executable, "-B", str(ROADMAP / "roadmap.py"), "--collection", str(collection), *args],
+        return subprocess.run([sys.executable, "-B", str(APP / "roadmap.py"), "--collection", str(collection), *args],
                               text=True, capture_output=True, timeout=30)
 
     def test_sample_roadmap_passes_both_checks(self):
