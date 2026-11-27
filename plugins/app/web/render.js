@@ -174,8 +174,6 @@ export function renderAll() {
     const href = workspaceLink(w.id, w.tab, w.session);
     if (href) title.href = href;
     title.draggable = false;
-    const run = w.agents.some(function (a) { return a.needs; }) ? 'waiting' : w.agents.some(function (a) { return a.run; }) ? 'running' : null;
-    if (run) title.appendChild(el('span', 'live ' + run));
     if (w.workspaceColor) {
       const dot = el('span', 'workspace-dot');
       dot.dataset.color = w.workspaceColor;
@@ -345,13 +343,14 @@ export function applyView(animate) {
   // Enlarged badges keep the mark and count only: the word would run over the box's name and its neighbour.
   world.classList.toggle('tight', view.k < 1);
   world.classList.toggle('far', nameSize > 16.5);          // no room left for the model line
-  const gw = CW * view.k, gh = CH * view.k;
+  let gw = (CW / 2) * view.k, gh = CH * view.k;
+  if (gw < 14) { gw = CW * view.k; gh = 2 * CH * view.k; }
   if (gw < 12) {
     stage.style.backgroundImage = 'none';
   } else {
     stage.style.backgroundImage = '';
     stage.style.backgroundSize = gw.toFixed(2) + 'px ' + gh.toFixed(2) + 'px';
-    stage.style.backgroundPosition = (view.tx - gw / 2).toFixed(2) + 'px ' + (view.ty - gh / 2).toFixed(2) + 'px';
+    stage.style.backgroundPosition = view.tx.toFixed(2) + 'px ' + view.ty.toFixed(2) + 'px';
   }
 }
 

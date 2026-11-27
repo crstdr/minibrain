@@ -100,7 +100,7 @@ input:focus-visible, button:focus-visible, .agent:focus-visible, th:focus-visibl
 #stage {
   position: relative; flex: 1; min-width: 0; overflow: hidden; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
   background-image: radial-gradient(circle, var(--stage-dot) 1.1px, transparent 1.5px);
-  background-size: 60px 31px;
+  background-size: 30px 31px;
 }
 #split-resizer {
   width: 5px; flex: none; cursor: col-resize; background: var(--border);
@@ -174,8 +174,8 @@ a.win-title { cursor: pointer; }
 a.win-title:hover { color: var(--ink); text-decoration: underline; max-width: none; background: var(--surface); }
 .win-title .n { margin-left: 6px; font-weight: 500; color: var(--muted); }
 .workspace-dot {
-  display: inline-block; width: calc(7px / var(--title-scale, 1)); height: 7px;
-  margin-right: 6px; border-radius: 50%;
+  display: inline-block; width: 8px; height: 8px;
+  margin-right: 6px; border-radius: 2.5px;
 }
 .workspace-dot[data-color="red"] { background: light-dark(#B83A3A, #E06C6C); }
 .workspace-dot[data-color="orange"] { background: light-dark(#C8612C, #E38C5A); }
@@ -247,8 +247,6 @@ a.win-title:hover { color: var(--ink); text-decoration: underline; max-width: no
 .agent.running, .agent.waiting { border-style: solid; border-width: 1.5px; }
 .agent.running { border-color: var(--good); }
 .agent.waiting { border-color: var(--warning); }
-.win-title .live { flex: none; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: var(--good); }
-.win-title .live.waiting { border-radius: 1px; background: var(--warning); transform: rotate(45deg); }
 #btn-active.waiting, #btn-attention.waiting { border-color: var(--warning); }
 /* Marching ants: an amber dashed line just outside the box, travelling clockwise. It draws only the dashes --
    no fill, no tint, nothing over the box's own background or text. Sizes are world px times --inv-k (1 / the
