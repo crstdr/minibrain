@@ -293,8 +293,10 @@ def collect(base, recent=False, known=()):
                          "tab": None, "session": None}
             windows.append(seen[wid])
         color = workspace.get("color")
-        if isinstance(color, str) and color in WORKSPACE_COLORS:
-            seen[wid]["color"] = color
+        if isinstance(color, str):
+            color = color.strip().lower()
+            if color in WORKSPACE_COLORS:
+                seen[wid]["color"] = color
         active = seen[wid]["tab"] = upper(workspace.get("activeComposeTabID"))
         for tab in workspace.get("composeTabs") or []:
             sid = upper(tab.get("activeAgentSessionID")) if isinstance(tab, dict) else None

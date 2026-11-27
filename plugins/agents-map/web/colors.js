@@ -4,16 +4,19 @@
 // the border, and text in whichever of dark or light ink reads better on that tint.
 // Pure: no DOM apart from reading which theme is in effect.
 //
-// The palette has eight categorical hues plus grey, with a step for each theme. These are personal markings, not data: every marked thing keeps its
-// own label, so a colour never has to identify anything on its own. The server
-// validates a group's hue against these ids (agents_map.py, HUE_IDS): change both together.
+// The palette has 14 hues matching RepoPrompt CE's workspace palette, with a light and dark stop
+// per hue. These are personal markings, not data: every marked thing keeps its own label, so a
+// colour never has to identify anything on its own. The server validates a group's hue against
+// these ids (agents_map.py, HUE_IDS): change both together.
 
 export const HUES = [
-  ['red', 'Red', '#e34948', '#e66767'], ['orange', 'Orange', '#eb6834', '#d95926'],
-  ['yellow', 'Yellow', '#eda100', '#c98500'], ['green', 'Green', '#008300', '#008300'],
-  ['aqua', 'Aqua', '#1baf7a', '#199e70'], ['blue', 'Blue', '#2a78d6', '#3987e5'],
-  ['violet', 'Violet', '#6250d6', '#9085e9'], ['magenta', 'Pink', '#e87ba4', '#d55181'],
-  ['grey', 'Grey', '#7a7974', '#8a8983']
+  ['red', 'Red', '#B83A3A', '#E06C6C'], ['orange', 'Orange', '#C8612C', '#E38C5A'],
+  ['yellow', 'Amber', '#AE7D16', '#DCB750'], ['lime', 'Lime', '#708D28', '#A6C564'],
+  ['green', 'Green', '#2C7D46', '#62B678'], ['teal', 'Teal', '#177A7A', '#49B5B0'],
+  ['aqua', 'Sky', '#2582B8', '#63BCE8'], ['blue', 'Blue', '#305FBD', '#6893E6'],
+  ['indigo', 'Indigo', '#4343A2', '#6F76CC'], ['violet', 'Violet', '#6E49B8', '#A485E4'],
+  ['magenta', 'Plum', '#983A84', '#D076BA'], ['pink', 'Rose', '#C74A6E', '#E8839E'],
+  ['brown', 'Brown', '#8A6246', '#BA9476'], ['grey', 'Gray', '#70757D', '#9A9FA8']
 ];
 // Share of the hue mixed into the theme's surface, lightest row first. Kept restrained so
 // agent boxes stay calm and readable while heat steps clearly from quiet to running.

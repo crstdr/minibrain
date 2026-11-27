@@ -63,7 +63,10 @@ GROUP_ID_RE = re.compile(r"^g[0-9a-z]{4,12}$")
 SAVE_ID_RE = re.compile(r"^s[0-9a-f]{8,20}$")
 SLOT_RE = re.compile(r"^[a-z][a-z0-9]{0,7}$")
 FILL_RE = re.compile(r"^[a-z]{3,8}-[1-9]$")  # background colour: hue-intensity, e.g. "blue-3"
-HUE_IDS = ("red", "orange", "yellow", "green", "aqua", "blue", "violet", "magenta", "grey")  # as web/colors.js HUES
+HUE_IDS = (
+    "red", "orange", "yellow", "lime", "green", "teal", "aqua",
+    "blue", "indigo", "violet", "magenta", "pink", "brown", "grey",
+)  # as web/colors.js HUES
 VIEW_SWITCHES = ("links", "counts", "wake", "recent", "live")  # the View panel's switches
 
 
