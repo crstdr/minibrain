@@ -833,16 +833,7 @@ def roadmap_document(collections_file, collection_id, collect, known=()):
     entry = next((e for e in entries if e["id"] == collection_id), None)
     if not entry:
         raise KeyError(collection_id)
-    external_done = roadmap.build_external_done([e for e in entries if e["id"] != collection_id])
-    doc = roadmap.document(
-        entry["collection"],
-        title=entry["title"],
-        lane=entry["lane"],
-        collection_id=entry["id"],
-        external_done=external_done,
-    )
-    if not doc["has_graph"]:
-        raise KeyError(collection_id)
+    doc, node_routing = roadmap.document_from_registry(entries, collection_id)
     try:
         graph_data = collect(recent=False, known=known)
     except Exception:
@@ -851,6 +842,11 @@ def roadmap_document(collections_file, collection_id, collect, known=()):
     open_agents = _open_agents(agents)
     closed_agents = [a for a in agents if a.get("closed")]
     names = {n["lane"] for n in doc["nodes"] if n.get("lane")}
+    for lane_val, _, owner_lane, _ in node_routing.values():
+        if lane_val:
+            names.add(lane_val)
+        if owner_lane:
+            names.add(owner_lane)
     if doc["lane"]:
         names.add(doc["lane"])
     lanes = roadmap.resolve_lanes(names, open_agents)
@@ -860,15 +856,18 @@ def roadmap_document(collections_file, collection_id, collect, known=()):
     )
     if doc["lane"] and owner_sid:
         lanes[doc["lane"]] = owner_sid
-    # Also resolve per-record lane-link overrides (without leaking raw unvalidated URLs).
-    items, _, _, _, _ = roadmap._load_all(entry["collection"])
+    # Resolve per-node lane-link overrides for both local and cross-collection nodes (never leaking raw URLs).
     node_agents = {}
     for n in doc["nodes"]:
-        it = items.get(n["id"])
+        n_lane, n_link, o_lane, o_link = node_routing.get(n["id"], (n.get("lane", ""), "", doc["lane"], entry["lane_link"]))
+        n_owner_sid = (
+            roadmap.resolve_lane_link(o_link, open_agents)
+            or (lanes.get(o_lane) if o_lane else None)
+        )
         sid = (
-            (roadmap.resolve_lane_link(it["lane_link"], open_agents) if it and it["lane_link"] else None)
-            or (lanes.get(n["lane"]) if n["lane"] else None)
-            or owner_sid
+            (roadmap.resolve_lane_link(n_link, open_agents) if n_link else None)
+            or (lanes.get(n_lane) if n_lane else None)
+            or n_owner_sid
         )
         if sid:
             node_agents[n["id"]] = sid

@@ -269,7 +269,6 @@ def _build_item(label, title, headers, fields, body, cname, archived=False):
         "needs": [],
         "serves": [],
         "archived_needs": [],
-        "external_needs": [],
         "unresolved_needs": [],
         "unresolved_serves": [],
     }
@@ -378,18 +377,7 @@ def _graph_edges(items, archived=None):
     return deps
 
 
-def _resolve_external(raw_ref, external_done):
-    """(found, is_done) for a cross-collection 'col/id' ref against optional external_done map."""
-    if not external_done or "/" not in raw_ref:
-        return False, False
-    col, _, rid = raw_ref.partition("/")
-    table = external_done.get(col)
-    if table is None or rid not in table:
-        return False, False
-    return True, bool(table[rid])
-
-
-def _load_all(collection_dir, external_done=None):
+def _load_all(collection_dir, warn_external=True):
     """(active_items, archived_items, problems, warnings, incomplete) for one collection."""
     folder = Path(collection_dir)
     cname = _collection_name(folder)
@@ -459,7 +447,8 @@ def _load_all(collection_dir, external_done=None):
             if src != "unknown" and not (sep and loc.strip() and obs.strip()):
                 problems.append("%s: source needs '<location> @ <observation>' or unknown" % label)
 
-        # Resolve needs: local active, local archived, cross-collection, or unresolved (not an error).
+        # Resolve local needs and serves; external 'col/id' refs are resolved across the registry
+        # when registered collections are loaded, or reported unresolved standalone.
         for ref in item["_needs_local"]:
             if ref in items:
                 item["needs"].append(ref)
@@ -467,14 +456,6 @@ def _load_all(collection_dir, external_done=None):
                 item["archived_needs"].append({"id": ref, "done": archived[ref]["state"] == "done"})
             else:
                 item["unresolved_needs"].append(ref)
-        for raw_ref in item["_needs_ext"]:
-            found, done = _resolve_external(raw_ref, external_done)
-            if found:
-                item["external_needs"].append({"ref": raw_ref, "done": done})
-            else:
-                item["unresolved_needs"].append(raw_ref)
-
-        # Resolve serves: may target any active item; unresolved refs are shown, not errors.
         for ref in item["_serves_local"]:
             if ref in items:
                 item["serves"].append(ref)
@@ -482,13 +463,13 @@ def _load_all(collection_dir, external_done=None):
                 continue
             else:
                 item["unresolved_serves"].append(ref)
-        for raw_ref in item["_serves_ext"]:
-            item["unresolved_serves"].append(raw_ref)
-
-        if item["unresolved_needs"]:
-            warnings.append("%s: unresolved needs: %s" % (label, ", ".join(item["unresolved_needs"])))
-        if item["unresolved_serves"]:
-            warnings.append("%s: unresolved serves: %s" % (label, ", ".join(item["unresolved_serves"])))
+        if warn_external:
+            item["unresolved_needs"].extend(item["_needs_ext"])
+            item["unresolved_serves"].extend(item["_serves_ext"])
+            if item["unresolved_needs"]:
+                warnings.append("%s: unresolved needs: %s" % (label, ", ".join(item["unresolved_needs"])))
+            if item["unresolved_serves"]:
+                warnings.append("%s: unresolved serves: %s" % (label, ", ".join(item["unresolved_serves"])))
 
     deps = _graph_edges(items, archived)
     cycle = _cycle(deps)
@@ -497,12 +478,12 @@ def _load_all(collection_dir, external_done=None):
     return items, archived, problems, warnings, incomplete
 
 
-def load(collection_dir, external_done=None):
+def load(collection_dir):
     """(items_by_id, problems, warnings) for one collection.<name>/ folder.
 
     Read-only. Messages never contain host filesystem paths beyond the collection folder name.
     """
-    items, _, problems, warnings, _ = _load_all(collection_dir, external_done=external_done)
+    items, _, problems, warnings, _ = _load_all(collection_dir)
     return items, problems, warnings
 
 
@@ -517,9 +498,10 @@ def _local_today(now=None):
     return now
 
 
-def derive(items, archived=None, now=None):
+def derive(items, archived=None, now=None, external_items=None):
     """Compute open, overdue, attention and blocked on every active item in place."""
     today = _local_today(now)
+    ext = external_items or {}
     for item in items.values():
         opened = is_open(item)
         due_day = _day(item["due"]) if item["due"] else None
@@ -527,11 +509,12 @@ def derive(items, archived=None, now=None):
         att = bool(opened and (item["state"] == "awaiting-user" or overdue))
         unmet = False
         if opened:
-            if any(items[ref]["state"] != "done" for ref in item["needs"]):
-                unmet = True
-            elif any(not entry["done"] for entry in item["archived_needs"]):
-                unmet = True
-            elif any(not entry["done"] for entry in item["external_needs"]):
+            for ref in item["needs"]:
+                target = items.get(ref) if ref in items else ext.get(ref)
+                if target is not None and target["state"] != "done":
+                    unmet = True
+                    break
+            if not unmet and any(not entry["done"] for entry in item["archived_needs"]):
                 unmet = True
         blocked = bool(opened and (item["state"] == "blocked" or unmet))
         item["open"] = opened
@@ -541,11 +524,13 @@ def derive(items, archived=None, now=None):
         item["due_epoch"] = _due_epoch(due_day)
 
 
-def has_graph_links(items):
-    """True when at least one active item declares needs or serves."""
+def has_graph_links(items, has_incoming=False):
+    """True when at least one active item declares needs/serves or receives cross-collection links."""
+    if has_incoming:
+        return True
     return any(
         item["needs"] or item["serves"] or item["archived_needs"]
-        or item["external_needs"] or item["unresolved_needs"] or item["unresolved_serves"]
+        or item["unresolved_needs"] or item["unresolved_serves"]
         for item in items.values()
     )
 
@@ -660,10 +645,10 @@ def _item_sort_key(item):
     return (rank, sub, item["due"] or "9999", item["id"])
 
 
-def _summarize_loaded(entry, items, archived, incomplete, agents, now=None, allowed_schemes=ALLOWED_LINK_SCHEMES):
+def _summarize_loaded(entry, items, archived, incomplete, agents, now=None, allowed_schemes=ALLOWED_LINK_SCHEMES, external_items=None, has_incoming=False):
     """Build one unified Agents Map collection block from already-loaded items."""
-    derive(items, archived=archived, now=now)
-    is_graph = has_graph_links(items)
+    derive(items, archived=archived, now=now, external_items=external_items)
+    is_graph = has_graph_links(items, has_incoming=has_incoming)
     lanes_needed = {it["lane"] for it in items.values() if it["open"] and it["lane"]}
     if entry["lane"]:
         lanes_needed.add(entry["lane"])
@@ -730,7 +715,6 @@ def collection_summary(
     lane="",
     lane_link="",
     now=None,
-    external_done=None,
     allowed_schemes=ALLOWED_LINK_SCHEMES,
 ):
     """Build one unified Agents Map collection block (open items + graph flag) without writing files.
@@ -738,7 +722,7 @@ def collection_summary(
     Returns (block_or_none, warnings). Never leaks host paths.
     """
     label = title or _collection_name(collection_dir).replace("-", " ").title()
-    items, archived, _, _, incomplete = _load_all(collection_dir, external_done=external_done)
+    items, archived, _, _, incomplete = _load_all(collection_dir)
     if not items and incomplete:
         return None, ["Collection '%s' is unreadable." % label]
     entry = {"id": source_id, "title": label, "lane": lane, "lane_link": lane_link}
@@ -755,16 +739,13 @@ def validate(collection_dir, now=None):
     return len(items), problems, warnings
 
 
-def document(collection_dir, title="", lane="", collection_id="", now=None, external_done=None):
-    """Build the Roadmap graph document from a collection folder.
-
-    Never exposes host filesystem paths outside the user's configured record text.
-    """
-    items, archived, problems, warnings, _ = _load_all(collection_dir, external_done=external_done)
-    derive(items, archived=archived, now=now)
+def _build_document(items, archived, problems, warnings, cname, title="", lane="", collection_id="", now=None, is_graph=None):
+    """Serialize one already-derived item graph into a schema-2 Roadmap document."""
     active_deps, roots, loose, waiting = graph(items, archived=archived)
-    is_graph = has_graph_links(items)
-    cname = _collection_name(collection_dir)
+    if is_graph is None:
+        is_graph = has_graph_links(items)
+    cid = collection_id or cname
+    doc_title = title or cname.replace("-", " ").title()
 
     ordered = list(roots) + [k for k in sorted(items) if k not in set(roots)]
     nodes = []
@@ -773,6 +754,10 @@ def document(collection_dir, title="", lane="", collection_id="", now=None, exte
         nodes.append({
             "id": it["id"],
             "title": it["title"] or it["id"],
+            "external": bool(it.get("external")),
+            "source": it.get("source") or cid,
+            "source_id": it.get("source_id") or it["id"],
+            "source_title": it.get("source_title") or doc_title,
             "state": it["state"],
             "state_detail": it["state_detail"],
             "state_raw": it["state_raw"],
@@ -787,7 +772,6 @@ def document(collection_dir, title="", lane="", collection_id="", now=None, exte
             "serves": it["serves"],
             "graph_deps": active_deps[key],
             "archived_needs": it["archived_needs"],
-            "external_needs": it["external_needs"],
             "unresolved_needs": it["unresolved_needs"],
             "unresolved_serves": it["unresolved_serves"],
             "behind": waiting[key],
@@ -797,8 +781,8 @@ def document(collection_dir, title="", lane="", collection_id="", now=None, exte
     stamp = (now or datetime.datetime.now()).astimezone()
     return {
         "schema": 2,
-        "id": collection_id or cname,
-        "title": title or cname.replace("-", " ").title(),
+        "id": cid,
+        "title": doc_title,
         "collection": "collection." + cname,
         "generated": stamp.isoformat(timespec="seconds"),
         "lane": lane or "",
@@ -809,6 +793,18 @@ def document(collection_dir, title="", lane="", collection_id="", now=None, exte
         "problems": problems[:20],
         "warnings": warnings[:20],
     }
+
+
+def document(collection_dir, title="", lane="", collection_id="", now=None):
+    """Build the Roadmap graph document from a single collection folder (standalone mode).
+
+    Never exposes host filesystem paths outside the user's configured record text.
+    """
+    items, archived, problems, warnings, _ = _load_all(collection_dir)
+    derive(items, archived=archived, now=now)
+    cname = _collection_name(collection_dir)
+    return _build_document(items, archived, problems, warnings, cname,
+                           title=title, lane=lane, collection_id=collection_id, now=now)
 
 
 def _canonical_path(path_str):
@@ -907,84 +903,222 @@ def read_registry(path):
     return entries, warnings
 
 
-def _resolve_external_needs(items, external_done):
-    """Upgrade unresolved cross-collection needs using external_done map (in place)."""
-    if not external_done:
-        return
-    for item in items.values():
-        still = []
-        for raw_ref in item["unresolved_needs"]:
-            found, done = _resolve_external(raw_ref, external_done)
-            if found:
-                item["external_needs"].append({"ref": raw_ref, "done": done})
-            else:
-                still.append(raw_ref)
-        item["unresolved_needs"] = still
+def _load_registry_graph(entries, now=None):
+    """Load all registered collections once and resolve cross-collection needs/serves edges.
 
-
-def load_collections(entries, agents, now=None, allowed_schemes=ALLOWED_LINK_SCHEMES):
-    """Load all registered collections in a single pass, resolving cross-collection needs.
-
-    Returns (blocks, warnings). Zero host paths returned.
+    Returns (records, by_id, external_items, incoming).
     """
-    loaded = []
-    by_name, collisions = {}, set()
+    records, by_id, by_ref_name, collisions = [], {}, {}, set()
     for entry in entries:
         label = entry["title"]
         try:
-            items, archived, problems, _, incomplete = _load_all(entry["collection"])
+            items, archived, problems, warnings, incomplete = _load_all(entry["collection"], warn_external=False)
         except Exception as error:
             print("collection load failed (%s): %r" % (entry["id"], error), file=sys.stderr)
-            loaded.append((entry, None, None, True, ["Collection '%s' is unreadable." % label]))
+            rec = {"entry": entry, "items": None, "archived": None, "problems": [], "warnings": [],
+                   "incomplete": True, "load_errors": ["Collection '%s' is unreadable." % label]}
+            records.append(rec)
+            by_id[entry["id"]] = rec
             continue
         if not items and incomplete:
-            loaded.append((entry, None, None, True, ["Collection '%s' is unreadable." % label]))
+            rec = {"entry": entry, "items": None, "archived": None, "problems": problems, "warnings": warnings,
+                   "incomplete": True, "load_errors": ["Collection '%s' is unreadable." % label]}
+            records.append(rec)
+            by_id[entry["id"]] = rec
             continue
-        table = {k: (v["state"] == "done") for k, v in archived.items()}
-        table.update({k: (v["state"] == "done") for k, v in items.items()})
-        cname = _collection_name(entry["collection"])
-        for key in (cname, entry["id"]):
-            if key in by_name and by_name[key] is not table:
+        rec = {"entry": entry, "items": items, "archived": archived, "problems": problems, "warnings": warnings,
+               "incomplete": incomplete, "load_errors": [], "cname": _collection_name(entry["collection"])}
+        records.append(rec)
+        by_id[entry["id"]] = rec
+        for key in (rec["cname"], entry["id"]):
+            if key in by_ref_name and by_ref_name[key] is not rec:
                 collisions.add(key)
             else:
-                by_name[key] = table
-        loaded.append((entry, items, archived, incomplete, []))
+                by_ref_name[key] = rec
     for key in collisions:
-        by_name.pop(key, None)
+        by_ref_name.pop(key, None)
 
-    blocks, warnings = [], []
-    for entry, items, archived, incomplete, errs in loaded:
-        if items is None:
-            warnings.extend(errs)
+    incoming = {rec["entry"]["id"]: set() for rec in records}
+    external_items = {}
+    for rec in records:
+        if rec["items"] is None:
             continue
-        _resolve_external_needs(items, by_name)
+        cid = rec["entry"]["id"]
+        for rid, item in rec["items"].items():
+            external_items["%s/%s" % (cid, rid)] = item
+
+    # Resolve cross-collection needs and serves across all registered collections.
+    for rec in records:
+        if rec["items"] is None:
+            continue
+        cid = rec["entry"]["id"]
+        items, archived = rec["items"], rec["archived"]
+        for item in items.values():
+            label = item["id"]
+            for raw_ref in item["_needs_ext"]:
+                col, _, rid = raw_ref.partition("/")
+                target = by_ref_name.get(col)
+                if target is rec:
+                    if rid in items:
+                        if rid not in item["needs"]:
+                            item["needs"].append(rid)
+                    elif rid in archived:
+                        if not any(e["id"] == rid for e in item["archived_needs"]):
+                            item["archived_needs"].append({"id": rid, "done": archived[rid]["state"] == "done"})
+                    elif raw_ref not in item["unresolved_needs"]:
+                        item["unresolved_needs"].append(raw_ref)
+                elif target is not None:
+                    tid = target["entry"]["id"]
+                    qid = "%s/%s" % (tid, rid)
+                    if rid in target["items"]:
+                        if qid not in item["needs"]:
+                            item["needs"].append(qid)
+                        incoming[tid].add((cid, label))
+                    elif rid in target["archived"]:
+                        if not any(e["id"] == qid for e in item["archived_needs"]):
+                            item["archived_needs"].append({"id": qid, "done": target["archived"][rid]["state"] == "done"})
+                    elif raw_ref not in item["unresolved_needs"]:
+                        item["unresolved_needs"].append(raw_ref)
+                elif raw_ref not in item["unresolved_needs"]:
+                    item["unresolved_needs"].append(raw_ref)
+
+            for raw_ref in item["_serves_ext"]:
+                col, _, rid = raw_ref.partition("/")
+                target = by_ref_name.get(col)
+                if target is rec:
+                    if rid in items:
+                        if rid not in item["serves"]:
+                            item["serves"].append(rid)
+                    elif rid in archived:
+                        continue
+                    elif raw_ref not in item["unresolved_serves"]:
+                        item["unresolved_serves"].append(raw_ref)
+                elif target is not None:
+                    tid = target["entry"]["id"]
+                    qid = "%s/%s" % (tid, rid)
+                    if rid in target["items"]:
+                        if qid not in item["serves"]:
+                            item["serves"].append(qid)
+                        incoming[tid].add((cid, label))
+                    elif rid in target["archived"]:
+                        continue
+                    elif raw_ref not in item["unresolved_serves"]:
+                        item["unresolved_serves"].append(raw_ref)
+                elif raw_ref not in item["unresolved_serves"]:
+                    item["unresolved_serves"].append(raw_ref)
+
+            if item["unresolved_needs"]:
+                rec["warnings"].append("%s: unresolved needs: %s" % (label, ", ".join(item["unresolved_needs"])))
+            if item["unresolved_serves"]:
+                rec["warnings"].append("%s: unresolved serves: %s" % (label, ", ".join(item["unresolved_serves"])))
+
+    for rec in records:
+        if rec["items"] is None:
+            continue
+        derive(rec["items"], archived=rec["archived"], now=now, external_items=external_items)
+        rec["has_graph"] = has_graph_links(rec["items"], has_incoming=bool(incoming.get(rec["entry"]["id"])))
+    return records, by_id, external_items, incoming
+
+
+def load_collections(entries, agents, now=None, allowed_schemes=ALLOWED_LINK_SCHEMES):
+    """Load all registered collections in a single pass, resolving cross-collection needs and serves.
+
+    Returns (blocks, warnings). Zero host paths returned.
+    """
+    records, _, external_items, incoming = _load_registry_graph(entries, now=now)
+    blocks, warnings = [], []
+    for rec in records:
+        if rec["items"] is None:
+            warnings.extend(rec["load_errors"])
+            continue
         block, notes = _summarize_loaded(
-            entry, items, archived, incomplete, agents, now=now, allowed_schemes=allowed_schemes,
+            rec["entry"], rec["items"], rec["archived"], rec["incomplete"], agents,
+            now=now, allowed_schemes=allowed_schemes, external_items=external_items,
+            has_incoming=bool(incoming.get(rec["entry"]["id"])),
         )
         blocks.append(block)
         warnings.extend(notes)
     return blocks, warnings
 
 
-def build_external_done(entries):
-    """Map unambiguous collection folder names and registry ids to {item_id: is_done_bool}."""
-    by_name, collisions, loaded = {}, set(), {}
-    for entry in entries:
-        items, archived, _, _, _ = _load_all(entry["collection"])
-        if not items and not archived:
+def document_from_registry(entries, collection_id, now=None):
+    """Build a schema-2 Roadmap document for one registered collection with cross-collection nodes and edges.
+
+    Returns (doc, node_routing) where node_routing maps node_id -> (lane, lane_link, owner_lane, owner_lane_link)
+    for internal agent resolution without exposing raw lane-link URLs.
+    """
+    _, by_id, _, incoming = _load_registry_graph(entries, now=now)
+    rec = by_id.get(collection_id)
+    if not rec or rec["items"] is None or not rec.get("has_graph"):
+        raise KeyError(collection_id)
+
+    entry = rec["entry"]
+    cid = entry["id"]
+    local_prefix = cid + "/"
+    doc_items = {}
+    node_routing = {}
+    for rid, item in rec["items"].items():
+        copy = dict(item)
+        copy["external"] = False
+        copy["source"] = cid
+        copy["source_id"] = rid
+        copy["source_title"] = entry["title"]
+        doc_items[rid] = copy
+        node_routing[rid] = (item["lane"], item["lane_link"], entry["lane"], entry["lane_link"])
+
+    neighbour_pairs = set(incoming.get(cid, ()))
+    for item in rec["items"].values():
+        for ref in item["needs"] + item["serves"]:
+            if "/" in ref:
+                oid, _, orid = ref.partition("/")
+                if oid != cid:
+                    neighbour_pairs.add((oid, orid))
+
+    for oid, orid in sorted(neighbour_pairs):
+        other = by_id.get(oid)
+        if not other or other["items"] is None or orid not in other["items"]:
             continue
-        table = {k: (v["state"] == "done") for k, v in archived.items()}
-        table.update({k: (v["state"] == "done") for k, v in items.items()})
-        loaded[entry["id"]] = table
-        cname = _collection_name(entry["collection"])
-        for key in (cname, entry["id"]):
-            if key in by_name and by_name[key] is not table:
-                collisions.add(key)
-            else:
-                by_name[key] = table
-    for key in collisions:
-        by_name.pop(key, None)
-    return by_name
+        o_entry = other["entry"]
+        o_item = other["items"][orid]
+        qid = "%s/%s" % (oid, orid)
+        ext_needs = [
+            ref[len(local_prefix):]
+            for ref in o_item["needs"]
+            if ref.startswith(local_prefix) and ref[len(local_prefix):] in rec["items"]
+        ]
+        ext_serves = [
+            ref[len(local_prefix):]
+            for ref in o_item["serves"]
+            if ref.startswith(local_prefix) and ref[len(local_prefix):] in rec["items"]
+        ]
+        eff_lane = o_item["lane"] or o_entry["lane"]
+        copy = dict(o_item)
+        copy["id"] = qid
+        copy["external"] = True
+        copy["source"] = oid
+        copy["source_id"] = orid
+        copy["source_title"] = o_entry["title"]
+        copy["lane"] = eff_lane
+        copy["needs"] = ext_needs
+        copy["serves"] = ext_serves
+        copy["archived_needs"] = []
+        copy["unresolved_needs"] = []
+        copy["unresolved_serves"] = []
+        doc_items[qid] = copy
+        node_routing[qid] = (o_item["lane"], o_item["lane_link"], o_entry["lane"], o_entry["lane_link"])
+
+    problems = list(rec["problems"])
+    cycle = _cycle(_graph_edges(doc_items, rec["archived"]))
+    if cycle:
+        msg = "needs cycle: " + " -> ".join(cycle)
+        if msg not in problems:
+            problems.append(msg)
+
+    doc = _build_document(
+        doc_items, rec["archived"], problems, rec["warnings"], rec["cname"],
+        title=entry["title"], lane=entry["lane"], collection_id=cid, now=now, is_graph=True,
+    )
+    return doc, node_routing
 
 
 def summary(collection_dir, title="", lane="", now=None):

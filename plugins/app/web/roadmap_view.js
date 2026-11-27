@@ -58,11 +58,13 @@ function snoozeKey(source, id) {
 
 function calmState(source, n) {
   if (!n || !n.attention) return { seen: false, until: null };
+  const src = n.source || source;
+  const rid = n.source_id || n.id;
   const s = loadStore(SEEN_KEY);
   const sn = loadStore(SNOOZE_KEY);
-  const sk = seenKey(source, n.id, n.due, n.title, n.state_raw);
+  const sk = seenKey(src, rid, n.due, n.title, n.state_raw);
   const seen = s[sk] === true;
-  const nk = snoozeKey(source, n.id);
+  const nk = snoozeKey(src, rid);
   const saved = sn[nk];
   const sig = itemSig(n.due, n.title, n.state_raw);
   const until = saved && saved.sig === sig && Number.isFinite(saved.until) && saved.until > Date.now() ? saved.until : null;
@@ -70,16 +72,20 @@ function calmState(source, n) {
 }
 
 function setItemSeen(source, n, on) {
+  const src = n.source || source;
+  const rid = n.source_id || n.id;
   const s = loadStore(SEEN_KEY);
-  const k = seenKey(source, n.id, n.due, n.title, n.state_raw);
+  const k = seenKey(src, rid, n.due, n.title, n.state_raw);
   if (on) s[k] = true;
   else delete s[k];
   saveStore(SEEN_KEY, s);
 }
 
 function setItemSnooze(source, n, duration) {
+  const src = n.source || source;
+  const rid = n.source_id || n.id;
   const sn = loadStore(SNOOZE_KEY);
-  const k = snoozeKey(source, n.id);
+  const k = snoozeKey(src, rid);
   if (!duration) delete sn[k];
   else {
     const now = new Date();
@@ -308,6 +314,7 @@ export function mountRoadmap(container, opts = {}) {
   }
 
   function effectiveLane(n) {
+    if (n.external) return n.lane || '';
     return n.lane || (st.doc && st.doc.lane) || '';
   }
 
@@ -402,7 +409,7 @@ export function mountRoadmap(container, opts = {}) {
     const counts = new Map();
     let totalOpen = 0;
     for (const n of d.nodes) {
-      if (n.open) {
+      if (n.open && !n.external) {
         totalOpen++;
         const ln = effectiveLane(n);
         if (ln) counts.set(ln, (counts.get(ln) || 0) + 1);
@@ -537,10 +544,13 @@ export function mountRoadmap(container, opts = {}) {
 
     for (const id of st.vis) {
       const n = st.N.get(id), p = st.pos.get(id);
-      const el = h('div', 'rm-nd ' + stateClass(n));
+      const el = h('div', 'rm-nd ' + stateClass(n) + (n.external ? ' ext' : ''));
       el.dataset.id = id;
       el.style.left = p.x + 'px';
       el.style.top = p.y + 'px';
+      if (n.external && n.source_title) {
+        el.append(h('span', 'rm-src', mask(n.source_title, 'Collection')));
+      }
       el.append(h('b', '', displayNodeTitle(n, n._idx)));
 
       el.onclick = e => {
@@ -685,12 +695,28 @@ export function mountRoadmap(container, opts = {}) {
         aside.append(d);
       };
       const targetLane = effectiveLane(n);
+      if (n.external && n.source_title) kv('Collection', mask(n.source_title, 'Collection'));
       kv('Lane', displayLane(targetLane));
       if (n.due) kv('Due', n.due + (n.overdue ? ' (overdue)' : ''));
       if (n.behind) kv('Unlocks', `${n.behind} open`);
       (n.headers || []).forEach(([k, v]) => kv(k, mask(v)));
 
       const acts = h('div', 'rm-actions');
+      if (n.external && n.source && st.roadmaps.some(r => r.id === n.source)) {
+        const b = h('button', '', st.obfuscate ? 'Open collection' : `Open ${n.source_title || n.source}`);
+        b.type = 'button';
+        b.onclick = () => {
+          st.roadmapId = n.source;
+          st.lane = null;
+          st.sel = n.source_id || null;
+          st.view = 'all';
+          st.fitted = false;
+          st.key = '';
+          if (opts.onSwitchRoadmap) opts.onSwitchRoadmap(n.source);
+          fetchDoc(true);
+        };
+        acts.append(b);
+      }
       const sid = (st.doc.node_agents && st.doc.node_agents[n.id]) || agentIdOf(targetLane);
       const openInfo = (st.doc.node_open && st.doc.node_open[n.id])
         || (st.doc.open && targetLane && Object.prototype.hasOwnProperty.call(st.doc.open, targetLane) ? st.doc.open[targetLane] : null);
@@ -759,9 +785,6 @@ export function mountRoadmap(container, opts = {}) {
       mkStaticList('Archived prerequisites', (n.archived_needs || []).map(e => ({
         done: e.done, label: mask(e.id, 'archived/•••') + (e.done ? '' : ' (open)'),
       })), e => e.done ? 'var(--rm-done)' : 'var(--rm-blocked)');
-      mkStaticList('External prerequisites', (n.external_needs || []).map(e => ({
-        done: e.done, label: mask(e.ref, 'external/•••') + (e.done ? '' : ' (open)'),
-      })), e => e.done ? 'var(--rm-done)' : 'var(--rm-blocked)');
       const unresolved = [
         ...(n.unresolved_needs || []).map(ref => ({ label: 'needs: ' + mask(ref, '•••') + ' (unresolved)' })),
         ...(n.unresolved_serves || []).map(ref => ({ label: 'serves: ' + mask(ref, '•••') + ' (unresolved)' })),
@@ -774,8 +797,8 @@ export function mountRoadmap(container, opts = {}) {
     aside.append(h('span', 'rm-tag', st.obfuscate ? 'collection' : st.doc.collection));
     aside.append(h('h3', '', st.lane ? `${displayLane(st.lane)}'s lane` : displayTitle(st.doc)));
     const scope = st.lane
-      ? st.doc.nodes.filter(n => n.open && sameLane(effectiveLane(n), st.lane))
-      : st.doc.nodes.filter(n => n.open);
+      ? st.doc.nodes.filter(n => !n.external && n.open && sameLane(effectiveLane(n), st.lane))
+      : st.doc.nodes.filter(n => !n.external && n.open);
     const attList = scope.filter(n => n.attention).sort((a, b) => (b.behind - a.behind) || a.id.localeCompare(b.id));
     const blkList = scope.filter(n => !n.attention && n.blocked).sort((a, b) => (b.behind - a.behind) || a.id.localeCompare(b.id));
     aside.append(h('div', 'rm-kv', `${scope.length} open · ${attList.length} attention`));

@@ -149,6 +149,9 @@ body.rm-standalone * { box-sizing: border-box; }
   transition: opacity .15s, box-shadow .15s;
 }
 .rm-nd b { font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.rm-nd.ext { border-style: dashed; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; }
+.rm-nd.ext b { -webkit-line-clamp: 1; }
+.rm-src { font-size: 9.5px; font-weight: 600; color: var(--rm-ink2); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rm-nd.off { opacity: 0.14; }
 .rm-nd.sel { box-shadow: 0 0 0 2.5px var(--rm-sel-ring); z-index: 6; }
 .rm-nd.group { background: var(--rm-bg2); border-style: dashed; color: var(--rm-ink2); cursor: default; }

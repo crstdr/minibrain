@@ -12,9 +12,9 @@ One Markdown file per item (`<id>.md`, slug ID): `# Title`, optional blank line,
   - `blocked`: open, cannot proceed (red).
   - `awaiting-user [who]`: open, needs a person (detail names who; default: the user).
   - Any other first word or no `state`: open, neutral, no colour. `check` warns on near-misses of reserved words.
-- `needs`, `serves`: space- or comma-separated references. Bare `id` is local; `collection/id` crosses collections. `serves` may target any item. Unresolved references show as unresolved, not errors.
+- `needs`, `serves`: space- or comma-separated references. Bare `id` is local; `collection/id` crosses registered collections (folder `<name>` or registry `id`). `serves` may target any item. Unresolved references show as unresolved, not errors.
 - `due`: `YYYY-MM-DD`.
-- `lane`, `lane-link`: optional overrides of the collection defaults. `lane` is the agent's name; `lane-link` is a harness deep link (for example `repoprompt-ce://...`), used when it resolves, else `lane`.
+- `lane`, `lane-link`: optional overrides; if omitted, the item takes the collection's `lane` and `lane_link`. `lane` is the agent's name; `lane-link` is a harness deep link (for example `repoprompt-ce://...`), used when it resolves, else `lane`.
 - Other headers (including `kind`, `owner`, `source`, `tags`): shown generically. No `kind` is special.
 
 ## Derived states (never stored)
