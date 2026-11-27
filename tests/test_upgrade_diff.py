@@ -161,3 +161,35 @@ class UpgradeDiffTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which("git") and has_ref("v0.9.1"), "needs release tags")
+class HostBlockAndPluginTests(unittest.TestCase):
+    """Upgrades also cover the RepoPrompt CE block brains copy into AGENTS.md, and name changed plugins."""
+
+    def brain(self, with_block):
+        brain = Path(tempfile.mkdtemp(prefix="minibrain-upgrade-"))
+        self.addCleanup(shutil.rmtree, brain)
+        archive = subprocess.run(["git", "-C", str(ROOT), "archive", "v0.9.1", "starter"], capture_output=True, check=True)
+        subprocess.run(["tar", "-x", "--strip-components=1", "-C", str(brain)], input=archive.stdout, check=True)
+        if with_block:
+            host = subprocess.run(["git", "-C", str(ROOT), "show", "v0.9.1:hosts/repoprompt.md"],
+                                  capture_output=True, text=True, check=True).stdout
+            agents = brain / "AGENTS.md"
+            agents.write_text(agents.read_text() + "\n" + host[host.index("<rpce_tooling_guidance>"):])
+        return brain
+
+    def run_tool(self, brain):
+        return subprocess.run([sys.executable, str(TOOL), "HEAD", str(brain), "--from", "v0.9.1"],
+                              capture_output=True, text=True, check=True).stdout
+
+    def test_block_is_compared_only_when_the_brain_has_it(self):
+        out = self.run_tool(self.brain(with_block=True))
+        self.assertIn("inspect: AGENTS.md (RepoPrompt CE block)", out)
+        self.assertRegex(out, r"\+ - MAP — .*\[missing\]")
+        self.assertIn("not compared; AGENTS.md has no RepoPrompt CE block", self.run_tool(self.brain(with_block=False)))
+
+    def test_changed_and_removed_plugins_are_named(self):
+        out = self.run_tool(self.brain(with_block=False))
+        self.assertRegex(out, r"plugins changed \(.*\): .*agents-map")
+        self.assertIn("plugins removed upstream: map", out)

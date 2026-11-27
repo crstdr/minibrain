@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Show an upgrading agent, change by change, which upstream starter edits a brain already has.
+"""Show an upgrading agent, change by change, which upstream starter edits a brain already has,
+including its RepoPrompt CE block, and which plugins changed.
 
 Run from a minibrain clone, outside the brain:
     python3 tools/upgrade_diff.py <target-ref> <brain-dir> [--from <adopted-ref>|auto]
@@ -24,6 +25,8 @@ For replaced lines, "upstream change" first shows what the release itself change
 --map to path#heading compares a starter file with one section of a brain file. CLAUDE.md-style
 @file imports are followed. Dash variants and spacing are ignored when matching.
 Helpers are compared with the target as a short diff, with functions present only in the target named.
+hosts/repoprompt.md: its <rpce_tooling_guidance> block is compared with AGENTS.md when the brain has that block.
+Plugins install outside brains: changed plugin folders are listed, for their own Update steps.
 Read-only. Evidence, not a verdict: the upgrading agent decides what to take, merge or keep.
 Exit 2 on bad arguments, an unresolvable ref or a brain folder without AGENTS.md; a review with no\nusable base is still a valid result (exit 0).
 """
@@ -36,6 +39,8 @@ import sys
 REPO = Path(__file__).resolve().parent.parent
 HELPER_DIFF_LINES = 40
 SEEDS = ("MEMORY.md", "CHANGELOG.md", "MAP.md", "spaces/")  # starter seeds that hold the brain's own memory
+HOST = "hosts/repoprompt.md"  # brains copy its block into AGENTS.md
+HOST_BLOCK = ("<rpce_tooling_guidance>", "</rpce_tooling_guidance>")
 
 
 def git(*args):
@@ -50,6 +55,14 @@ def show(ref, path):
 def norm(text):
     """Matching key: dash variants and runs of spaces are formatting, not wording."""
     return re.sub(r"\s+", " ", re.sub(r"\s*[—–]\s*|\s+-\s+", " ", text)).strip()
+
+
+def host_block(lines):
+    """The block lines a brain copies from hosts/repoprompt.md, without the file's own introduction."""
+    if lines is None or HOST_BLOCK[0] not in lines or HOST_BLOCK[1] not in lines:
+        return lines
+    start = lines.index(HOST_BLOCK[0])
+    return lines[start + 1:lines.index(HOST_BLOCK[1], start)]
 
 
 def section(lines, name):
@@ -214,17 +227,27 @@ def main(argv):
             old, banner = None, ["base: estimate not used because --map changes file paths; "
                                  "pass --from <ref> for a full review"]
     if old:
-        paths = [p for p in git("diff", "--name-only", old, new, "--", "starter").stdout.splitlines() if p]
+        paths = [p for p in git("diff", "--name-only", old, new, "--", "starter", HOST).stdout.splitlines() if p]
     else:  # target-only: every target line counts as added, so nothing is hidden
-        paths = [p for p in git("ls-tree", "-r", "--name-only", new, "--", "starter").stdout.splitlines() if p]
+        paths = [p for p in git("ls-tree", "-r", "--name-only", new, "--", "starter", HOST).stdout.splitlines() if p]
         banner.append("TARGET-ONLY: each target line is checked against the brain, with no base to compare. "
                       "Text the brain adapted on purpose and text upstream changed look alike; "
                       "no 'upstream change' lines can be shown.")
     files, body = [], []
     totals = dict.fromkeys(("have", "example", "near", "partial", "missing", "skipped"), 0)
     for path in paths:
-        rel = maps.get(path, path.removeprefix("starter/"))
+        host = path == HOST
+        if host and path not in maps:
+            agents = (brain / "AGENTS.md").read_text(encoding="utf-8", errors="replace")
+            if HOST_BLOCK[0] not in agents:
+                files.append(f"{HOST}: not compared; AGENTS.md has no RepoPrompt CE block")
+                continue
+        rel = maps.get(path, "AGENTS.md" if host else path.removeprefix("starter/"))
         previous, after = (show(old, path) if old else None), show(new, path)
+        if host:
+            previous, after = host_block(previous), host_block(after)
+            if old and previous == after:
+                continue  # only the file's introduction changed
         before = previous or []
         rel, _, part = rel.partition("#")
         local_file = brain / rel
@@ -266,7 +289,7 @@ def main(argv):
                 body.append(f"… {len(diff) - HELPER_DIFF_LINES} more diff lines; full diff: "
                             f"git -C {REPO} show {new}:{path} | diff -u - {local_file}")
             continue
-        files.append(f"inspect: {rel}")
+        files.append(f"inspect: {rel}" + (" (RepoPrompt CE block)" if host else ""))
         imported = []  # follow @file imports such as CLAUDE.md's @AGENTS.md
         for line in local:
             m = re.fullmatch(r"\s*@([\w./-]+\.md)\s*", line)
@@ -337,13 +360,22 @@ def main(argv):
                     continue
                 totals["missing"] += 1
                 body.append(f"  + {line}   [missing]")
+    if old:
+        plugins = sorted({p.split("/")[1] for p in git("diff", "--name-only", old, new, "--", "plugins").stdout.splitlines()
+                          if p.count("/") >= 2})
+        kept = set(git("ls-tree", "--name-only", f"{new}:plugins").stdout.split())
+        if [p for p in plugins if p in kept]:
+            files.append("plugins changed (installed outside the brain; update each installed copy by its SETUP's "
+                         "Update steps): " + ", ".join(p for p in plugins if p in kept))
+        if [p for p in plugins if p not in kept]:
+            files.append("plugins removed upstream: " + ", ".join(p for p in plugins if p not in kept))
     unused = [src for src in maps if src not in paths]
     if unused:
         files.append("--map not used (file unchanged between these refs): " + ", ".join(unused))
     print(f"upgrade diff {old or '(no base)'} → {new} for {brain}")
     print("\n".join(banner))
     print("files:")
-    print("\n".join(f"  {f}" for f in files) or "  no starter changes between these refs")
+    print("\n".join(f"  {f}" for f in files) or "  no starter or RepoPrompt CE block changes between these refs")
     print("added lines: " + ", ".join(f"{v} {k}" for k, v in totals.items()))
     print("Labels are text matches, not coverage verdicts: a line marked missing may be covered in other words.")
     print("Account for each line not marked have: take it, merge it, or record why the brain keeps its own.")
