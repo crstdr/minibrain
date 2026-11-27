@@ -288,38 +288,54 @@ function resolveMenuTarget(st) {
   return null;
 }
 
-function populateMenu(st, target, focusFirst) {
+function menuSig(st, t) {
+  if (st.kind === 'agent') return JSON.stringify([t.name, !!(t.needs && !t.seen), setting('agents', t.id), app.ui.pin, app.ui.obfuscate]);
+  if (st.kind === 'window') {
+    const w = app.arr.windows[t.id] || {};
+    return JSON.stringify([t.title, t.agents.length > 0, !!t.closed, groupOf(t.id)?.id || null,
+      app.arr.groups.map(g => g.id + ':' + g.name), setting('windows', t.id), w.cols || null, !!w.fixed, app.ui.pin, app.ui.obfuscate]);
+  }
+  return JSON.stringify([t.name, linksSetting(t), groupHue(t), app.ui.obfuscate]);
+}
+
+function populateMenu(st, target, focusIndex) {
   menu.textContent = '';
   if (st.kind === 'agent') agentMenu(target);
   else if (st.kind === 'window') windowMenu(target);
   else groupMenu(target);
+  st.sig = menuSig(st, target);
   menu.hidden = false;
   menu.style.left = clamp(st.x, 8, window.innerWidth - menu.offsetWidth - 8) + 'px';
   menu.style.top = clamp(st.y, 8, window.innerHeight - menu.offsetHeight - 8) + 'px';
-  if (focusFirst) {
-    const first = menu.querySelector('button');
-    if (first) first.focus({ preventScroll: true });
+  if (focusIndex != null) {
+    const btns = menu.querySelectorAll('button');
+    const targetBtn = btns[Math.min(focusIndex, btns.length - 1)];
+    if (targetBtn) targetBtn.focus({ preventScroll: true });
   }
 }
 
 function openMenu(kind, id, x, y) {
   closePopover(); setHover(null);
-  menuState = { kind, id, x, y };
+  menuState = { kind, id, x, y, sig: '' };
   const target = resolveMenuTarget(menuState);
   if (!target) { closeMenu(); return; }
-  populateMenu(menuState, target, true);
+  populateMenu(menuState, target, 0);
 }
 
 export function refreshMenu() {
   if (!menuState || menu.hidden) return;
   const target = resolveMenuTarget(menuState);
   if (!target) { closeMenu(); return; }
-  // Preserve half-typed form text or an armed confirmation; handlers resolve live targets by ID.
+  // Skip repopulating when nothing in the menu changed, or while hovering/editing/confirming
+  // so keyboard position is preserved and no click is lost between pointerdown and pointerup.
+  if (menuSig(menuState, target) === menuState.sig) return;
   const input = menu.querySelector('input');
-  if ((input && (document.activeElement === input || input.value !== input.defaultValue))
+  if (menu.matches(':hover')
+      || (input && (document.activeElement === input || input.value !== input.defaultValue))
       || menu.querySelector('button.confirm')) return;
-  const hadFocus = menu.contains(document.activeElement);
-  populateMenu(menuState, target, hadFocus);
+  const btns = Array.from(menu.querySelectorAll('button'));
+  const focusIdx = menu.contains(document.activeElement) ? btns.indexOf(document.activeElement) : -1;
+  populateMenu(menuState, target, focusIdx >= 0 ? focusIdx : null);
 }
 
 function mHead(text) { menu.appendChild(el('div', 'm-head', text)); }
