@@ -9,6 +9,7 @@ import { addSave, deleteSave, listSaves } from './server.js';
 import { CRIT, WARN, centerOn, fit, fitGroup, fitWindow, frames, workspaceLink } from './render.js';
 import { OLD_LIST, itemMeta, kindIcon, setSnooze } from './attention.js';
 import { canEdit, changeLayout, changed, flash, rebuild, restoreNamedSave, retry, setBoxHidden, setHover, setPin } from './actions.js';
+import { openRoadmapDrawer } from './drawer.js';
 
 const STALE_MINUTES = 15;
 
@@ -42,7 +43,15 @@ function itemControls(it) {
     button('1 h', 'hour');
     button('Tomorrow', 'tomorrow');
   }
-  const owner = app.model.attention?.owner;
+  if (it.source) {
+    const rmBtn = el('button', '', 'Roadmap');
+    rmBtn.type = 'button';
+    rmBtn.addEventListener('click', function () {
+      openRoadmapDrawer(it.source, null, it.ticket || it.id);
+    });
+    controls.appendChild(rmBtn);
+  }
+  const owner = (it.sourceOwner && app.model.byId.get(it.sourceOwner)) || app.model.attention?.owner;
   const href = owner && workspaceLink(owner.ws, owner.tab, owner.id);
   if (href) {
     const ask = el('a', 'item-ask', 'Ask ' + owner.name);
@@ -57,12 +66,29 @@ function itemClass(it) {
   return it.snoozedUntil ? ' snoozed' : it.alert !== 'none' ? ' alert' : '';
 }
 
-function tipRows(title, sub, rows, cls, items) {
+function tipRows(title, sub, rows, cls, items, roadmaps = null) {
   tip.textContent = '';
   const heading = el('div', 't-name', title);
   heading.id = 'tip-name';
   tip.appendChild(heading);
   if (sub) tip.appendChild(el('div', 't-sub', sub));
+  if (roadmaps && roadmaps.length) {
+    const box = el('div', 't-roadmaps');
+    roadmaps.forEach(function (r) {
+      const btn = el('button', 't-rm-btn');
+      btn.type = 'button';
+      const left = el('span');
+      left.appendChild(el('span', 't-rm-title', r.mode === 'owner' ? r.title : r.title + ' · lane'));
+      left.appendChild(el('span', 't-rm-sub', r.open + ' open' + (r.waiting ? ' · ' + r.waiting + ' waiting' : '')));
+      btn.appendChild(left);
+      btn.appendChild(el('span', 't-rm-go', '→'));
+      btn.addEventListener('click', function () {
+        openRoadmapDrawer(r.id, r.mode === 'owner' ? null : r.lane, null);
+      });
+      box.appendChild(btn);
+    });
+    tip.appendChild(box);
+  }
   // Attention items first, each with its kind's mark and any due/rank beneath the reason.
   if (items && items.length) {
     const list = el('ul', 't-items');
@@ -110,7 +136,7 @@ export function fillTip(target) {
       if (w.all || chosen.length) rows.push(['At most', w.limit ? 'once every ' + duration(w.limit) : 'no delay']);
       rows.push(['Idle wake', w.idle ? 'after ' + duration(w.idle) + ' idle' : 'off']);
     }
-    tipRows(a.name, a.cliName + ' · ' + a.model + (a.effort ? ' · ' + a.effort : ''), rows, 't-stats', items);
+    tipRows(a.name, a.cliName + ' · ' + a.model + (a.effort ? ' · ' + a.effort : ''), rows, 't-stats', items, a.roadmaps);
     return;
   }
   const g = app.arr.groups.filter(function (x) { return x.id === target.id; })[0];
@@ -409,17 +435,24 @@ function renderAge() {
   if (!m) {   // Before the first load, show only refresh errors.
     age.textContent = app.ui.refreshError ? 'Refresh failed: ' + app.ui.refreshError : '';
     age.classList.toggle('failed', !!app.ui.refreshError);
+    age.classList.remove('stale');
     placeAge(age);
     return;
   }
   const mins = (Date.now() / 1000 - m.generated) / 60;
   const at = new Date(m.generated * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const failed = app.ui.refreshError;
-  age.textContent = failed ? 'Refresh failed: ' + failed + ' · showing ' + at : 'Snapshot ' + at + ' · ' + ago(m.generated);
-  age.classList.toggle('failed', !!failed);
   const old = !failed && m.attention && m.generated - m.attention.updated > OLD_LIST;
-  if (old) age.textContent += ' · Attention list from ' + stamp(m.attention.updated);
-  age.classList.toggle('stale', !failed && (mins > STALE_MINUTES || old));
+  const stale = !failed && (mins > STALE_MINUTES || old);
+  age.classList.toggle('failed', !!failed);
+  age.classList.toggle('stale', stale);
+  if (failed) {
+    age.textContent = 'Refresh failed: ' + failed + ' · showing ' + at;
+  } else if (stale) {
+    age.textContent = 'Snapshot ' + at + ' · ' + ago(m.generated) + (old ? ' · Attention list from ' + stamp(m.attention.updated) : '');
+  } else {
+    age.textContent = '';
+  }
   age.title = !failed && mins > STALE_MINUTES ? 'Old snapshot' : '';
   placeAge(age);
 }
@@ -440,10 +473,6 @@ export function renderPanels() {
   $('sample-data').hidden = !app.graph?.demo;
   const m = app.model;
   if (!m) { renderAge(); return; }
-  const linked = m.allAgents.filter(a => a.linked).length;
-  $('stats').textContent = plural(m.allWins.filter(w => !w.closed).length, 'window', 'windows') + ' · ' + plural(linked, 'linked agent', 'linked agents') +
-    (m.allAgents.length > linked ? ' (+' + (m.allAgents.length - linked) + ' without links)' : '') +
-    ' · ' + plural(m.overseerCount, 'overseer', 'overseers') + ' · ' + plural(m.linkCount, 'link', 'links');
 
   const running = m.allAgents.filter(a => a.run === 'running').length;
   const needing = m.allAgents.filter(a => a.needs).length;
@@ -474,11 +503,6 @@ export function renderPanels() {
   const layoutButton = $('btn-layouts');
   layoutButton.textContent = 'Layout: ' + layoutName(currentLayout()) + ' ▾';
   layoutButton.disabled = !!pending;
-  const tidy = $('btn-tidy');
-  tidy.disabled = !app.tooClose;
-  // An available action must not be clipped by the collapsed toolbar.
-  const destination = $(tidy.disabled ? 'bar-items' : 'bar-alerts');
-  if (tidy.parentNode !== destination) destination.insertBefore(tidy, $(tidy.disabled ? 'stats' : 'status'));
   renderView();
   renderStatus();
   renderAge();

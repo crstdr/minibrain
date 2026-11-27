@@ -53,42 +53,104 @@ function compare(a, b) {
   return (LEVEL[b.alert] - LEVEL[a.alert]) || (SEVERITY[a.kind] - SEVERITY[b.kind]) || (rank(a) - rank(b)) || (due(a) - due(b));
 }
 
+function seenKeyOwner(k) {
+  if (k.indexOf(ITEM) !== 0) return null;
+  try {
+    const parsed = JSON.parse(k.slice(ITEM.length));
+    if (Array.isArray(parsed) && parsed.length === 4 && typeof parsed[0] === 'string' && parsed[0]) {
+      return { primary: false, source: parsed[0] };
+    }
+  } catch (e) { /* treat malformed key as legacy primary */ }
+  return { primary: true, source: '' };
+}
+
+function snoozeKeyOwner(k, primaryNs) {
+  if (k.indexOf(ITEM) !== 0) return null;
+  try {
+    const parsed = JSON.parse(k.slice(ITEM.length));
+    if (Array.isArray(parsed) && parsed.length >= 2 && typeof parsed[0] === 'string') {
+      const ns = parsed[0];
+      if (ns === '' || ns === primaryNs) return { primary: true, source: '' };
+      return { primary: false, source: ns };
+    }
+  } catch (e) { /* malformed key */ }
+  return { primary: true, source: '' };
+}
+
 // Gives every agent its items (a.items), its sources of need (a.needMarks) and a.needs, a.seen;
-// forgets Seen marks that no longer match anything. Returns the list as the model keeps it:
+// forgets Seen marks that no longer match anything in sources authoritatively received in this
+// snapshot. Returns the primary list as the model keeps it:
 // {updated, owner (a drawn agent or null), items, loose, activeLoose}, or null.
-export function applyAttention(att, agents, allById, drawnById, obscure) {
+export function applyAttention(att, agents, allById, drawnById, obscure, attentions = null) {
   const s = load(), live = new Set(), snoozes = load(SNOOZE), keys = new Set(), now = Date.now();
   agents.forEach(function (a) {
     a.items = [];
     a.needMarks = a.run === 'waiting' ? [[a.id, a.state_at == null ? null : a.state_at, 'glow']] : [];
   });
+  const sources = [];
+  const seenRoadmapSources = new Set();
+  const authoritativeRoadmapSources = new Set();
+  let hasPrimary = false;
+  if (att && Array.isArray(att.items)) {
+    sources.push({ ...att, _primary: true });
+    hasPrimary = true;
+  }
+  if (Array.isArray(attentions)) {
+    attentions.forEach(function (src) {
+      if (!src || !Array.isArray(src.items)) return;
+      const isPrimaryBlock = src.primary === true || !src.source;
+      if (isPrimaryBlock) {
+        if (!hasPrimary) {
+          sources.push({ ...src, _primary: true });
+          hasPrimary = true;
+        }
+        return;
+      }
+      if (!seenRoadmapSources.has(src.source)) {
+        seenRoadmapSources.add(src.source);
+        if (!src.incomplete) authoritativeRoadmapSources.add(src.source);
+        sources.push({ ...src, _primary: false });
+      }
+    });
+  }
+  const primarySrc = sources.find(function (src) { return src._primary; }) || null;
+  const primaryNs = (primarySrc && primarySrc.owner) || '';
   let list = null;
-  if (att) {
-    list = { updated: att.updated, owner: drawnById.get(att.owner) || null, items: [], loose: [], activeLoose: [] };
-    att.items.slice().sort(compare).forEach(function (raw) {
-      const key = ITEM + JSON.stringify([att.owner, raw.id]);
+  if (primarySrc) {
+    list = { updated: primarySrc.updated, owner: drawnById.get(primarySrc.owner) || null, items: [], loose: [], activeLoose: [] };
+  }
+  sources.forEach(function (src) {
+    const isPrimary = !!src._primary;
+    const ns = isPrimary ? (src.owner || '') : src.source;
+    src.items.slice().sort(compare).forEach(function (raw) {
+      const key = ITEM + JSON.stringify([ns, raw.id]);
       const sig = JSON.stringify([raw.due, raw.reason, raw.alert]);
       const saved = snoozes[key];
       const snoozedUntil = saved?.sig === sig && Number.isFinite(saved.until) && saved.until > now ? saved.until : null;
       if (snoozedUntil) keys.add(key);
-      const it = {...raw, reason: obscure ? '•••' : raw.reason, snoozedUntil};
+      const it = { ...raw, source: isPrimary ? null : (raw.source || src.source || null), sourceOwner: src.owner || null,
+        reason: obscure ? '•••' : raw.reason, snoozedUntil };
       snoozeKeys.set(it, [key, sig]);
-      list.items.push(it);
+      if (isPrimary && list) {
+        list.items.push(it);
+        if (!drawnById.has(it.agent)) {
+          list.loose.push(it);
+          if (!snoozedUntil) list.activeLoose.push(it);
+        }
+      }
       const on = allById.get(it.agent);
       if (on) on.items.push(it);
-      if (!drawnById.has(it.agent)) {
-        list.loose.push(it);
-        if (!snoozedUntil) list.activeLoose.push(it);
-      }
-      const target = on || allById.get(att.owner);
-      if (target && it.alert !== 'none') {
-        const mark = ITEM + JSON.stringify([it.id, it.due, raw.reason]);
+      else if (!isPrimary && src.owner && allById.has(src.owner)) allById.get(src.owner).items.push(it);
+      const target = on || (src.owner ? allById.get(src.owner) : null);
+      if (it.alert !== 'none') {
+        const mark = ITEM + JSON.stringify(it.source ? [it.source, it.id, it.due, raw.reason] : [it.id, it.due, raw.reason]);
         live.add(mark);
-        if (!snoozedUntil) target.needMarks.push([mark, true, it.alert]);
+        if (target && !snoozedUntil) target.needMarks.push([mark, true, it.alert]);
       }
     });
-  }
+  });
   agents.forEach(function (a) {
+    if (a.items.length > 1) a.items.sort(compare);
     let level = 0;
     a.needMarks.forEach(function (m) { level = Math.max(level, LEVEL[m[2]]); });   // the stronger level wins
     a.alert = LEVEL_NAME[level];
@@ -98,17 +160,28 @@ export function applyAttention(att, agents, allById, drawnById, obscure) {
     if (a.items.length) a.hay += ' ' + a.items.map(function (it) { return it.kind + ' ' + it.reason; }).join(' ').toLowerCase();
     if (a.needs && a.hay.indexOf('needs-you') < 0) a.hay += ' needs-you';
   });
-  // A mark outlives its reason only until the next look. Item marks are kept while the list is
-  // missing (a file being rewritten), so they are not lost to a moment without it.
+  // Prune per source: a mark or active snooze is deleted only when its own source returned an
+  // authoritative (complete) list in this snapshot, so a missing or partial read keeps its state.
   let pruned = false;
   Object.keys(s).forEach(function (k) {
-    if (live.has(k) || (!att && k.indexOf(ITEM) === 0)) return;
+    if (live.has(k)) return;
+    const owner = seenKeyOwner(k);
+    if (owner) {
+      const authoritative = owner.primary ? hasPrimary : authoritativeRoadmapSources.has(owner.source);
+      if (!authoritative) return;
+    }
     delete s[k]; pruned = true;
   });
   if (pruned) store('local', KEY, Object.keys(s).length ? s : null);
   pruned = false;
   Object.keys(snoozes).forEach(function (k) {
-    if (keys.has(k) || (!att && Number.isFinite(snoozes[k]?.until) && snoozes[k].until > now)) return;
+    if (keys.has(k)) return;
+    const active = Number.isFinite(snoozes[k]?.until) && snoozes[k].until > now;
+    if (active) {
+      const owner = snoozeKeyOwner(k, primaryNs);
+      const authoritative = owner ? (owner.primary ? hasPrimary : authoritativeRoadmapSources.has(owner.source)) : false;
+      if (!authoritative) return;
+    }
     delete snoozes[k]; pruned = true;
   });
   if (pruned) store('local', SNOOZE, Object.keys(snoozes).length ? snoozes : null);

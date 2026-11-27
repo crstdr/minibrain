@@ -15,15 +15,16 @@ export const HUES = [
   ['violet', 'Violet', '#6250d6', '#9085e9'], ['magenta', 'Pink', '#e87ba4', '#d55181'],
   ['grey', 'Grey', '#7a7974', '#8a8983']
 ];
-// Share of the hue mixed into the theme's surface, lightest row first. Dark tints need
-// more of the hue to show against a dark surface.
-const LEVELS = { light: [0.10, 0.22, 0.38, 0.62, 1], dark: [0.16, 0.30, 0.48, 0.72, 1] };
+// Share of the hue mixed into the theme's surface, lightest row first. Kept restrained so
+// agent boxes stay calm and readable while heat steps clearly from quiet to running.
+const LEVELS = { light: [0.05, 0.11, 0.19, 0.30, 1], dark: [0.06, 0.12, 0.21, 0.33, 1] };
 export const LEVEL_COUNT = 5;
-const SURFACE = { light: '#fcfcfb', dark: '#1a1a19' };
+const SURFACE = { light: '#fcfcfb', dark: '#1e1e20' };
 const INKS = ['#000000', '#ffffff'];   // pure ends: on the strongest blue, green and grey only these reach 4.5:1
 const FILL_RE = /^([a-z]{3,8})-([1-5])$/;
 
 function rgb(h) { return [1, 3, 5].map(function (i) { return parseInt(h.slice(i, i + 2), 16); }); }
+function rgba(h, a) { const c = rgb(h); return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
 function hex(c) { return '#' + c.map(function (v) { return Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0'); }).join(''); }
 export function mix(a, b, t) { const x = rgb(a), y = rgb(b); return hex(x.map(function (v, i) { return v * t + y[i] * (1 - t); })); }
 function luminance(h) {
@@ -61,20 +62,25 @@ export function scheme(id, mode) {
   const h = m && HUES.filter(function (x) { return x[0] === m[1]; })[0];
   if (!h) return null;
   mode = mode === 'dark' ? 'dark' : 'light';
-  const base = h[mode === 'dark' ? 3 : 2], surface = SURFACE[mode], f = LEVELS[mode][Number(m[2]) - 1];
+  const lvl = Number(m[2]) - 1;
+  const base = h[mode === 'dark' ? 3 : 2], surface = SURFACE[mode], f = LEVELS[mode][lvl];
   const bg = mix(base, surface, f);
   const text = contrast(INKS[0], bg) >= contrast(INKS[1], bg) ? INKS[0] : INKS[1];
   let text2 = mix(text, bg, 0.75);   // secondary text, unless that would read too faintly
   if (contrast(text2, bg) < 4.5) text2 = text;
-  const strong = Math.min(1, f + 0.55);
-  const border = strong < 1 ? mix(base, surface, strong) : mix(base, mode === 'dark' ? '#ffffff' : '#000000', mode === 'dark' ? 0.62 : 0.68);
-  return { bg: bg, border: border, text: text, text2: text2, track: mix(text, bg, 0.18) };
+  const borderOpacity = [0.28, 0.38, 0.50, 0.62, 0.85][lvl];
+  const border = rgba(base, borderOpacity);
+  const frameBg = rgba(base, mode === 'dark' ? 0.055 : 0.065);
+  const frameBorder = rgba(base, mode === 'dark' ? 0.38 : 0.42);
+  return { bg: bg, border: border, frameBg: frameBg, frameBorder: frameBorder, text: text, text2: text2, track: mix(text, bg, 0.18) };
 }
 
 // Sets (or, for no fill, clears) the scheme on an element; the stylesheet reads these.
-export function applyFill(node, id, mode) {
+export function applyFill(node, id, mode, translucent = false) {
   const s = scheme(id, mode);
   node.classList.toggle('filled', !!s);
-  [['--fill-bg', 'bg'], ['--fill-border', 'border'], ['--fill-text', 'text'], ['--fill-text2', 'text2'], ['--fill-track', 'track']]
-    .forEach(function (p) { if (s) node.style.setProperty(p[0], s[p[1]]); else node.style.removeProperty(p[0]); });
+  const map = translucent
+    ? [['--fill-bg', 'frameBg'], ['--fill-border', 'frameBorder']]
+    : [['--fill-bg', 'bg'], ['--fill-border', 'border'], ['--fill-text', 'text'], ['--fill-text2', 'text2'], ['--fill-track', 'track']];
+  map.forEach(function (p) { if (s) node.style.setProperty(p[0], s[p[1]]); else node.style.removeProperty(p[0]); });
 }

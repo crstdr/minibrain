@@ -76,23 +76,50 @@ function buildChip(a) {
     node.appendChild(open);
   }
 
-  // Attention items on this agent: one static badge for the most pressing; the owner of the
-  // list also carries a count of the items that have no drawn agent (a button: it opens the list).
+  // Attention items on this agent: left-edge tags clear of the top-right roadmap chip.
   const shown = badgeItems(a);
   const muted = a.items.length > 0 && a.items.every(function (it) { return it.snoozedUntil; });
   const primary = muted ? a.items[0] : shown[0];
-  if (primary) {
-    const b = el('span', 'att-badge' + (muted ? ' muted' : primary.alert !== 'none' ? ' alert' : ''));
-    b.appendChild(kindIcon(primary.kind));
-    if (!muted) b.appendChild(el('span', 'att-word', primary.kind));
-    if (shown.length > 1) b.appendChild(el('span', 'att-n', '+' + (shown.length - 1)));
-    node.appendChild(b);
-  }
   const att = app.model.attention;
-  if (att && att.owner === a && att.activeLoose.length) {
-    const b = el('button', 'att-count' + (att.activeLoose.some(function (it) { return it.alert !== 'none'; }) ? ' alert' : ''), att.activeLoose.length + (att.activeLoose.length === 1 ? ' item' : ' items'));
-    b.type = 'button';
-    node.appendChild(b);
+  const hasLoose = !!(att && att.owner === a && att.activeLoose.length);
+  if (primary || hasLoose) {
+    const left = el('span', 'att-left');
+    if (hasLoose) {
+      const b = el('button', 'att-count' + (att.activeLoose.some(function (it) { return it.alert !== 'none'; }) ? ' alert' : ''), att.activeLoose.length + (att.activeLoose.length === 1 ? ' item' : ' items'));
+      b.type = 'button';
+      left.appendChild(b);
+    }
+    if (primary) {
+      const b = el('span', 'att-badge' + (muted ? ' muted' : primary.alert !== 'none' ? ' alert' : ''));
+      if (primary.source) {
+        b.dataset.roadmap = primary.source;
+        b.dataset.ticket = primary.ticket || primary.id;
+      }
+      b.appendChild(kindIcon(primary.kind));
+      if (!muted) b.appendChild(el('span', 'att-word', primary.kind));
+      if (shown.length > 1) b.appendChild(el('span', 'att-n', '+' + (shown.length - 1)));
+      left.appendChild(b);
+    }
+    node.appendChild(left);
+  }
+  if (a.roadmaps && a.roadmaps.length) {
+    const owned = a.roadmaps.filter(r => r.mode === 'owner');
+    const first = owned[0] || a.roadmaps[0];
+    const chip = el('button', 'rm-chip');
+    chip.type = 'button';
+    chip.dataset.roadmap = first.id;
+    if (first.lane) chip.dataset.lane = first.lane;
+    const ic = svg('svg', { viewBox: '0 0 12 12', 'aria-hidden': 'true' });
+    ic.appendChild(svg('circle', { cx: 2.2, cy: 6, r: 1.6, fill: 'currentColor' }));
+    ic.appendChild(svg('circle', { cx: 9.8, cy: 3, r: 1.6, fill: 'currentColor' }));
+    ic.appendChild(svg('circle', { cx: 9.8, cy: 9, r: 1.6, fill: 'currentColor' }));
+    ic.appendChild(svg('path', { d: 'M3.8 6 C6 6 6.5 3 8.2 3 M3.8 6 C6 6 6.5 9 8.2 9', stroke: 'currentColor', 'stroke-width': 1.3, fill: 'none' }));
+    const label = owned.length > 1 ? owned.length + ' roadmaps'
+      : owned.length === 1 ? 'roadmap · ' + first.open
+      : first.open + (first.open === 1 ? ' ticket' : ' tickets');
+    chip.appendChild(ic);
+    chip.appendChild(el('span', '', label));
+    node.appendChild(chip);
   }
 
   node.setAttribute('aria-label', a.name + ', ' + a.cliName + ' ' + a.model + (a.effort ? ' ' + a.effort : '') +
@@ -230,7 +257,7 @@ export function sync() {
     layerFrames.appendChild(node);
     frames.push({ g: g, el: node, title: title, x: r.x, y: r.y, w: r.w, h: r.h, members: members });
     const hue = groupHue(g);
-    applyFill(node, hue && fillId(hue, 1), mode);
+    applyFill(node, hue && fillId(hue, 1), mode, true);
   });
   const c = conflicts(scene());
   m.wins.forEach(function (w) {
@@ -318,6 +345,14 @@ export function applyView(animate) {
   // Enlarged badges keep the mark and count only: the word would run over the box's name and its neighbour.
   world.classList.toggle('tight', view.k < 1);
   world.classList.toggle('far', nameSize > 16.5);          // no room left for the model line
+  const gw = CW * view.k, gh = CH * view.k;
+  if (gw < 12) {
+    stage.style.backgroundImage = 'none';
+  } else {
+    stage.style.backgroundImage = '';
+    stage.style.backgroundSize = gw.toFixed(2) + 'px ' + gh.toFixed(2) + 'px';
+    stage.style.backgroundPosition = (view.tx - gw / 2).toFixed(2) + 'px ' + (view.ty - gh / 2).toFixed(2) + 'px';
+  }
 }
 
 export function restoreView() {

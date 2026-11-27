@@ -39,6 +39,7 @@ from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import attention
+import roadmap
 from sources import demo, repoprompt
 
 STATE_DIR = os.path.expanduser("~/Library/Application Support/agents-map")
@@ -779,15 +780,147 @@ class Store:
 
 # ---------------------------------------------------------------- server
 
-def graph_document(collect, recent, attention_file, known=()):
-    """The source's graph document plus the validated attention items (null: none) and their warnings."""
+def _demo_roadmap_dir():
+    """Bundled synthetic roadmap sample (exported plugin copy first, else workshop path)."""
+    for candidate in (
+        os.path.join(HERE, "sample", "collection.roadmap"),
+        os.path.join(HERE, "tools", "export", "roadmap_sample", "collection.roadmap"),
+    ):
+        if os.path.isdir(candidate):
+            return candidate
+    return None
+
+
+def _workspace_open_link(agent):
+    if not agent or not agent.get("ws"):
+        return None
+    params = {"workspace_id": agent["ws"]}
+    if agent.get("tab"):
+        params.update(tab_id=agent["tab"], session_id=agent["id"])
+    return "repoprompt-ce://workspace/open?" + urllib.parse.urlencode(params)
+
+
+def _open_agents(agents):
+    return [a for a in agents if not a.get("closed")]
+
+
+def _roadmap_summaries(entries, agents):
+    """(summaries, extra_attentions, warnings) across all configured roadmaps. Zero host paths returned."""
+    summaries, attentions, warnings = [], [], []
+    open_agents = _open_agents(agents)
+    for entry in entries:
+        try:
+            tickets, problems, notes = roadmap.load(entry["collection"])
+        except Exception as error:
+            print("roadmap load failed (%s): %r" % (entry["id"], error), file=sys.stderr)
+            warnings.append("Roadmap '%s' is unreadable." % entry["title"])
+            continue
+        if problems and not tickets:
+            warnings.append("Roadmap '%s' could not be loaded." % entry["title"])
+            continue
+        lane_names = {t["lane"] for t in tickets.values() if t["lane"]}
+        if entry["owner_lane"]:
+            lane_names.add(entry["owner_lane"])
+        resolved = roadmap.resolve_lanes(lane_names, open_agents)
+        lanes = {}
+        open_total = waiting_total = 0
+        for t in tickets.values():
+            if t["kind"] == "priority" or not roadmap.is_open(t):
+                continue
+            open_total += 1
+            is_wait = t["state"] == "awaiting-user"
+            if is_wait:
+                waiting_total += 1
+            sid = resolved.get(t["lane"]) if t["lane"] else None
+            if sid:
+                slot = lanes.setdefault(sid, {"lane": t["lane"], "open": 0, "waiting": 0})
+                slot["open"] += 1
+                if is_wait:
+                    slot["waiting"] += 1
+        summaries.append({
+            "id": entry["id"],
+            "title": entry["title"],
+            "owner_lane": entry["owner_lane"],
+            "owner_id": resolved.get(entry["owner_lane"]) if entry["owner_lane"] else None,
+            "open": open_total,
+            "waiting": waiting_total,
+            "lanes": lanes,
+        })
+        if entry["attention"]:
+            try:
+                block, att_notes = roadmap.attention_list(
+                    entry["collection"], open_agents, entry["id"],
+                    title=entry["title"], owner_lane=entry["owner_lane"],
+                )
+                if block:
+                    block["primary"] = False
+                    attentions.append(block)
+                warnings.extend(att_notes)
+            except Exception as error:
+                print("roadmap attention failed (%s): %r" % (entry["id"], error), file=sys.stderr)
+                warnings.append("Roadmap '%s' attention failed." % entry["title"])
+    return summaries, attentions, warnings
+
+
+def roadmap_document(roadmaps_file, roadmap_id, collect, known=()):
+    """Full document for one configured roadmap id, enriched with live lane resolution and open links."""
+    entries, _ = roadmap.read_registry(roadmaps_file)
+    entry = next((e for e in entries if e["id"] == roadmap_id), None)
+    if not entry:
+        raise KeyError(roadmap_id)
+    doc = roadmap.document(entry["collection"], title=entry["title"],
+                           owner_lane=entry["owner_lane"], roadmap_id=entry["id"])
+    try:
+        graph_data = collect(recent=False, known=known)
+    except Exception:
+        graph_data = {"agents": []}
+    agents = graph_data.get("agents", [])
+    open_agents = _open_agents(agents)
+    closed_agents = [a for a in agents if a.get("closed")]
+    names = {n[k] for n in doc["nodes"] for k in ("lane", "suggested") if n.get(k)}
+    if doc["owner_lane"]:
+        names.add(doc["owner_lane"])
+    lanes = roadmap.resolve_lanes(names, open_agents)
+    doc["lanes"] = lanes
+    if graph_data.get("demo"):
+        doc["open"] = {}
+    else:
+        by_id = {a["id"]: a for a in agents}
+        away = roadmap.resolve_lanes([l for l, sid in lanes.items() if not sid], closed_agents)
+        links = {}
+        for lane, sid in lanes.items():
+            agent = by_id.get(sid or away.get(lane))
+            href = _workspace_open_link(agent)
+            if href:
+                links[lane] = {"href": href, "open": bool(sid)}
+        doc["open"] = links
+    return doc
+
+
+def graph_document(collect, recent, attention_file, known=(), roadmaps_file=None):
+    """The source's graph document plus validated attention items, roadmap summaries and warnings."""
     data = collect(recent=recent, known=known)
     try:
         data["attention"], notes = attention.read(attention_file)
     except Exception as error:   # input from another program must never cost the map
         print("attention file failed: %r" % error, file=sys.stderr)
         data["attention"], notes = None, ["Attention file is unreadable."]
-    data["warnings"] = (notes + data["warnings"])[:20]
+    rm_notes = []
+    if roadmaps_file:
+        try:
+            entries, reg_notes = roadmap.read_registry(roadmaps_file)
+        except Exception as error:
+            print("roadmaps config failed: %r" % error, file=sys.stderr)
+            entries, reg_notes = [], ["Roadmaps config is unreadable."]
+        rm_notes.extend(reg_notes)
+        if entries:
+            summaries, extra_att, sum_notes = _roadmap_summaries(entries, data.get("agents", []))
+            rm_notes.extend(sum_notes)
+            data["roadmaps"] = summaries
+            if extra_att:
+                primary = [{**data["attention"], "primary": True}] if data["attention"] else []
+                data["attentions"] = primary + extra_att
+    data["warnings"] = (notes + rm_notes + data["warnings"])[:20]
     return data
 
 
@@ -812,10 +945,11 @@ class MapServer(ThreadingHTTPServer):
     # request in about 25 loads, which left the page blank.
     request_queue_size = 128
 
-    def __init__(self, port, collect, store, web_dir=WEB_DIR, attention_file=None):
+    def __init__(self, port, collect, store, web_dir=WEB_DIR, attention_file=None, roadmaps_file=None):
         self.collect = collect
         self.store = store
         self.attention_file = attention_file   # read at every request; never sent to the page
+        self.roadmaps_file = roadmaps_file     # read at every request; paths never sent to the page
         # the only files ever served: names found in the page folder at start
         self.static = {name: os.path.join(web_dir, name) for name in os.listdir(web_dir) if STATIC_NAME_RE.match(name)}
         if "index.html" not in self.static:
@@ -845,7 +979,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def reply_json(self, code, data):
-        self.reply(code, json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+        self.reply(code, json.dumps(data, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8"))
 
     def refused(self, api, mutating):
         """HTTP status for a request this server must not answer, or 0. Only this page,
@@ -896,10 +1030,16 @@ class Handler(BaseHTTPRequestHandler):
             data = None if method == "GET" else self.body()  # always read: the connection is reused
             if method == "GET" and path == "/":
                 return self.static_file("index.html")
+            if method == "GET" and (path in ("/roadmap", "/roadmap/") or path.startswith("/roadmap/")):
+                return self.static_file("roadmap.html")
             if method == "GET" and path.startswith("/static/"):
                 return self.static_file(path[len("/static/"):])
             if method == "GET" and path == "/api/graph":
                 return self.graph(urllib.parse.parse_qs(url.query).get("recent") == ["1"])
+            if method == "GET" and path == "/api/roadmaps":
+                return self.roadmaps_list()
+            if method == "GET" and path.startswith("/api/roadmap/"):
+                return self.roadmap_one(urllib.parse.unquote(path[len("/api/roadmap/"):]))
             if method == "GET" and path == "/api/arrangement":
                 return self.reply_json(200, store.current())
             if method == "PUT" and path == "/api/arrangement":
@@ -943,7 +1083,8 @@ class Handler(BaseHTTPRequestHandler):
         # Errors can disclose file paths; log them only to the terminal.
         try:
             data = graph_document(self.server.collect, recent, self.server.attention_file,
-                                  known=self.server.store.known_windows())
+                                  known=self.server.store.known_windows(),
+                                  roadmaps_file=self.server.roadmaps_file)
         except ValueError as error:
             print("collection failed: %r" % error, file=sys.stderr)
             return self.reply_json(503, {"error": "app data is being written; try again"})
@@ -951,6 +1092,34 @@ class Handler(BaseHTTPRequestHandler):
             print("collection failed: %r" % error, file=sys.stderr)
             return self.reply_json(503, {"error": "app data unreadable"})
         self.reply_json(200, data)
+
+    def roadmaps_list(self):
+        if not self.server.roadmaps_file:
+            return self.reply_json(200, {"roadmaps": [], "warnings": []})
+        try:
+            entries, warnings = roadmap.read_registry(self.server.roadmaps_file)
+        except Exception as error:
+            print("roadmaps config failed: %r" % error, file=sys.stderr)
+            return self.reply_json(200, {"roadmaps": [], "warnings": ["Roadmaps config is unreadable."]})
+        try:
+            agents = self.server.collect(recent=False, known=self.server.store.known_windows()).get("agents", [])
+        except Exception:
+            agents = []
+        summaries, _, notes = _roadmap_summaries(entries, agents)
+        return self.reply_json(200, {"roadmaps": summaries, "warnings": (warnings + notes)[:20]})
+
+    def roadmap_one(self, roadmap_id):
+        if not self.server.roadmaps_file or not roadmap.SLUG.match(roadmap_id):
+            return self.reply_json(404, {"error": "not found"})
+        try:
+            doc = roadmap_document(self.server.roadmaps_file, roadmap_id, self.server.collect,
+                                   known=self.server.store.known_windows())
+        except KeyError:
+            return self.reply_json(404, {"error": "not found"})
+        except Exception as error:
+            print("roadmap failed: %r" % error, file=sys.stderr)
+            return self.reply_json(500, {"error": "roadmap unavailable"})
+        return self.reply_json(200, doc)
 
     do_GET = do_HEAD = do_PUT = do_POST = do_DELETE = route
 
@@ -973,10 +1142,12 @@ def main(argv=None):
     parser.add_argument("--app-support", default=repoprompt.APP_SUPPORT, help="RepoPrompt CE data folder")
     parser.add_argument("--state-dir", help="where layouts are kept (temporary by default in demo mode)")
     parser.add_argument("--attention", metavar="FILE", help="a file of items that need you, written by another program (off when absent)")
+    parser.add_argument("--roadmaps", metavar="FILE", help="JSON registry of collection-backed roadmaps (off when absent)")
     parser.add_argument("--json", action="store_true", help="print one collection and exit")
     parser.add_argument("--recent", action="store_true", help="with --json: include recent agents without links")
     args = parser.parse_args(argv)
     args.attention = os.path.expanduser(args.attention) if args.attention else None
+    args.roadmaps = os.path.expanduser(args.roadmaps) if args.roadmaps else None
     if args.port is None:
         args.port = 47614 if args.demo else DEFAULT_PORT
 
@@ -991,11 +1162,23 @@ def main(argv=None):
             if args.attention is None:
                 args.attention = os.path.join(temporary, "attention.json")
                 write_json(args.attention, demo.attention_document())
+            if args.roadmaps is None:
+                sample_dir = _demo_roadmap_dir()
+                if sample_dir:
+                    args.roadmaps = os.path.join(temporary, "roadmaps.json")
+                    write_json(args.roadmaps, {"version": 1, "roadmaps": [{
+                        "id": "studio-roadmap",
+                        "title": "Studio roadmap",
+                        "collection": sample_dir,
+                        "owner_lane": "Studio lead",
+                        "attention": False,
+                    }]})
         else:
             if args.state_dir is None:
                 args.state_dir = STATE_DIR
         if args.json:
-            json.dump(graph_document(collect, args.recent, args.attention), sys.stdout, ensure_ascii=False, indent=1)
+            json.dump(graph_document(collect, args.recent, args.attention, roadmaps_file=args.roadmaps),
+                      sys.stdout, ensure_ascii=False, indent=1)
             print()
             return
         if args.demo:
@@ -1016,7 +1199,7 @@ def serve(args, collect, forbidden):
     url = "http://127.0.0.1:%d/" % args.port
     store = Store(args.state_dir, forbidden=forbidden)
     try:
-        server = MapServer(args.port, collect, store, attention_file=args.attention)
+        server = MapServer(args.port, collect, store, attention_file=args.attention, roadmaps_file=args.roadmaps)
     except OSError:
         if args.demo or not map_server_running(args.port):
             raise SystemExit("port %d is in use; pass --port" % args.port)

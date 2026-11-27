@@ -98,7 +98,7 @@ or comparative benefit.
 
 ## Optional plugins (beta)
 
-The core install never requires plugins. Add one only on request: [Roadmap](plugins/roadmap/SETUP.md) or [Agents Map](plugins/map/SETUP.md) (draft; demo pending).
+The core install never requires plugins. Add one only on request: [Roadmap](plugins/roadmap/SETUP.md) or [Agents Map](plugins/agents-map/SETUP.md).
 
 ## Upgrading
 

@@ -11,6 +11,7 @@ import { addToGroup, applyPositions, createGroup, landing, openMembers, removeFr
 import { applyView, fitGroup, frames, linksOf, linksSetting, placeFrame, placeLinks, placeWin, sync, zoomAt } from './render.js';
 import { canEdit, changed, flash, layoutChanged, persistViewport, removeWindow, setBoxHidden, setLinkOverride, setDragging, setHover, setPin, togglePin } from './actions.js';
 import { closePopover, dismissTipOutside, openAttention, syncTableSelection, toggleTip } from './panels.js';
+import { isDrawerOpen, openRoadmapDrawer, syncDrawerWithAgent } from './drawer.js';
 
 const stage = $('stage'), layerFg = $('layer-fg'), layerFrames = $('layer-frames');
 const landingEl = $('landing'), dots = $('dots'), menu = $('menu');
@@ -87,7 +88,7 @@ function endDrag(d, apply) {
 }
 
 stage.addEventListener('pointerdown', function (e) {
-  if (!canEdit() || e.button !== 0 || e.ctrlKey || e.metaKey || e.target.closest(CHROME + ', .agent-open')) return;
+  if (!canEdit() || e.button !== 0 || e.ctrlKey || e.metaKey || e.target.closest(CHROME + ', .agent-open, .rm-chip')) return;
   closeMenu(); closePopover();
   const title = e.target.closest('.frame-title'), winEl = e.target.closest('.win');
   const view = app.ui.view;
@@ -177,10 +178,31 @@ stage.addEventListener('click', function (e) {
   if (e.target.closest(CHROME)) return;
   const chip = e.target.closest('.agent'), winEl = e.target.closest('.win');
   if (e.target.closest('.att-count')) { e.preventDefault(); e.stopPropagation(); openAttention(e.target.closest('.att-count')); return; }   // not the chip's link
+  const rmChip = e.target.closest('.rm-chip');
+  if (rmChip) {
+    e.preventDefault(); e.stopPropagation();
+    if (chip) setPin({ kind: 'agent', id: chip.dataset.id });
+    openRoadmapDrawer(rmChip.dataset.roadmap, rmChip.dataset.lane || null, null);
+    syncTableSelection();
+    return;
+  }
+  const rmBadge = e.target.closest('.att-badge[data-roadmap]');
+  if (rmBadge) {
+    e.preventDefault(); e.stopPropagation();
+    const a = chip && app.model.byId.get(chip.dataset.id);
+    if (a) setPin({ kind: 'agent', id: a.id });
+    const owned = a?.roadmaps?.some(r => r.id === rmBadge.dataset.roadmap && r.mode === 'owner');
+    openRoadmapDrawer(rmBadge.dataset.roadmap, owned ? null : (a?.sourceName || null), rmBadge.dataset.ticket || null);
+    syncTableSelection();
+    return;
+  }
   if (e.target.closest('.agent-open')) return;
   if (chip && !e.shiftKey) {
     if (e.metaKey || e.ctrlKey) chip.querySelector('.agent-open')?.click();
-    else toggleTip(chip.dataset.id);
+    else if (isDrawerOpen() && syncDrawerWithAgent(app.model.byId.get(chip.dataset.id))) {
+      setPin({ kind: 'agent', id: chip.dataset.id });
+      syncTableSelection();
+    } else toggleTip(chip.dataset.id);
     return;
   }
   if (chip) togglePin({ kind: 'agent', id: chip.dataset.id });

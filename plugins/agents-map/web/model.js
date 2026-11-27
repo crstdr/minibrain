@@ -160,7 +160,21 @@ export function buildModel(graph, arr, layout, shared) {
   const winById = new Map(wins.map(w => [w.id, w]));
   const agents = allAgents.filter(a => winById.has(a.win.id));
   const byId = new Map(agents.map(a => [a.id, a]));
-  const attention = applyAttention(graph.attention, allAgents, allById, byId, obscure);
+  const attention = applyAttention(graph.attention, allAgents, allById, byId, obscure, graph.attentions);
+  const roadmaps = (graph.roadmaps || []).map((r, i) => ({
+    ...r,
+    title: obscure ? 'Roadmap ' + (i + 1) : r.title,
+  }));
+  allAgents.forEach(a => { a.roadmaps = []; });
+  roadmaps.forEach(r => {
+    if (r.owner_id && allById.has(r.owner_id)) {
+      allById.get(r.owner_id).roadmaps.push({ id: r.id, title: r.title, mode: 'owner', lane: null, open: r.open, waiting: r.waiting });
+    }
+    for (const [sid, info] of Object.entries(r.lanes || {})) {
+      if (sid === r.owner_id || !allById.has(sid)) continue;
+      allById.get(sid).roadmaps.push({ id: r.id, title: r.title, mode: 'lane', lane: info.lane, open: info.open, waiting: info.waiting });
+    }
+  });
   const links = [], overseers = new Set();
   let linkCount = 0;
   graph.links.forEach(function (raw) {
@@ -203,5 +217,9 @@ export function buildModel(graph, arr, layout, shared) {
     sizeBox(w, arr, shared);
   });
   return { groupNames, linkCount, overseerCount: overseers.size, allWins, allWinById, allAgents, allById, wins: wins, agents: agents, links: links, byId: byId, winById: winById,
-    generated: graph.generated, appRunning: graph.app_running !== false, hidden: graph.hidden || {}, warnings: (graph.warnings || []).map(w => obscure ? w.replace(/^(.*? unreadable for (?:window )?)'.*'\.$/s, '$1•••.') : w), attention: attention };
+    generated: graph.generated, appRunning: graph.app_running !== false, hidden: graph.hidden || {},
+    warnings: (graph.warnings || []).map(w => obscure
+      ? w.replace(/^(.*? unreadable for (?:window )?)'.*'\.$/s, '$1•••.').replace(/^(Roadmap )'.*'( [^'\n]*\.)$/s, '$1•••$2')
+      : w),
+    attention: attention, roadmaps: roadmaps };
 }

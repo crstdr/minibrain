@@ -6,6 +6,7 @@
 <title>Agents Map</title>
 <!-- Served by agents_map.py. No libraries, no network: the page talks only to that server. -->
 <link rel="stylesheet" href="/static/map.css">
+<link rel="stylesheet" href="/static/roadmap.css">
 <link rel="manifest" href="/static/app.webmanifest">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <meta name="theme-color" id="theme-color" content="#1a1a19">
@@ -27,8 +28,6 @@
     <button id="btn-saves" type="button">Saves &#9662;</button>
     <button id="btn-table" type="button" aria-pressed="false" title="T">Table</button>
     <button id="btn-fit" type="button" title="F">Fit</button>
-    <button id="btn-tidy" type="button" disabled>Tidy</button>
-    <span id="stats"></span>
     <span id="age"></span>
   </div>
   <div id="bar-alerts">
@@ -37,6 +36,7 @@
   </div>
   <button id="bar-toggle" type="button" aria-expanded="false" aria-controls="bar-items" aria-label="Toolbar">▾</button>
 </header>
+<div id="workspace">
 <main id="stage">
   <div id="world">
     <div id="dots" hidden></div>
@@ -76,6 +76,10 @@
     <div id="table-scroll"><table><thead><tr id="thead-row"></tr></thead><tbody id="tbody"></tbody></table></div>
   </aside>
 </main>
+<div id="split-resizer" role="separator" aria-orientation="vertical" aria-label="Resize roadmap" hidden></div>
+<aside id="roadmap-drawer" aria-label="Roadmap" hidden></aside>
+<button id="roadmap-tab" type="button" hidden aria-label="Expand roadmap"><span class="rm-tab-arrow" aria-hidden="true">◂</span><span class="rm-tab-label">Roadmap</span></button>
+</div>
 <footer id="legend">
 <div id="lg-items">
   <span class="item"><span class="sw codex"></span>Codex (CX)</span>

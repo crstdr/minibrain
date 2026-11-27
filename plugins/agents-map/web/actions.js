@@ -4,7 +4,8 @@
 import { app, currentLayout, membership } from './state.js';
 import { store } from './util.js';
 import { buildModel, heatOf, linkActivity } from './model.js';
-import { placeMissing, tidyAll, tidyMembers } from './layout.js';
+import { conflicts } from './grid.js';
+import { placeMissing, scene, tidyAll, tidyMembers } from './layout.js';
 import { catalogue, commit, commitLayout, commitSettings, discover, fetchGraph, forgetWindow, getSave, idle, loadArrangement, restoreSave, retryUnsaved, step } from './server.js';
 import { fitGroup, fitWindow, refreshHighlight, renderAll, restoreView, sync, targetAgents, visibleArea } from './render.js';
 import { applyFilter, renderPanels, renderStatus, renderView, refreshTip, closePopover } from './panels.js';
@@ -40,6 +41,18 @@ export function rebuild() {
   const area = visibleArea();
   const {saveChanged, seeds, patch, visibilityChanged} = placeMissing(area.w, area.h);
   if (visibilityChanged) app.model = buildModel(app.graph, app.arr, layout, app.shared);
+  let membersTidied = false;
+  if (canEdit() && !app.unsaved) {
+    const c = conflicts(scene());
+    if (c.boxes.size || c.groups.size) {
+      membersTidied = tidyMembers();
+      const tidyPatch = tidyAll();
+      Object.assign(patch.windows, tidyPatch.windows);
+      if (Object.keys(tidyPatch.groups).length) {
+        patch.groups = Object.assign(patch.groups || {}, tidyPatch.groups);
+      }
+    }
+  }
   const pin = app.ui.pin;
   if (pin && !targetAgents(pin).length && !(pin.kind === 'window' && app.model.winById.get(pin.id))) {
     app.ui.pin = null;   // not setPin: the new model is not drawn yet
@@ -51,22 +64,30 @@ export function rebuild() {
   refreshTip();
   applyFilter();
   renderPanels();
+  window.dispatchEvent(new Event('agents-map-rebuilt'));
   if (saveChanged) showResult(discover(seeds));
-  if (Object.keys(patch.windows).length) showResult(commitLayout(patch));
+  if (membersTidied) showResult(commit('Tidy', false));
+  if (Object.keys(patch.windows).length || (patch.groups && Object.keys(patch.groups).length)) showResult(commitLayout(patch));
 }
 
 export function expireSnoozes() {
   if (!canEdit() || dragging) return false;
   const now = Date.now();
-  if (!app.model.attention?.items.some(it => it.snoozedUntil && it.snoozedUntil <= now)) return false;
+  const expiredPrimary = !!app.model.attention?.items.some(it => it.snoozedUntil && it.snoozedUntil <= now);
+  const expiredAgent = app.model.allAgents.some(a => a.items.some(it => it.snoozedUntil && it.snoozedUntil <= now));
+  if (!expiredPrimary && !expiredAgent) return false;
   rebuild();
   return true;
 }
 
 // The arrangement changed in place (a move, a group, a link setting): redraw cheaply.
+let tidying = false;
 export function redraw() {
   if (expireSnoozes()) return;
   sync();
+  if (app.tooClose && canEdit() && !app.unsaved && !tidying) {
+    if (doTidy()) return;
+  }
   renderPanels();
 }
 
@@ -294,16 +315,25 @@ export async function history(kind) {
 }
 
 export function doTidy() {
-  if (!canEdit() || !app.tooClose) return;
-  // Capture shared offsets before moving any layout anchors. Both writes use the
-  // same queue; Retry sees the complete optimistic arrangement if either fails.
-  const saved = tidyMembers() ? commit('Tidy', false) : null;
-  const patch = tidyAll();
-  const moved = Object.keys(patch.groups).length || Object.keys(patch.windows).length
-    ? commitLayout(patch) : null;
-  redraw();
-  if (saved) showResult(saved);
-  if (moved) showResult(moved);
+  if (!canEdit() || !app.tooClose || tidying) return false;
+  tidying = true;
+  try {
+    // Capture shared offsets before moving any layout anchors. Both writes use the
+    // same queue; Retry sees the complete optimistic arrangement if either fails.
+    const membersTidied = tidyMembers();
+    const saved = membersTidied ? commit('Tidy', false) : null;
+    const patch = tidyAll();
+    const hasMoves = Object.keys(patch.groups).length || Object.keys(patch.windows).length;
+    if (!membersTidied && !hasMoves) return false;
+    const moved = hasMoves ? commitLayout(patch) : null;
+    sync();
+    renderPanels();
+    if (saved) showResult(saved);
+    if (moved) showResult(moved);
+    return true;
+  } finally {
+    tidying = false;
+  }
 }
 
 export function setPin(pin) {

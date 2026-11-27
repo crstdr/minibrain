@@ -34,7 +34,7 @@ Open the folder you want to equip with minibrain in your preferred coding-agent 
 
 ## Plugins (beta)
 
-Add an optional [roadmap](plugins/roadmap/SETUP.md) to see dependencies and decisions, or the [Agents Map](plugins/map/SETUP.md) to see RepoPrompt CE agents and who oversees whom. Neither plugin is required. See [plugins](plugins/README.md).
+Add an optional [roadmap](plugins/roadmap/SETUP.md) to see dependencies and decisions, or the [Agents Map](plugins/agents-map/SETUP.md) to see RepoPrompt CE agents and who oversees whom. Neither plugin is required. See [plugins](plugins/README.md).
 
 ## For agents
 

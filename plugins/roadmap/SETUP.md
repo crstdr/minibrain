@@ -1,35 +1,101 @@
-# Set up the roadmap (beta)
+# Set up the Roadmap plugin (beta)
 
-1. Download [roadmap.html](https://raw.githubusercontent.com/crstdr/minibrain/main/plugins/roadmap/roadmap.html) or copy it from a temporary checkout of the source outside the destination. Never clone into the destination. Save the file as `roadmap.html`, for example next to `MEMORY.md`. Refresh an existing roadmap rather than replacing its renderer. Keep the MIT header comment. Retain any separate notices under `licenses/` as described in the [core setup guide](../../SETUP.md#2-adapt-the-starter). Never replace the destination's own licence.
-2. Read the destination's instructions, `MEMORY.md` and linked topic notes if present. Otherwise use the folder's own notes. Gather supported priorities, open work, owners, hard dependencies, deadlines and decisions waiting on the user. Trace each item to its source and keep unknowns explicit. If there's no usable plan, ask the user for one. Show the result from their answer, or show an empty roadmap if the plan is still unknown. Don't present sample items as the user's plan.
-3. Replace the object in `const DATA = {...};`. Use JSON and encode literal `<` in strings as `\u003c` so note text cannot end the script block. Leave the renderer unchanged. Remove the visible “Sample data” label when you replace the demo data. Check that every ID reference resolves and dependencies have no cycles.
-4. In a brain, add the roadmap to its existing navigation (`AGENTS.md` → This brain, `Map.md` or `MAP.md`, as applicable). Label it a derived view and point to the notes as the source. Keep the file within the destination's privacy and storage policy.
-5. Open the local HTML in a browser for the user: use `open roadmap.html` on macOS or the platform's equivalent. Check that the graph, waiting decisions and critical path display when the plan has them.
+The Roadmap plugin renders any minibrain `collection.<name>/` folder that follows the metadata contract below as a live dependency graph on `http://127.0.0.1`. It requires Python 3.9+ and a browser, with no third-party packages.
 
-## DATA fields
+Core minibrain (`tools/collection.py`) stays unchanged. `tools/minibrain.py check` remains the authority for core brain and collection integrity (including governed history and cross-collection links); `roadmap.py check` validates the roadmap metadata contract below alongside core header, `source`, and `tags` syntax.
 
-- `nodes`: array of records, described below.
-- `order`: priority IDs in display order. Include every priority.
-- `short`: object mapping those IDs to short labels for the graph and filters.
-- `generated`: snapshot date, as a `YYYY-MM-DD` string.
+## 1. Install the plugin outside every brain and connect a collection
 
-Give each record these fields:
+1. Copy this `roadmap/` plugin folder (including its bundled `sample/`) whole to a directory **outside every brain** (for example `~/tools/roadmap/` or beside `agents-map/`), from a temporary checkout of the source outside the destination. Never place the plugin folder or its `sample/` directory inside a brain: `sample/collection.roadmap/` would collide with your brain's own `collection.roadmap/` under `minibrain.py check`. Keep `LICENSE` intact and never overwrite the destination's own licence.
+2. Inside your brain, create a collection folder such as `collection.roadmap/` (or point at an existing `collection.<name>/` folder). Register it under `AGENTS.md` -> This brain as usual for a minibrain collection. Refer to `~/tools/roadmap/sample/collection.roadmap/` (outside the brain) for the file layout.
+3. Add one Markdown file per record following the metadata contract below.
+4. Validate with both checks (from your brain folder):
+   ```sh
+   python3 tools/minibrain.py check
+   python3 -B ~/tools/roadmap/roadmap.py --collection collection.roadmap check
+   ```
+5. Open the live view:
+   ```sh
+   python3 -B ~/tools/roadmap/roadmap.py --collection collection.roadmap --title "Project roadmap"
+   ```
 
-- `id`: unique lowercase slug (letters, digits and hyphens); reserve `all` for the view filter.
-- `title`: short display title.
-- `kind`: `priority`, `project`, `decision` or `gap`.
-- `state`: `mapped` for priorities; `awaiting-user` for decisions waiting on the user. Other supported states: `missing`, `blocked`, `built-off`, `partial`, `unknown`, `discussed`, `specified`, `paused`, `in-progress`, `live`, `done`.
-- `owner`: accountable person, role or agent; empty string if unknown.
-- `serves`: comma-separated priority IDs, or an empty string. Use `needs` on priority records to connect the graph.
-- `by`: who reported the state, or an empty string.
-- `source`: local note path and heading, such as `MEMORY.md#Open threads`.
-- `importance`: source importance label, or an empty string. Retained for compatibility; not displayed.
-- `body`: current state and next action. Include any deadline, or the question and options for a user decision.
-- `needs`: array of IDs of hard prerequisites. Put the prerequisite's ID on the item that needs it.
-- `related`: array of IDs of related items that are not hard prerequisites. Do not use these links to create layout cycles.
-- `ext`: array of descriptions of user actions not represented by records. Use empty arrays where there are no entries.
-- `daysLeft`: nonnegative number of workdays remaining; use `0` for priorities and finished work, and `null` or omit when unknown. Unknown durations count as zero for the calculation. Model pending decisions explicitly rather than guessing their wait times.
+The viewer refreshes automatically while open whenever you save a record file. It binds only to `127.0.0.1` and is strictly read-only on your collection files. Server metadata, registry errors, and diagnostics never expose host filesystem paths; configured record fields and body text are served only to the local viewer.
 
-The path is the longest chain of estimated work in the current view, not a delivery date. Slack is how much extra work an item can take without lengthening that estimate. Deadlines in `body` do not affect the calculation.
+## 2. Metadata contract
 
-To refresh, reread the source notes, rebuild the DATA object, update `generated` and reopen the same file. Keep the notes authoritative.
+Every `.md` file inside `collection.<name>/` starts with `# Title`, optionally one blank line, then single-line `- key: value` headers (no duplicate header keys), followed by a blank line and optional Markdown body prose.
+
+### Mandatory fields (enforced by `roadmap.py check`)
+
+| Field | Required on | Allowed values |
+|---|---|---|
+| `# Title` | every record | First line of the file |
+| `kind` | every record | `priority`, `project`, `decision`, `gap` |
+| `state` | every record | `mapped` (priorities), `awaiting-user` (user decisions), `in-progress`, `specified`, `discussed`, `paused`, `blocked`, `missing`, `built-off`, `partial`, `unknown`, `live`, `done` |
+| `rank` | `kind: priority` | Finite number setting display order (lower appears first) |
+
+### Linking fields
+
+| Field | Used on | Format |
+|---|---|---|
+| `serves` | non-priorities | Comma- or space-separated `priority` IDs (local `id` or qualified `NAME/ID`). Records reachable from no priority appear under "Tied to no priority". |
+| `needs` | any record | Comma- or space-separated prerequisite IDs (local `id`, qualified `NAME/ID`, archived ID in sibling `collection.<name>.archive.md`, or cross-collection `other/id`). Cross-collection references are shown as external prerequisites and flagged as not validated here. |
+| `related` | any record | Comma- or space-separated soft links to other record IDs. |
+
+The viewer treats `done` and `live` as closed states. That viewer rule does not automatically configure core's `tools/collection.py`. If you also query `_unmet` through `tools/collection.py`, add an entry for your roadmap collection while preserving other collection entries:
+
+```python
+SATISFIED_STATES["roadmap"] = {"done", "live"}
+```
+
+### Optional fields (agent judgement and Agents Map linking)
+
+- `lane`: exact agent name as shown in Agents Map (binds the record and its attention badge to that agent).
+- `suggested`: candidate agent name before a task is assigned.
+- `owner`: human or role accountability note (prose).
+- `short`: short label for priority filter chips.
+- `focus`: `yes` to pin a priority ahead of ranked priorities.
+- `ask`: concise action prompt (at most 80 characters) shown on attention badges; falls back to `# Title`.
+- `due`: `YYYY-MM-DD` deadline date.
+- `when`: ISO date or date-time for a calendar event (drops off once started).
+- `attention`: `blocker`, `deadline`, `calendar`, `watch`, or `none` (silences the item). If omitted: open `decision` in `awaiting-user` becomes `blocker`; future `when` becomes `calendar`; `due` becomes `deadline`.
+- `alert`: `none`, `glow`, or `pulse` (explicit loudness override; if omitted, overdue items or blockers behind soon-due work `pulse`, the top 5 blockers by waiting count and deadlines within 2 working days `glow`, others stay still).
+- `days`: estimated remaining workdays (finite number).
+- `source`: `'location @ observation'` or `'unknown'` (matches `tools/collection.py`).
+- `tags`: space-separated `#tags` (matches `tools/collection.py`).
+- `by`, `since`, `checked`: optional reporting metadata.
+
+## 3. Connect to Agents Map (optional)
+
+Keep your local roadmap registry outside every brain (for example `~/Library/Application Support/agents-map/roadmaps.json`). Each entry `id` must be a unique slug (do not use the reserved id `default`):
+
+```json
+{
+  "version": 1,
+  "roadmaps": [
+    {
+      "id": "studio-roadmap",
+      "title": "Studio roadmap",
+      "collection": "/path/to/brain/collection.roadmap",
+      "owner_lane": "Studio lead",
+      "attention": true
+    }
+  ]
+}
+```
+
+Start Agents Map with the quoted registry path:
+
+```sh
+python3 -B agents_map.py \
+  --roadmaps "$HOME/Library/Application Support/agents-map/roadmaps.json"
+```
+
+Agents Map reads each listed collection read-only on `127.0.0.1`, opens roadmaps in its side-by-side split drawer when you click an agent's roadmap pill or card, and never sends host collection file paths to the browser.
+
+## CLI commands
+
+- `python3 -B roadmap.py --collection PATH check`: validate mandatory fields, core header/source/tag syntax, references, and effective cycles (exits 1 on problems).
+- `python3 -B roadmap.py --collection PATH summary`: text digest of priorities, open counts, and items needing the user.
+- `python3 -B roadmap.py --collection PATH json`: print the roadmap JSON document.
+- `python3 -B roadmap.py --collection PATH serve`: start the local read-only viewer on `127.0.0.1`.

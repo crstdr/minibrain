@@ -3,10 +3,11 @@
 import { app } from './state.js';
 import { $, el, store } from './util.js';
 import { fit, fitWindow } from './render.js';
-import { boot, canEdit, changeLayout, changed, expireSnoozes, flushViewport, history, rebuild, redraw, refresh, refreshFromServer, doTidy, syncArrangement, setCounts, setDark, setHover, setLinks, setLive, setPin, setRecent, setWake, syncThemeColor } from './actions.js';
+import { boot, canEdit, changeLayout, changed, expireSnoozes, flushViewport, history, rebuild, redraw, refresh, refreshFromServer, syncArrangement, setCounts, setDark, setHover, setLinks, setLive, setPin, setRecent, setWake, syncThemeColor } from './actions.js';
 import { idle } from './server.js';
 import { activeQuery, applyFilter, closePopover, groupByName, isActiveQuery, hideTip, initLegend, openAttention, openLayouts, openSaveForm, openSaves, queryKey, renderIndex, renderView, syncTableSelection, toggleTable } from './panels.js';
 import { cancelDrag, closeMenu } from './interact.js';
+import { closeRoadmapDrawer, collapseRoadmapDrawer, expandRoadmapDrawer, openRoadmapDrawer, setDrawerPreset, syncDrawerObfuscate } from './drawer.js';
 
 const search = $('search');
 const obfuscationKey = 'agents-map.obfuscate.v1';
@@ -64,6 +65,7 @@ $('opt-obfuscate').addEventListener('change', function () {
   closePopover();
   if (app.model) rebuild();
   else renderView();
+  syncDrawerObfuscate();
 });
 $('opt-links').addEventListener('change', ready(function () { setLinks($('opt-links').checked); }));
 $('opt-counts').addEventListener('change', ready(function () { setCounts($('opt-counts').checked); }));
@@ -85,7 +87,6 @@ $('btn-layouts').addEventListener('click', ready(() => {
   if ($('popover').dataset.kind === 'layouts') closePopover(true);
   else openLayouts();
 }));
-$('btn-tidy').addEventListener('click', ready(doTidy));
 $('btn-refresh').addEventListener('click', refreshFromServer);
 $('btn-undo').addEventListener('click', function () { history('undo'); });
 $('btn-redo').addEventListener('click', function () { history('redo'); });
@@ -118,6 +119,7 @@ document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape') {
     hideTip();
     if (cancelDrag() || closeMenu()) return;
+    if (closeRoadmapDrawer()) return;
     if (!$('view-panel').hidden) { toggleView(false); return; }
     if (!$('popover').hidden) { closePopover(true); return; }
     // Escape clears the filter from anywhere, not only while the box has focus.
@@ -172,10 +174,16 @@ document.addEventListener('visibilitychange', () => {
 initLegend();
 boot().then(function () {
   if (store('session', 'agents-map.table.v2')) toggleTable(true);
+  const wanted = new URLSearchParams(location.search).get('agent');
+  if (wanted && app.model?.byId.has(wanted)) {
+    window.history.replaceState(null, '', location.pathname);
+    setPin({ kind: 'agent', id: wanted });
+    syncTableSelection();
+  }
 }, function (error) {
   const note = el('div', '', app.ui.obfuscate ? 'The map could not load' : 'The map could not load: ' + error.message);
   note.id = 'empty';
   $('stage').appendChild(note);
 });
 
-window.agents_map = { app: app, rebuild: rebuild, idle: idle, history: history, changed: changed, changeLayout, fitWindow: fitWindow };   // for the page checks and the console
+window.agents_map = { app: app, rebuild: rebuild, idle: idle, history: history, changed: changed, changeLayout, fitWindow: fitWindow, openRoadmapDrawer, closeRoadmapDrawer, collapseRoadmapDrawer, expandRoadmapDrawer, setDrawerPreset };   // for the page checks and the console
