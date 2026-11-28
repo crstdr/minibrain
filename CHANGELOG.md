@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [0.10-alpha.1](https://github.com/crstdr/minibrain/compare/v0.9.1...v0.10-alpha.1) | nothing. RepoPrompt CE block (`hosts/repoprompt.md`): new MAP line. |
 | [0.9.1](https://github.com/crstdr/minibrain/compare/v0.9...v0.9.1) | nothing. The Agents Map demo and its fixes are outside `starter/`. |
 | [0.9.1-alpha.1](https://github.com/crstdr/minibrain/compare/v0.9...v0.9.1-alpha.1) | nothing. The Agents Map demo is outside `starter/`. |
 | [0.9](https://github.com/crstdr/minibrain/compare/v0.8...v0.9) | Since 0.8: the 0.9-alpha.2 changes (0.9-alpha.1 changed nothing in `starter/`). Follow [Upgrading](SETUP.md#upgrading). |
@@ -30,6 +31,11 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.4.2](https://github.com/crstdr/minibrain/compare/v0.3.1...v0.4.2) | nothing |
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
+
+## 0.10-alpha.1
+
+- minibrain app (alpha) in `plugins/app/` (Agents Map, Roadmap and Tasks): local observability and visualisation for multi-agent work, replacing `plugins/map/` and `plugins/roadmap/`.
+- Upgrades also cover the RepoPrompt CE block and plugins.
 
 ## 0.9.1
 

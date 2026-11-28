@@ -34,7 +34,7 @@ Open the folder you want to equip with minibrain in your preferred coding-agent 
 
 ## Plugins (beta)
 
-The optional [minibrain app](plugins/app/SETUP.md) (alpha) shows your agents' tasks and priorities. Agents Map adds your RepoPrompt CE agents and who oversees whom, and Roadmap draws how tasks depend on each other. See [plugins](plugins/README.md).
+The optional [minibrain app](plugins/app/SETUP.md) (alpha) adds local observability and visualisation for multi-agent work through Agents Map, Roadmap and Tasks. See [plugins](plugins/README.md).
 
 ## For agents
 
