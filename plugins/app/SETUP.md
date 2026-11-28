@@ -11,7 +11,7 @@ Requires Python 3.9+. Full setup (Agents Map, Roadmap and Tasks) currently runs 
    "The minibrain app is the user's view of their agents' tasks and priorities. Point them to its address when useful; in Chrome, the install icon in the address bar adds it as an app. Open it yourself only when the user asks."
    Then record: address, source commit, app folder, exact start command, `collections.json` path (`<state-dir>/collections.json`), how to stop, update and remove, any cleanup commands `--login-item on` printed, and "To raise your own tasks, see `TASKS.md` in the app folder." If the user keeps agent memory, add one line there pointing to `INSTALL.md`.
 5. Tell the user what was installed and where, the address, whether it starts at login, how to stop it, and that Chrome's address-bar install icon adds it as an app.
-6. Check the current brain only for `collection.<name>/` folders (do not scan other brains). If any exist, name each folder and its Markdown file count and ask whether to register them in `collections.json` (see [`TASKS.md`](TASKS.md)). If the user approves, add them and give the Roadmap address (`http://127.0.0.1:<port>/roadmap`).
+6. Check the current brain only for `collection.<name>/` folders (do not scan other brains). If any exist, name each folder and its Markdown file count and ask whether to register them in `collections.json` (see [`TASKS.md`](TASKS.md)). If the user approves, add them and give the Roadmap address (`http://127.0.0.1:<port>/roadmap`) when any uses `needs`/`serves`, otherwise the Agents Map address.
 
 ## Update, stop, remove
 

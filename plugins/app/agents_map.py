@@ -49,7 +49,7 @@ LOGIN_ITEM_LABEL = "io.github.crstdr.minibrain"
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(HERE, "web")
 DEFAULT_PORT = 47613  # fixed, so the page keeps one origin (browser settings stick to it)
-SERVER_VERSION = "2"
+SERVER_VERSION = "3"
 GRID = [60, 31]  # cell size in page pixels; an arrangement stores positions in cells
 HISTORY_LIMIT = 50
 MAX_BODY = 1 << 20
@@ -950,7 +950,7 @@ class MapServer(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "agents-map/2"
+    server_version = "agents-map/" + SERVER_VERSION
     protocol_version = "HTTP/1.1"  # the browser reuses a few connections instead of opening one per file
     timeout = 30  # browsers open spare connections and leave them idle; do not keep a thread for each
 
