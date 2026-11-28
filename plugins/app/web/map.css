@@ -210,7 +210,7 @@ a.win-title:hover { color: var(--ink); text-decoration: underline; max-width: no
   transition: opacity 140ms ease, background-color 140ms ease, visibility 0s linear 140ms;
 }
 .agent:has(.rm-chip, .open-chip) .agent-open { padding-top: 4px; }
-.agent:is(:hover, :focus-visible, :has(:focus-visible)):not(:has(.rm-chip:hover)) .agent-open {
+.agent:is(:hover, :focus-visible, :has(:focus-visible)):not(:has(.rm-chip:hover, .open-chip:hover)) .agent-open {
   visibility: visible; opacity: 1; pointer-events: auto;
   transition: opacity 110ms ease, background-color 140ms ease, visibility 0s linear 0s;
 }
@@ -549,7 +549,11 @@ td .k { display: inline-flex; align-items: center; gap: 5px; }
 }
 .open-chip {
   border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink-2);
-  pointer-events: none;
+  cursor: pointer;
+}
+.open-chip:hover {
+  border-color: var(--ink);
+  color: var(--ink);
 }
 .rm-chip {
   border: 1px solid var(--rm-chip-border, rgba(15,118,110,0.45));

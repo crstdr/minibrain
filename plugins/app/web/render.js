@@ -104,7 +104,9 @@ function buildChip(a) {
     chip.appendChild(el('span', '', label));
     node.appendChild(chip);
   } else if (a.items && a.items.length) {
-    node.appendChild(el('span', 'open-chip', a.items.length + ' open'));
+    const chip = el('button', 'open-chip', a.items.length + ' open');
+    chip.type = 'button';
+    node.appendChild(chip);
   }
 
   node.setAttribute('aria-label', a.name + ', ' + a.cliName + ' ' + a.model + (a.effort ? ' ' + a.effort : '') +
@@ -183,7 +185,9 @@ export function renderAll() {
   sync();
   const nextChip = focusedChip && m.byId.get(focusedChip.dataset.id)?.el;
   if (nextChip) {
-    const next = focused === focusedChip ? nextChip : nextChip.querySelector(focused.matches('.agent-open') ? '.agent-open' : '.rm-chip');
+    const next = focused === focusedChip ? nextChip : nextChip.querySelector(
+      focused.matches('.agent-open') ? '.agent-open' : focused.matches('.open-chip') ? '.open-chip' : '.rm-chip'
+    );
     (next || nextChip).focus({ preventScroll: true });
   }
 }

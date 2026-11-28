@@ -49,6 +49,7 @@ LOGIN_ITEM_LABEL = "io.github.crstdr.minibrain"
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(HERE, "web")
 DEFAULT_PORT = 47613  # fixed, so the page keeps one origin (browser settings stick to it)
+SERVER_VERSION = "2"
 GRID = [60, 31]  # cell size in page pixels; an arrangement stores positions in cells
 HISTORY_LIMIT = 50
 MAX_BODY = 1 << 20
@@ -924,7 +925,7 @@ RESPONSE_HEADERS = (
     ("Cache-Control", "no-store"),
     ("X-Content-Type-Options", "nosniff"),
     ("Referrer-Policy", "no-referrer"),
-    ("X-Agents-Map", "2"),
+    ("X-Agents-Map", SERVER_VERSION),
     ("Content-Security-Policy",
      "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; manifest-src 'self'; "
      "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"),
@@ -1086,21 +1087,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def roadmaps_list(self):
         if not self.server.collections_file:
-            return self.reply_json(200, {"roadmaps": [], "warnings": []})
+            return self.reply_json(200, {"roadmaps": [], "collections": 0, "warnings": []})
         try:
             entries, warnings = tasks.read_registry(self.server.collections_file)
         except Exception as error:
             print("collections registry failed: %r" % error, file=sys.stderr)
-            return self.reply_json(200, {"roadmaps": [], "warnings": ["Collections registry is unreadable."]})
+            return self.reply_json(200, {"roadmaps": [], "collections": 0, "warnings": ["Collections registry is unreadable."]})
         if not entries:
-            return self.reply_json(200, {"roadmaps": [], "warnings": warnings[:20]})
+            return self.reply_json(200, {"roadmaps": [], "collections": 0, "warnings": warnings[:20]})
         try:
             agents = self.server.collect(recent=False, known=self.server.store.known_windows()).get("agents", [])
         except Exception:
             agents = []
         blocks, notes = tasks.load_collections(entries, _open_agents(agents))
         summaries = [_roadmap_entry_summary(b) for b in blocks if b["has_graph"]]
-        return self.reply_json(200, {"roadmaps": summaries, "warnings": (warnings + notes)[:20]})
+        return self.reply_json(200, {"roadmaps": summaries, "collections": len(entries), "warnings": (warnings + notes)[:20]})
 
     def roadmap_one(self, roadmap_id):
         if not self.server.collections_file or not tasks.SLUG.match(roadmap_id):
@@ -1118,14 +1119,19 @@ class Handler(BaseHTTPRequestHandler):
     do_GET = do_HEAD = do_PUT = do_POST = do_DELETE = route
 
 
-def map_server_running(port):
-    """True when the port is already held by a map server."""
+def map_server_version(port):
+    """Return the X-Agents-Map header value from 127.0.0.1:<port>, or None."""
     request = urllib.request.Request("http://127.0.0.1:%d/" % port, method="HEAD")
     try:
         with urllib.request.urlopen(request, timeout=2) as response:
-            return "X-Agents-Map" in response.headers
+            return response.headers.get("X-Agents-Map")
     except OSError:
-        return False
+        return None
+
+
+def map_server_running(port):
+    """True when the port is already held by a current-version map server."""
+    return map_server_version(port) == SERVER_VERSION
 
 
 def _launchctl_not_loaded(result):
@@ -1223,7 +1229,8 @@ def login_item_on(
         raise SystemExit("--port must be between 1 and 65535")
     launch_agents_dir = LAUNCH_AGENTS_DIR if launch_agents_dir is None else launch_agents_dir
     runner = _run_launchctl if runner is None else runner
-    running_check = map_server_running if running_check is None else running_check
+    use_default_check = running_check is None
+    running_check = map_server_running if use_default_check else running_check
     effective_app_support = os.path.abspath(os.path.expanduser(app_support or repoprompt.APP_SUPPORT))
     if not os.path.isdir(effective_app_support):
         raise SystemExit("RepoPrompt CE data folder not found: " + effective_app_support)
@@ -1243,24 +1250,37 @@ def login_item_on(
     plist_path = os.path.join(os.path.abspath(os.path.expanduser(launch_agents_dir)), label + ".plist")
     url = "http://127.0.0.1:%d/" % port
 
-    if not os.path.lexists(plist_path) and running_check(port):
-        raise SystemExit(
-            "A map is already running at %s. Stop it first (--login-item off or Ctrl-C), then rerun --login-item on."
-            % url
-        )
+    def _fail_if_port_busy():
+        if use_default_check:
+            ver = map_server_version(port)
+            if ver is not None and ver != SERVER_VERSION:
+                raise SystemExit(
+                    "An older Agents Map (version %s) is running at %s. Stop it first, then rerun --login-item on."
+                    % (ver, url)
+                )
+            if ver == SERVER_VERSION:
+                raise SystemExit(
+                    "A map is already running at %s. Stop it first (--login-item off or Ctrl-C), then rerun --login-item on."
+                    % url
+                )
+        elif running_check(port):
+            raise SystemExit(
+                "A map is already running at %s. Stop it first (--login-item off or Ctrl-C), then rerun --login-item on."
+                % url
+            )
+
+    if not os.path.lexists(plist_path):
+        _fail_if_port_busy()
     bootout = runner(["launchctl", "bootout", domain_target])
     if bootout.returncode != 0 and not _launchctl_not_loaded(bootout):
         detail = (bootout.stderr or bootout.stdout or "").strip() or ("exit %d" % bootout.returncode)
         raise SystemExit("Could not stop existing login item: " + detail)
     if bootout.returncode == 0:
         deadline = time.monotonic() + min(2.0, wait_seconds)
-        while running_check(port) and time.monotonic() < deadline:
+        still_up = (lambda: map_server_version(port) is not None) if use_default_check else (lambda: running_check(port))
+        while still_up() and time.monotonic() < deadline:
             time.sleep(poll_interval)
-    if running_check(port):
-        raise SystemExit(
-            "A map is already running at %s. Stop it first (--login-item off or Ctrl-C), then rerun --login-item on."
-            % url
-        )
+    _fail_if_port_busy()
 
     os.makedirs(effective_state, exist_ok=True)
     _write_plist(plist_path, payload)
@@ -1416,15 +1436,21 @@ def serve(args, collect, forbidden):
     try:
         server = MapServer(args.port, collect, store, collections_file=args.collections)
     except OSError:
-        if args.demo or not map_server_running(args.port):
+        if args.demo:
             raise SystemExit("port %d is in use; pass --port" % args.port)
-        print("the map is already running at " + url)
-        if not args.no_open:
-            webbrowser.open(url)
-        return
-    print("minibrain app at %s  (Ctrl-C stops it)" % url.replace(str(args.port), str(server.server_address[1])), flush=True)
+        ver = map_server_version(args.port)
+        if ver == SERVER_VERSION:
+            print("the map is already running at " + url)
+            if not args.no_open:
+                webbrowser.open(url)
+            return
+        if ver is not None:
+            raise SystemExit("an older Agents Map (version %s) is already running at %s; stop it first" % (ver, url))
+        raise SystemExit("port %d is in use; pass --port" % args.port)
+    actual_url = "http://127.0.0.1:%d/" % server.server_address[1]
+    print("minibrain app at %s  (Ctrl-C stops it)" % actual_url, flush=True)
     if not args.no_open:
-        webbrowser.open(url)
+        webbrowser.open(actual_url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

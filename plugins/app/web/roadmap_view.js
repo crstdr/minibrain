@@ -115,9 +115,12 @@ function dotColor(cls) {
 export function mountRoadmap(container, opts = {}) {
   const st = {
     roadmaps: opts.roadmaps || [],
-    roadmapId: opts.roadmapId || 'default',
+    roadmapId: opts.roadmapId ?? (opts.apiUrl ? 'default' : null),
     apiBase: opts.apiBase || '/api/roadmap',
     apiUrl: opts.apiUrl || null,
+    listUrl: opts.listUrl || null,
+    collectionsCount: opts.collectionsCount ?? null,
+    emptyReason: null,
     lane: opts.lane || null,
     sel: opts.nodeId || null,
     view: 'all',
@@ -135,7 +138,7 @@ export function mountRoadmap(container, opts = {}) {
     size: { w: 1200, h: 700 },
     T: { x: 36, y: 36, k: 0.78 },
     fitted: false,
-    failed: 0,
+    failed: opts.listFailed ? 1 : 0,
     stamp: null,
     reqSeq: 0,
     abortCtrl: null,
@@ -227,6 +230,8 @@ export function mountRoadmap(container, opts = {}) {
   const stage = h('div', 'rm-stage');
   const world = h('div', 'rm-world');
   const edges = svgEl('svg', { class: 'rm-edges', 'aria-hidden': 'true' });
+  const emptyEl = h('div', 'rm-stage-empty', '');
+  emptyEl.hidden = true;
   const zoomBox = h('div', 'rm-zoom');
   const zi = h('button', '', '+'), zo = h('button', '', '−'), zf = h('button', '', 'Fit');
   [zi, zo, zf].forEach(b => { b.type = 'button'; });
@@ -256,7 +261,7 @@ export function mountRoadmap(container, opts = {}) {
     noticeOpen = !noticeOpen;
     renderNotice();
   };
-  stage.append(world, zoomBox, noticeEl);
+  stage.append(world, emptyEl, zoomBox, noticeEl);
 
   const aside = h('aside', 'rm-aside');
   body.append(stage, aside);
@@ -320,19 +325,21 @@ export function mountRoadmap(container, opts = {}) {
 
   function updatePopoutHref() {
     if (!popoutLink) return;
+    if (!st.roadmapId) { popoutLink.href = '/roadmap'; return; }
     const q = st.lane ? '?lane=' + encodeURIComponent(st.lane) : '';
     popoutLink.href = '/roadmap/' + encodeURIComponent(st.roadmapId) + q;
   }
 
   function renderTabs() {
     tabsEl.textContent = '';
-    if (st.roadmaps.length <= 1) return;
+    if (!st.roadmaps.length || (st.roadmaps.length === 1 && !st.emptyReason)) return;
     st.roadmaps.forEach((rm, idx) => {
       const b = h('button', 'rm-tab' + (rm.id === st.roadmapId ? ' active' : ''), st.obfuscate ? 'Roadmap ' + (idx + 1) : rm.title);
       b.type = 'button';
       b.onclick = () => {
         if (rm.id === st.roadmapId) return;
         st.roadmapId = rm.id;
+        st.emptyReason = null;
         st.lane = null;
         st.sel = null;
         st.view = 'all';
@@ -509,8 +516,32 @@ export function mountRoadmap(container, opts = {}) {
     applyTransform();
   }
 
+  function renderEmpty(reason) {
+    st.doc = null;
+    st.key = '';
+    st.N = new Map();
+    st.emptyReason = reason;
+    titleEl.textContent = 'Roadmap';
+    world.textContent = '';
+    chipsEl.textContent = '';
+    laneSel.textContent = '';
+    laneSel.hidden = true;
+    btnAtt.hidden = true;
+    noticeAlerts = [];
+    noticeOpen = false;
+    renderNotice();
+    renderTabs();
+    emptyEl.textContent = reason;
+    emptyEl.hidden = false;
+    zoomBox.hidden = true;
+    renderAside();
+  }
+
   function draw() {
     if (!st.doc) return;
+    emptyEl.hidden = true;
+    zoomBox.hidden = false;
+    laneSel.hidden = false;
     titleEl.textContent = displayTitle(st.doc);
     renderTabs();
     renderChips();
@@ -652,7 +683,10 @@ export function mountRoadmap(container, opts = {}) {
 
   function renderAside() {
     aside.textContent = '';
-    if (!st.doc) { aside.append(h('div', 'rm-empty', 'Loading…')); return; }
+    if (!st.doc) {
+      if (!st.emptyReason && !st.failed) aside.append(h('div', 'rm-empty', 'Loading…'));
+      return;
+    }
 
     const pickNode = id => {
       if (!st.vis.has(id)) { st.view = 'all'; st.sel = id; st.fitted = false; draw(); }
@@ -732,7 +766,10 @@ export function mountRoadmap(container, opts = {}) {
         acts.append(a);
       }
       if (openInfo && openInfo.href) {
-        const a = h('a', '', openInfo.open ? 'Open agent ↗' : 'Open workspace ↗');
+        const openLabel = openInfo.open
+          ? ((st.obfuscate || !laneLabel) ? 'Open agent ↗' : `Open ${laneLabel} ↗`)
+          : 'Open workspace ↗';
+        const a = h('a', '', openLabel);
         a.href = openInfo.href;
         acts.append(a);
       }
@@ -821,26 +858,77 @@ export function mountRoadmap(container, opts = {}) {
 
   async function fetchDoc(force = false) {
     if (st.destroyed) return;
-    const reqId = st.roadmapId;
-    if (!force && st.inFlightId === reqId) return;
+    let reqId = st.roadmapId;
+    const flightKey = reqId ?? '__list__';
+    if (!force && st.inFlightId === flightKey) return;
     const seq = ++st.reqSeq;
     if (st.abortCtrl) {
       try { st.abortCtrl.abort(); } catch (e) { /* ignore */ }
     }
     const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
     st.abortCtrl = ctrl;
-    st.inFlightId = reqId;
-    const url = st.apiUrl
-      ? st.apiUrl
-      : `${st.apiBase}/${encodeURIComponent(reqId)}`;
+    st.inFlightId = flightKey;
+    const fetchOpts = ctrl ? { cache: 'no-store', signal: ctrl.signal } : { cache: 'no-store' };
     try {
-      const fetchOpts = ctrl ? { cache: 'no-store', signal: ctrl.signal } : { cache: 'no-store' };
+      if (!reqId && st.listUrl) {
+        const lr = await fetch(st.listUrl, fetchOpts);
+        if (st.destroyed || seq !== st.reqSeq || st.roadmapId !== null) return;
+        if (!lr.ok) throw new Error('HTTP ' + lr.status);
+        const listData = await lr.json();
+        if (st.destroyed || seq !== st.reqSeq || st.roadmapId !== null) return;
+        st.roadmaps = listData.roadmaps || [];
+        if (typeof listData.collections === 'number') st.collectionsCount = listData.collections;
+        st.failed = 0;
+        if (st.roadmaps.length > 0) {
+          st.roadmapId = st.roadmaps[0].id;
+          reqId = st.roadmapId;
+          st.inFlightId = reqId;
+          st.emptyReason = null;
+        } else {
+          renderEmpty(st.collectionsCount === 0 ? 'No collections registered' : 'No roadmap links');
+          updateStatus();
+          return;
+        }
+      }
+      if (!reqId && !st.apiUrl) {
+        st.failed = 0;
+        renderEmpty(st.collectionsCount === 0 ? 'No collections registered' : 'No roadmap links');
+        updateStatus();
+        return;
+      }
+      const url = st.apiUrl
+        ? st.apiUrl
+        : `${st.apiBase}/${encodeURIComponent(reqId)}`;
       const r = await fetch(url, fetchOpts);
       if (st.destroyed || seq !== st.reqSeq || reqId !== st.roadmapId) return;
+      if (r.status === 404) {
+        if (st.listUrl) {
+          try {
+            const lr = await fetch(st.listUrl, fetchOpts);
+            if (st.destroyed || seq !== st.reqSeq || reqId !== st.roadmapId) return;
+            if (lr.ok) {
+              const listData = await lr.json();
+              if (st.destroyed || seq !== st.reqSeq || reqId !== st.roadmapId) return;
+              st.roadmaps = listData.roadmaps || [];
+              if (typeof listData.collections === 'number') st.collectionsCount = listData.collections;
+            }
+          } catch (e) {
+            if (e?.name === 'AbortError') return;
+          }
+        }
+        st.failed = 0;
+        const reason = st.collectionsCount === 0
+          ? 'No collections registered'
+          : (st.roadmaps.length === 0 && st.listUrl ? 'No roadmap links' : 'Roadmap not found');
+        renderEmpty(reason);
+        updateStatus();
+        return;
+      }
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const doc = await r.json();
       if (st.destroyed || seq !== st.reqSeq || reqId !== st.roadmapId) return;
       st.failed = 0;
+      st.emptyReason = null;
       st.stamp = new Date();
       const sig = JSON.stringify([doc.id, doc.title, doc.nodes, doc.roots, doc.loose, doc.lanes, doc.open, doc.node_agents, doc.node_open, doc.problems, doc.warnings]);
       if (sig !== st.key) {
@@ -858,6 +946,7 @@ export function mountRoadmap(container, opts = {}) {
       if (st.destroyed || seq !== st.reqSeq || reqId !== st.roadmapId || e?.name === 'AbortError') return;
       st.failed++;
       updateStatus();
+      renderAside();
     } finally {
       if (seq === st.reqSeq) {
         st.inFlightId = null;
@@ -925,6 +1014,7 @@ export function mountRoadmap(container, opts = {}) {
   };
   window.addEventListener('storage', onStorage);
 
+  if (st.failed) { updateStatus(); renderAside(); }
   fetchDoc(true);
 
   return {
@@ -934,7 +1024,7 @@ export function mountRoadmap(container, opts = {}) {
       if (roadmapId) st.roadmapId = roadmapId;
       st.lane = lane || null;
       st.sel = nodeId || null;
-      if (changedId) { st.view = 'all'; st.fitted = false; st.key = ''; }
+      if (changedId) { st.emptyReason = null; st.view = 'all'; st.fitted = false; st.key = ''; }
       if (changedId) fetchDoc(true);
       else if (!st.doc) fetchDoc(false);
       else if (st.sel && st.N.has(st.sel) && !st.vis.has(st.sel)) {
@@ -952,6 +1042,7 @@ export function mountRoadmap(container, opts = {}) {
     setObfuscate(on) {
       st.obfuscate = !!on;
       if (st.doc) draw();
+      else if (st.emptyReason) renderTabs();
     },
     setAsideCollapsed(on, respectUser = true) {
       if (respectUser && st.asideUserChoice !== null) return;

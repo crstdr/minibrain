@@ -23,26 +23,32 @@ const initialLane = params.get('lane') || null;
 const initialNode = params.get('node') || null;
 
 let roadmaps = [];
-let fromMap = parts[0] === 'roadmap';
+let collectionsCount = null;
+let listFailed = false;
+const fromMap = parts[0] === 'roadmap';
 if (fromMap) {
   try {
     const r = await fetch('/api/roadmaps', { cache: 'no-store' });
     if (r.ok) {
       const data = await r.json();
       roadmaps = data.roadmaps || [];
-    } else fromMap = false;
+      collectionsCount = typeof data.collections === 'number' ? data.collections : null;
+    } else listFailed = true;
   } catch (e) {
-    fromMap = false;
+    listFailed = true;
   }
 }
 
 const resolvedId = fromMap
-  ? (urlId || (roadmaps.length ? roadmaps[0].id : 'default'))
+  ? (urlId || (roadmaps.length ? roadmaps[0].id : null))
   : 'default';
 
 const ctrl = mountRoadmap(document.getElementById('rm-page-root'), {
   roadmaps,
   roadmapId: resolvedId,
+  collectionsCount,
+  listUrl: fromMap ? '/api/roadmaps' : null,
+  listFailed,
   lane: initialLane,
   nodeId: initialNode,
   obfuscate: readPref(OBFUSCATE_KEY) === true,

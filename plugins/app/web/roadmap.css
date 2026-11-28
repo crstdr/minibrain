@@ -129,6 +129,11 @@ body.rm-standalone * { box-sizing: border-box; }
   user-select: none; -webkit-user-select: none; touch-action: none;
 }
 .rm-stage.drag { cursor: grabbing; }
+.rm-stage-empty {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 24px; text-align: center; color: var(--rm-ink2); font-size: 14px;
+  pointer-events: none;
+}
 .rm-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; --rm-inv-k: 1; }
 .rm-edges { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
 .rm-edges path { fill: none; stroke: var(--rm-edge); stroke-width: 1.4; }

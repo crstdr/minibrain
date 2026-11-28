@@ -88,7 +88,7 @@ function endDrag(d, apply) {
 }
 
 stage.addEventListener('pointerdown', function (e) {
-  if (!canEdit() || e.button !== 0 || e.ctrlKey || e.metaKey || e.target.closest(CHROME + ', .agent-open, .rm-chip')) return;
+  if (!canEdit() || e.button !== 0 || e.ctrlKey || e.metaKey || e.target.closest(CHROME + ', .agent-open, .rm-chip, .open-chip')) return;
   closeMenu(); closePopover();
   const title = e.target.closest('.frame-title'), winEl = e.target.closest('.win');
   const view = app.ui.view;
@@ -183,6 +183,12 @@ stage.addEventListener('click', function (e) {
     if (chip) setPin({ kind: 'agent', id: chip.dataset.id });
     openRoadmapDrawer(rmChip.dataset.roadmap, rmChip.dataset.lane || null, null);
     syncTableSelection();
+    return;
+  }
+  const openChip = e.target.closest('.open-chip');
+  if (openChip && chip) {
+    e.preventDefault(); e.stopPropagation();
+    toggleTip(chip.dataset.id);
     return;
   }
   if (e.target.closest('.agent-open')) return;
