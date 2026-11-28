@@ -464,12 +464,14 @@ def _load_all(collection_dir, warn_external=True):
             else:
                 item["unresolved_serves"].append(ref)
         if warn_external:
-            item["unresolved_needs"].extend(item["_needs_ext"])
-            item["unresolved_serves"].extend(item["_serves_ext"])
+            # Warn on broken local refs; standalone check cannot see collections.json, so cross-collection
+            # refs are shown as unresolved in standalone documents without warning during `check`.
             if item["unresolved_needs"]:
                 warnings.append("%s: unresolved needs: %s" % (label, ", ".join(item["unresolved_needs"])))
             if item["unresolved_serves"]:
                 warnings.append("%s: unresolved serves: %s" % (label, ", ".join(item["unresolved_serves"])))
+            item["unresolved_needs"].extend(item["_needs_ext"])
+            item["unresolved_serves"].extend(item["_serves_ext"])
 
     deps = _graph_edges(items, archived)
     cycle = _cycle(deps)
@@ -908,7 +910,7 @@ def _load_registry_graph(entries, now=None):
 
     Returns (records, by_id, external_items, incoming).
     """
-    records, by_id, by_ref_name, collisions = [], {}, {}, set()
+    records, by_id = [], {}
     for entry in entries:
         label = entry["title"]
         try:
@@ -930,13 +932,6 @@ def _load_registry_graph(entries, now=None):
                "incomplete": incomplete, "load_errors": [], "cname": _collection_name(entry["collection"])}
         records.append(rec)
         by_id[entry["id"]] = rec
-        for key in (rec["cname"], entry["id"]):
-            if key in by_ref_name and by_ref_name[key] is not rec:
-                collisions.add(key)
-            else:
-                by_ref_name[key] = rec
-    for key in collisions:
-        by_ref_name.pop(key, None)
 
     incoming = {rec["entry"]["id"]: set() for rec in records}
     external_items = {}
@@ -947,7 +942,7 @@ def _load_registry_graph(entries, now=None):
         for rid, item in rec["items"].items():
             external_items["%s/%s" % (cid, rid)] = item
 
-    # Resolve cross-collection needs and serves across all registered collections.
+    # Resolve cross-collection needs and serves strictly by unique registry id (<registry-id>/<id>).
     for rec in records:
         if rec["items"] is None:
             continue
@@ -957,7 +952,7 @@ def _load_registry_graph(entries, now=None):
             label = item["id"]
             for raw_ref in item["_needs_ext"]:
                 col, _, rid = raw_ref.partition("/")
-                target = by_ref_name.get(col)
+                target = by_id.get(col)
                 if target is rec:
                     if rid in items:
                         if rid not in item["needs"]:
@@ -967,7 +962,7 @@ def _load_registry_graph(entries, now=None):
                             item["archived_needs"].append({"id": rid, "done": archived[rid]["state"] == "done"})
                     elif raw_ref not in item["unresolved_needs"]:
                         item["unresolved_needs"].append(raw_ref)
-                elif target is not None:
+                elif target is not None and target["items"] is not None:
                     tid = target["entry"]["id"]
                     qid = "%s/%s" % (tid, rid)
                     if rid in target["items"]:
@@ -984,7 +979,7 @@ def _load_registry_graph(entries, now=None):
 
             for raw_ref in item["_serves_ext"]:
                 col, _, rid = raw_ref.partition("/")
-                target = by_ref_name.get(col)
+                target = by_id.get(col)
                 if target is rec:
                     if rid in items:
                         if rid not in item["serves"]:
@@ -993,7 +988,7 @@ def _load_registry_graph(entries, now=None):
                         continue
                     elif raw_ref not in item["unresolved_serves"]:
                         item["unresolved_serves"].append(raw_ref)
-                elif target is not None:
+                elif target is not None and target["items"] is not None:
                     tid = target["entry"]["id"]
                     qid = "%s/%s" % (tid, rid)
                     if rid in target["items"]:
