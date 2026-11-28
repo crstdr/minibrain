@@ -35,7 +35,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 ## 0.10-alpha.2
 
-- minibrain app: clear empty Roadmap states; setup offers to connect the brain's task folders; an older map on the port is reported; task links name their agent; the open count opens the task list.
+- minibrain app: clear empty Roadmap states; setup offers to connect the brain's task folders; an older map on the port is reported; task links name their agent; an agent's box shows "N tasks", which opens its task list.
 - Upgrades list upstream RepoPrompt CE lines when a brain keeps that guidance under its own heading.
 
 ## 0.10-alpha.1
