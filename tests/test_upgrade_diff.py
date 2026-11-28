@@ -187,7 +187,20 @@ class HostBlockAndPluginTests(unittest.TestCase):
         out = self.run_tool(self.brain(with_block=True))
         self.assertIn("inspect: AGENTS.md (RepoPrompt CE block)", out)
         self.assertRegex(out, r"\+ - MAP — .*\[missing\]")
-        self.assertIn("not compared; AGENTS.md has no RepoPrompt CE block", self.run_tool(self.brain(with_block=False)))
+        without = self.run_tool(self.brain(with_block=False))
+        self.assertIn("not compared; AGENTS.md has no RepoPrompt CE block", without)
+        self.assertRegex(without, r"\+ - MAP — .*\[not compared\]")
+        self.assertIn("--map hosts/repoprompt.md=AGENTS.md#<heading>", without)
+
+    def test_block_kept_under_a_heading_is_compared_through_map(self):
+        brain = self.brain(with_block=False)
+        agents = brain / "AGENTS.md"
+        agents.write_text(agents.read_text() + "\n## RepoPrompt tooling\n\n- NAME — local wording.\n")
+        out = subprocess.run([sys.executable, str(TOOL), "HEAD", str(brain), "--from", "v0.9.1",
+                              "--map", "hosts/repoprompt.md=AGENTS.md#RepoPrompt tooling"],
+                             capture_output=True, text=True, check=True).stdout
+        self.assertIn("inspect: AGENTS.md#RepoPrompt tooling (RepoPrompt CE block)", out)
+        self.assertRegex(out, r"\+ - MAP — .*\[missing\]")
 
     def test_changed_and_removed_plugins_are_named(self):
         out = self.run_tool(self.brain(with_block=False))

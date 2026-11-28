@@ -25,7 +25,8 @@ For replaced lines, "upstream change" first shows what the release itself change
 --map to path#heading compares a starter file with one section of a brain file. CLAUDE.md-style
 @file imports are followed. Dash variants and spacing are ignored when matching.
 Helpers are compared with the target as a short diff, with functions present only in the target named.
-hosts/repoprompt.md: its <rpce_tooling_guidance> block is compared with AGENTS.md when the brain has that block.
+hosts/repoprompt.md: its <rpce_tooling_guidance> block is compared with AGENTS.md when the brain has that block;
+otherwise its upstream lines are listed as [not compared], and --map can point it at a heading.
 Plugins install outside brains: changed plugin folders are listed, for their own Update steps.
 Read-only. Evidence, not a verdict: the upgrading agent decides what to take, merge or keep.
 Exit 2 on bad arguments, an unresolvable ref or a brain folder without AGENTS.md; a review with no\nusable base is still a valid result (exit 0).
@@ -234,13 +235,21 @@ def main(argv):
                       "Text the brain adapted on purpose and text upstream changed look alike; "
                       "no 'upstream change' lines can be shown.")
     files, body = [], []
-    totals = dict.fromkeys(("have", "example", "near", "partial", "missing", "skipped"), 0)
+    totals = dict.fromkeys(("have", "example", "near", "partial", "missing", "skipped", "not compared"), 0)
     for path in paths:
         host = path == HOST
         if host and path not in maps:
             agents = (brain / "AGENTS.md").read_text(encoding="utf-8", errors="replace")
             if HOST_BLOCK[0] not in agents:
-                files.append(f"{HOST}: not compared; AGENTS.md has no RepoPrompt CE block")
+                before_block = host_block(show(old, path) if old else None) or []
+                added = [l for l in host_block(show(new, path)) or [] if l.strip() and l not in before_block]
+                files.append(f"{HOST}: not compared; AGENTS.md has no RepoPrompt CE block"
+                             + (f" (guidance kept under a heading? rerun with --map {HOST}=AGENTS.md#<heading>)"
+                                if added else ""))
+                if added:
+                    totals["not compared"] += len(added)
+                    body.append(f"\n=== {HOST}: upstream block lines, not compared")
+                    body.extend(f"  + {l}   [not compared]" for l in added)
                 continue
         rel = maps.get(path, "AGENTS.md" if host else path.removeprefix("starter/"))
         previous, after = (show(old, path) if old else None), show(new, path)
