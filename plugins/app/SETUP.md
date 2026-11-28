@@ -1,27 +1,23 @@
-# Set up minibrain app (alpha)
+# Set up the minibrain app (alpha)
 
-Local browser app with two views: **Agents Map** (live agent status, oversight links, Attention and open items; reads RepoPrompt CE on macOS read-only) and **Roadmap** (dependency graph for collections using `needs`/`serves`; runs anywhere Python 3.9+ does).
+Requires Python 3.9+. Full setup (Agents Map, Roadmap and Tasks) currently runs on macOS with RepoPrompt CE; Roadmap runs standalone on any OS (see **Roadmap only** below).
 
-## Agents Map and Roadmap (macOS, RepoPrompt CE)
+## Full setup (macOS, RepoPrompt CE)
 
-1. Requires macOS, RepoPrompt CE and Python 3.9+. Missing one? Tell the user what is missing and stop.
-2. Copy `plugins/app/` whole to `~/Library/Application Support/minibrain/app/` unless the user names another folder; keep it outside private memory and every brain. Copy from a temporary checkout outside the destination; never clone into it. Leave its files unchanged, including `LICENSE`.
-3. Unless the user already chose, ask whether the app should start at login; recommend yes. Yes: from the app folder, `python3 -B agents_map.py --login-item on`. No: `python3 -B agents_map.py` (stops when the process ends; say so). Add any options to either command. If it fails, report its output and stop.
-4. Write `~/Library/Application Support/minibrain/INSTALL.md` (even with another `--state-dir`). Open it verbatim with:
+1. If a requirement is missing, tell the user which and stop.
+2. Copy `plugins/app/` whole and unchanged to `~/Library/Application Support/minibrain/app/`, or to a folder the user names outside every brain. Copy from a temporary checkout; never clone into the destination.
+3. Ask whether the app should start at login, unless the user already said; recommend yes. From the app folder run `python3 -B agents_map.py --login-item on`, or `python3 -B agents_map.py` (runs until the process ends; say so). Options: `--help`. If it fails, report the output and stop.
+4. Write `~/Library/Application Support/minibrain/INSTALL.md`, at that path even with another `--state-dir`. Open it with, verbatim:
    "The minibrain app is the user's view of their agents' tasks and priorities. Point them to its address when useful; in Chrome, the install icon in the address bar adds it as an app. Open it yourself only when the user asks."
-   Then record: address, source commit, app folder, login item on or off, exact start command with all options, `collections.json` path (default `<state-dir>/collections.json`; default state dir `~/Library/Application Support/minibrain`), how to stop, update and remove it, if using `--login-item on`, the cleanup commands it prints, and one line: "To raise your own items, see `ITEMS.md` in the app folder." If the user keeps agent memory, add one line pointing to `INSTALL.md`.
-5. Tell the user what was installed and where, the address, whether it starts at login, how to stop it, where `INSTALL.md` is, and that Chrome can install the page as an app from the address bar.
-
-## Roadmap only (any OS, no RepoPrompt CE)
-
-Requires Python 3.9+ and a browser. Copy `plugins/app/` whole to a folder outside every brain (for example `~/tools/minibrain-app/`), leaving `LICENSE` intact. Inside a brain, `sample/collection.roadmap/` would fail `minibrain.py check`. See [`ITEMS.md`](ITEMS.md) for the item contract and standalone `roadmap.py` commands.
-
-## Options
-
-`--port N`, `--no-open`, `--state-dir DIR`, `--collections FILE`, `--demo`: see [`README.md`](README.md). Keep the registry outside every brain. `--login-item on` replaces its saved options: pass all of them, changed or not.
+   Then record: address, source commit, app folder, exact start command, `collections.json` path (`<state-dir>/collections.json`), how to stop, update and remove, any cleanup commands `--login-item on` printed, and "To raise your own tasks, see `TASKS.md` in the app folder." If the user keeps agent memory, add one line there pointing to `INSTALL.md`.
+5. Tell the user what was installed and where, the address, whether it starts at login, how to stop it, and that Chrome's address-bar install icon adds it as an app.
 
 ## Update, stop, remove
 
-- Update: stage a fresh whole copy, stop the app, replace only the app folder, rerun the start command from `INSTALL.md` and update its source commit.
-- Stop: `--login-item off` (also ends login starts), or end the manual process.
-- Remove: stop it (for `--login-item on` installs whose app folder is already gone, run the cleanup commands in `INSTALL.md`), then delete the app folder and `INSTALL.md`. Keep saved layouts unless the user asks.
+- Update: stop the app, replace the app folder with a fresh whole copy, rerun the start command from `INSTALL.md` and update its source commit. `--login-item on` replaces saved options; pass all of them.
+- Stop: `python3 -B agents_map.py --login-item off` (also ends login starts), or end the process.
+- Remove: stop it, then delete the app folder and `INSTALL.md`; keep saved layouts unless the user asks. App folder already gone (login install)? Run the cleanup commands in `INSTALL.md`.
+
+## Roadmap only (any OS)
+
+Copy `plugins/app/` whole and unchanged to a folder outside every brain. Commands: [`TASKS.md`](TASKS.md).

@@ -40,7 +40,7 @@ from copy import deepcopy
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-import roadmap
+import tasks
 from sources import demo, repoprompt
 
 STATE_DIR = os.path.expanduser("~/Library/Application Support/minibrain")
@@ -829,11 +829,11 @@ def _roadmap_entry_summary(block):
 
 def roadmap_document(collections_file, collection_id, collect, known=()):
     """Full graph document for one registered collection id, enriched with live lane links."""
-    entries, _ = roadmap.read_registry(collections_file)
+    entries, _ = tasks.read_registry(collections_file)
     entry = next((e for e in entries if e["id"] == collection_id), None)
     if not entry:
         raise KeyError(collection_id)
-    doc, node_routing = roadmap.document_from_registry(entries, collection_id)
+    doc, node_routing = tasks.document_from_registry(entries, collection_id)
     try:
         graph_data = collect(recent=False, known=known)
     except Exception:
@@ -849,9 +849,9 @@ def roadmap_document(collections_file, collection_id, collect, known=()):
             names.add(owner_lane)
     if doc["lane"]:
         names.add(doc["lane"])
-    lanes = roadmap.resolve_lanes(names, open_agents)
+    lanes = tasks.resolve_lanes(names, open_agents)
     owner_sid = (
-        roadmap.resolve_lane_link(entry["lane_link"], open_agents)
+        tasks.resolve_lane_link(entry["lane_link"], open_agents)
         or (lanes.get(doc["lane"]) if doc["lane"] else None)
     )
     if doc["lane"] and owner_sid:
@@ -861,11 +861,11 @@ def roadmap_document(collections_file, collection_id, collect, known=()):
     for n in doc["nodes"]:
         n_lane, n_link, o_lane, o_link = node_routing.get(n["id"], (n.get("lane", ""), "", doc["lane"], entry["lane_link"]))
         n_owner_sid = (
-            roadmap.resolve_lane_link(o_link, open_agents)
+            tasks.resolve_lane_link(o_link, open_agents)
             or (lanes.get(o_lane) if o_lane else None)
         )
         sid = (
-            (roadmap.resolve_lane_link(n_link, open_agents) if n_link else None)
+            (tasks.resolve_lane_link(n_link, open_agents) if n_link else None)
             or (lanes.get(n_lane) if n_lane else None)
             or n_owner_sid
         )
@@ -878,7 +878,7 @@ def roadmap_document(collections_file, collection_id, collect, known=()):
         doc["node_open"] = {}
     else:
         by_id = {a["id"]: a for a in agents}
-        away = roadmap.resolve_lanes([l for l, sid in lanes.items() if not sid], closed_agents)
+        away = tasks.resolve_lanes([l for l, sid in lanes.items() if not sid], closed_agents)
         links = {}
         for lane, sid in lanes.items():
             agent = by_id.get(sid or away.get(lane))
@@ -902,13 +902,13 @@ def graph_document(collect, recent, known=(), collections_file=None):
     col_notes = []
     if collections_file:
         try:
-            entries, reg_notes = roadmap.read_registry(collections_file)
+            entries, reg_notes = tasks.read_registry(collections_file)
         except Exception as error:
             print("collections registry failed: %r" % error, file=sys.stderr)
             entries, reg_notes = [], ["Collections registry is unreadable."]
         col_notes.extend(reg_notes)
         if entries:
-            blocks, load_notes = roadmap.load_collections(entries, _open_agents(data.get("agents", [])))
+            blocks, load_notes = tasks.load_collections(entries, _open_agents(data.get("agents", [])))
             col_notes.extend(load_notes)
             if blocks:
                 data["collections"] = blocks
@@ -1088,7 +1088,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.server.collections_file:
             return self.reply_json(200, {"roadmaps": [], "warnings": []})
         try:
-            entries, warnings = roadmap.read_registry(self.server.collections_file)
+            entries, warnings = tasks.read_registry(self.server.collections_file)
         except Exception as error:
             print("collections registry failed: %r" % error, file=sys.stderr)
             return self.reply_json(200, {"roadmaps": [], "warnings": ["Collections registry is unreadable."]})
@@ -1098,12 +1098,12 @@ class Handler(BaseHTTPRequestHandler):
             agents = self.server.collect(recent=False, known=self.server.store.known_windows()).get("agents", [])
         except Exception:
             agents = []
-        blocks, notes = roadmap.load_collections(entries, _open_agents(agents))
+        blocks, notes = tasks.load_collections(entries, _open_agents(agents))
         summaries = [_roadmap_entry_summary(b) for b in blocks if b["has_graph"]]
         return self.reply_json(200, {"roadmaps": summaries, "warnings": (warnings + notes)[:20]})
 
     def roadmap_one(self, roadmap_id):
-        if not self.server.collections_file or not roadmap.SLUG.match(roadmap_id):
+        if not self.server.collections_file or not tasks.SLUG.match(roadmap_id):
             return self.reply_json(404, {"error": "not found"})
         try:
             doc = roadmap_document(self.server.collections_file, roadmap_id, self.server.collect,

@@ -277,7 +277,7 @@ export function mountRoadmap(container, opts = {}) {
   function displayNodeTitle(n, index) {
     if (n.id === NONE_GROUP) return 'Unlinked';
     if (!st.obfuscate) return n.title;
-    return 'Item ' + (index + 1);
+    return 'Task ' + (index + 1);
   }
 
   function displayState(n) {
@@ -398,7 +398,7 @@ export function mountRoadmap(container, opts = {}) {
     mk('all', 'All');
     roots.forEach((pid, idx) => {
       const p = st.N.get(pid);
-      if (p) mk(pid, st.obfuscate ? (pid === NONE_GROUP ? 'Unlinked' : 'Item ' + (idx + 1)) : p.title, st.obfuscate ? '' : p.title);
+      if (p) mk(pid, st.obfuscate ? (pid === NONE_GROUP ? 'Unlinked' : 'Task ' + (idx + 1)) : p.title, st.obfuscate ? '' : p.title);
     });
   }
 
@@ -522,7 +522,7 @@ export function mountRoadmap(container, opts = {}) {
     edges.textContent = '';
     world.append(edges);
 
-    const colHeaders = maxCol === 0 ? [[0, 'Items']] : [[0, 'Depends on →'], [maxCol, 'Needed first']];
+    const colHeaders = maxCol === 0 ? [[0, 'Tasks']] : [[0, 'Depends on →'], [maxCol, 'Needed first']];
     for (const [c, label] of colHeaders) {
       const colEl = h('div', 'rm-col', label);
       colEl.style.left = (PAD + c * CX) + 'px';

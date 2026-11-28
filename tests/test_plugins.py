@@ -34,8 +34,8 @@ class ResourceReferences(HTMLParser):
 
 class PluginTests(unittest.TestCase):
     def test_plugin_entrypoints_exist(self):
-        for path in ("README.md", "app/SETUP.md", "app/ITEMS.md",
-                     "app/agents_map.py", "app/roadmap.py", "app/web/roadmap.html"):
+        for path in ("README.md", "app/SETUP.md", "app/TASKS.md",
+                     "app/agents_map.py", "app/tasks.py", "app/web/roadmap.html"):
             with self.subTest(path=path):
                 self.assertTrue((PLUGINS / path).is_file())
 
@@ -69,7 +69,7 @@ class PluginTests(unittest.TestCase):
                     self.assertNotRegex(text, r"(?i)https?://|@import\b")
 
     def roadmap(self, *args, collection=SAMPLE):
-        return subprocess.run([sys.executable, "-B", str(APP / "roadmap.py"), "--collection", str(collection), *args],
+        return subprocess.run([sys.executable, "-B", str(APP / "tasks.py"), "--collection", str(collection), *args],
                               text=True, capture_output=True, timeout=30)
 
     def test_sample_roadmap_passes_both_checks(self):

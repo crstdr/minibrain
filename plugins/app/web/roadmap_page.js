@@ -1,4 +1,4 @@
-// Standalone roadmap page bootstrap (used by both roadmap.py serve and agents_map.py /roadmap/<id>).
+// Standalone roadmap page bootstrap (used by both tasks.py serve and agents_map.py /roadmap/<id>).
 import { mountRoadmap } from './roadmap_view.js';
 
 const THEME_KEY = 'agents-map.theme.v1';

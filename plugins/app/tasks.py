@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Collection reader, validator, attention derivation and standalone Roadmap viewer.
+"""Task collection reader, validator, attention derivation and standalone Roadmap viewer.
 
 Reads a minibrain collection folder (collection.<name>/*.md) and produces:
-  - open items with derived Attention, Blocked and Overdue flags for Agents Map;
+  - open tasks with derived Attention, Blocked and Overdue flags for Agents Map;
   - a dependency graph document (needs/serves) for the Roadmap view;
   - CLI commands: check, summary, json and standalone serve on 127.0.0.1.
 
@@ -11,10 +11,10 @@ metadata never expose host filesystem paths; configured record fields and body p
 are served only to the local viewer. Python 3.9 standard library only.
 
 Usage:
-  python3 roadmap.py --collection PATH serve [--title TEXT] [--port 47615] [--no-open]
-  python3 roadmap.py --collection PATH check
-  python3 roadmap.py --collection PATH summary
-  python3 roadmap.py --collection PATH json
+  python3 tasks.py --collection PATH serve [--title TEXT] [--port 47615] [--no-open]
+  python3 tasks.py --collection PATH check
+  python3 tasks.py --collection PATH summary
+  python3 tasks.py --collection PATH json
 """
 import argparse
 import datetime
@@ -822,7 +822,7 @@ def read_registry(path):
       {"version": 1,
        "collections": [
          {"id": "studio-roadmap", "collection": "/path/to/collection.roadmap",
-          "title": "Studio roadmap", "lane": "Studio lead", "lane_link": "repoprompt-ce://..."}
+          "title": "Studio roadmap", "lane": "Studio lead", "lane-link": "repoprompt-ce://..."}
        ]}
     Also accepts a bare JSON array of entry objects.
     """
@@ -880,9 +880,9 @@ def read_registry(path):
             if "lane" in item and item["lane"] is not None and not isinstance(item["lane"], str):
                 raise ValueError("lane")
             lane = _clean_text(item.get("lane"), 80)
-            if "lane_link" in item and item["lane_link"] is not None and not isinstance(item["lane_link"], str):
-                raise ValueError("lane_link")
-            lane_link = _clean_text(item.get("lane_link"), 512)
+            if "lane-link" in item and item["lane-link"] is not None and not isinstance(item["lane-link"], str):
+                raise ValueError("lane-link")
+            lane_link = _clean_text(item.get("lane-link"), 512)
             seen_ids.add(cid)
             seen_paths.add(canon)
             entries.append({
@@ -1128,7 +1128,7 @@ def summary(collection_dir, title="", lane="", now=None):
     open_nodes = [n for n in nodes if n["open"]]
     att_nodes = [n for n in open_nodes if n["attention"]]
     other_nodes = [n for n in open_nodes if not n["attention"]]
-    lines = ["%s: %d items, %d open, %d attention" % (doc["title"], len(nodes), len(open_nodes), len(att_nodes))]
+    lines = ["%s: %d tasks, %d open, %d attention" % (doc["title"], len(nodes), len(open_nodes), len(att_nodes))]
 
     def fmt(node):
         extra = []
@@ -1271,7 +1271,7 @@ def main(argv=None):
         for entry in warnings:
             print("warning:", entry)
         if not problems and not warnings:
-            print("clean: %d items" % count)
+            print("clean: %d tasks" % count)
         return 1 if problems else 0
     if args.command == "summary":
         print(summary(collection_dir, title=args.title, lane=args.lane))
