@@ -4,6 +4,7 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 
 | Release | Changed in `starter/` |
 |---|---|
+| [0.10-alpha.2](https://github.com/crstdr/minibrain/compare/v0.10-alpha.1...v0.10-alpha.2) | nothing. |
 | [0.10-alpha.1](https://github.com/crstdr/minibrain/compare/v0.9.1...v0.10-alpha.1) | nothing. RepoPrompt CE block (`hosts/repoprompt.md`): new MAP line. |
 | [0.9.1](https://github.com/crstdr/minibrain/compare/v0.9...v0.9.1) | nothing. The Agents Map demo and its fixes are outside `starter/`. |
 | [0.9.1-alpha.1](https://github.com/crstdr/minibrain/compare/v0.9...v0.9.1-alpha.1) | nothing. The Agents Map demo is outside `starter/`. |
@@ -31,6 +32,11 @@ Upgrading: [procedure](SETUP.md#upgrading). Each row lists changed `starter/` fi
 | [0.4.2](https://github.com/crstdr/minibrain/compare/v0.3.1...v0.4.2) | nothing |
 | [0.3.1](https://github.com/crstdr/minibrain/compare/v0.3.0...v0.3.1) | `AGENTS.md`: Checkpoint |
 | [0.3.0](https://github.com/crstdr/minibrain/compare/v0.2.0...v0.3.0) | new structure (contract, skills, helper, starter files): adapt per [SETUP.md](SETUP.md) |
+
+## 0.10-alpha.2
+
+- minibrain app: clear empty Roadmap states; setup offers to connect the brain's task folders; an older map on the port is reported; task links name their agent; the open count opens the task list.
+- Upgrades list upstream RepoPrompt CE lines when a brain keeps that guidance under its own heading.
 
 ## 0.10-alpha.1
 
