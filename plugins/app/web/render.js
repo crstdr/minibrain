@@ -6,7 +6,7 @@ import { groupName } from './model.js';
 import { app, currentLayout, groupOf } from './state.js';
 import { stateText } from './model.js';
 import { attentionIcon, glowDelay, phaseDelay } from './attention.js';
-import { $, el, svg, clamp, store } from './util.js';
+import { $, el, svg, clamp, plural, store } from './util.js';
 import { CHIP_W, CHIP_H, CW, CH, conflicts, framePixels } from './grid.js';
 import { boxOf, openMembers, scene } from './layout.js';
 import { applyFill, fillId, groupHue, heatFill, theme } from './colors.js';
@@ -99,12 +99,12 @@ function buildChip(a) {
     ic.appendChild(svg('circle', { cx: 9.8, cy: 9, r: 1.6, fill: 'currentColor' }));
     ic.appendChild(svg('path', { d: 'M3.8 6 C6 6 6.5 3 8.2 3 M3.8 6 C6 6 6.5 9 8.2 9', stroke: 'currentColor', 'stroke-width': 1.3, fill: 'none' }));
     const openCount = a.items.length || first.open;
-    const label = openCount ? openCount + ' open' : 'roadmap';
+    const label = openCount ? plural(openCount, 'task', 'tasks') : 'roadmap';
     chip.appendChild(ic);
     chip.appendChild(el('span', '', label));
     node.appendChild(chip);
   } else if (a.items && a.items.length) {
-    const chip = el('button', 'open-chip', a.items.length + ' open');
+    const chip = el('button', 'open-chip', plural(a.items.length, 'task', 'tasks'));
     chip.type = 'button';
     node.appendChild(chip);
   }
@@ -114,7 +114,7 @@ function buildChip(a) {
     (a.linked ? ', oversees ' + a.out.length + ', overseen by ' + a.inn.length : ', no oversight links') +
     ', window ' + a.win.name + ', ' + stateText(a, true) +
     (a.attItems.length ? ', ' + a.attItems.length + ' attention' : '') +
-    (a.items.length ? ', ' + a.items.length + ' open' : ''));
+    (a.items.length ? ', ' + plural(a.items.length, 'task', 'tasks') : ''));
   a.el = node;
   return node;
 }
